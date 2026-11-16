@@ -1,0 +1,89 @@
+/* 디자인 테마: [data-theme] 별 CSS 변수. 새 테마는 블록 하나를 추가하고 src/themes.js 목록에 등록하면 된다. */
+:root, [data-theme='light'] {
+  --bg: #f4f6fb; --surface: #ffffff; --surface-2: #f7f8fc; --text: #1d2433; --muted: #6b7489;
+  --border: #e2e6ef; --input-bg: #ffffff; --input-border: #d5dbe7; --table-head: #f1f3f9; --highlight: #eaf0ff;
+  --primary: #3b6cf6; --primary-text: #fff; --accent: #ff8a3d; --link: #2f5bd8;
+  --header-bg: #ffffff; --header-text: #1d2433; --header-border: #e2e6ef;
+  --chip-bg: #edf1fb; --chip-text: #3a4766; --holiday: #e5484d; --holiday-bg: #fdecec; --sat: #3b6cf6; --today: #1e7bff;
+  --warn: #d97706; --ok: #16a34a; --danger: #dc2626;
+  --radius: 8px; --shadow: 0 1px 0 #e2e6ef; --card-shadow: 0 1px 2px #1d24330d, 0 4px 14px #1d243308;
+}
+
+[data-theme='dark'] {
+  --bg: #0f1117; --surface: #181b24; --surface-2: #1f232e; --text: #e6e9f0; --muted: #8b93a7;
+  --border: #2a2f3c; --input-bg: #141720; --input-border: #333948; --table-head: #20242f; --highlight: #24304d;
+  --primary: #6d8cff; --primary-text: #0b0e16; --accent: #ffb054; --link: #8fa8ff;
+  --header-bg: #141720; --header-text: #e6e9f0; --header-border: #2a2f3c;
+  --chip-bg: #252a37; --chip-text: #c5cbe0; --holiday: #ff6b6b; --holiday-bg: #3a1f24; --sat: #7c9cff; --today: #5aa2ff;
+  --warn: #f5a524; --ok: #3ecf6e; --danger: #ff5a5a;
+  --shadow: 0 1px 0 #2a2f3c; --card-shadow: none;
+  color-scheme: dark;
+}
+
+[data-theme='pastel'] {
+  --bg: #fdf6fb; --surface: #ffffff; --surface-2: #fff8fc; --text: #4a3b52; --muted: #9a8aa3;
+  --border: #f1dff0; --input-bg: #fffdfe; --input-border: #ecd3ea; --table-head: #fbeefa; --highlight: #f6e6ff;
+  --primary: #b17ce8; --primary-text: #fff; --accent: #ff9fb8; --link: #9055cc;
+  --header-bg: linear-gradient(90deg, #ffe3f1, #e9e3ff 55%, #dff3ff); --header-text: #4a3b52; --header-border: #ecd3ea;
+  --chip-bg: #f3e8ff; --chip-text: #6d4a8a; --holiday: #f0587e; --holiday-bg: #ffe4ec; --sat: #6f8cf0; --today: #8b5cf6;
+  --warn: #e0892c; --ok: #3fae7a; --danger: #e04a6a;
+  --radius: 14px; --shadow: 0 2px 10px #b17ce81a; --card-shadow: 0 4px 18px #b17ce814;
+}
+
+[data-theme='chalk'] {
+  --bg: #2f4a3c; --surface: #34503f; --surface-2: #3b5a47; --text: #f2f1e8; --muted: #b9c6b4;
+  --border: #4f6e5a; --input-bg: #2b4436; --input-border: #5a7a64; --table-head: #3f5f4b; --highlight: #4a6b54;
+  --primary: #f5e27a; --primary-text: #2f3a20; --accent: #ffa8a8; --link: #fff3a6;
+  --header-bg: #5a3e2b; --header-text: #f6ead8; --header-border: #7a5a40;
+  --chip-bg: #46664f; --chip-text: #f2f1e8; --holiday: #ff9a9a; --holiday-bg: #5b4040; --sat: #a8d8ff; --today: #8fe3ff;
+  --warn: #ffcf6e; --ok: #b6f0a0; --danger: #ff8080;
+  --font: 'Gaegu', 'Pretendard Variable', cursive;
+  --radius: 4px; --shadow: 0 3px 0 #3d2a1c; --card-shadow: inset 0 0 0 1px #ffffff10;
+  color-scheme: dark;
+}
+[data-theme='chalk'] body { font-size: 16px; }
+
+[data-theme='paper'] {
+  --bg: #efe6d4; --surface: #fffaf0; --surface-2: #fbf3e2; --text: #3d3326; --muted: #8a7a62;
+  --border: #e3d5bb; --input-bg: #fffdf7; --input-border: #dccaa8; --table-head: #f5ead3; --highlight: #fbefcf;
+  --primary: #a8552b; --primary-text: #fff; --accent: #c99a2e; --link: #8f4521;
+  --header-bg: #7a4a2a; --header-text: #fbf3e2; --header-border: #9a6a48;
+  --chip-bg: #f2e4c7; --chip-text: #6b5232; --holiday: #c2352b; --holiday-bg: #f9dfd5; --sat: #2f5f9f; --today: #2f5f9f;
+  --warn: #b7690f; --ok: #4d7c2a; --danger: #b3261e;
+  --font: 'Nanum Myeongjo', 'Pretendard Variable', serif;
+  --paper-lines: repeating-linear-gradient(#fffdf7 0 25px, #e8dcc4 25px 26px);
+  --radius: 3px; --shadow: 0 2px 6px #00000025; --card-shadow: 2px 3px 0 #e3d5bb;
+}
+[data-theme='paper'] textarea.counsel { line-height: 26px; padding-top: 2px; }
+
+[data-theme='ocean'] {
+  --bg: #eef7fa; --surface: #ffffff; --surface-2: #f3fafc; --text: #12343f; --muted: #5d7c86;
+  --border: #d3e8ee; --input-bg: #ffffff; --input-border: #c3dee6; --table-head: #e7f4f8; --highlight: #dff3f7;
+  --primary: #0e8fa8; --primary-text: #fff; --accent: #ffb547; --link: #0b7690;
+  --header-bg: linear-gradient(90deg, #0b5f78, #0e8fa8); --header-text: #f0fbff; --header-border: #ffffff40;
+  --chip-bg: #def1f6; --chip-text: #1d5562; --holiday: #e2504c; --holiday-bg: #fde8e7; --sat: #1774c8; --today: #0e8fa8;
+  --warn: #d48806; --ok: #13a36b; --danger: #d63c3c;
+  --radius: 10px; --shadow: 0 2px 12px #0b5f7833; --card-shadow: 0 2px 10px #0e8fa812;
+}
+
+[data-theme='forest'] {
+  --bg: #f1f5ee; --surface: #ffffff; --surface-2: #f6f9f3; --text: #24321f; --muted: #6c7c64;
+  --border: #dbe5d3; --input-bg: #ffffff; --input-border: #cddbc3; --table-head: #ecf2e7; --highlight: #e5f0dc;
+  --primary: #3f7d3a; --primary-text: #fff; --accent: #d9a441; --link: #2f6a2b;
+  --header-bg: #2f4f2b; --header-text: #eef5e8; --header-border: #ffffff33;
+  --chip-bg: #e6efdf; --chip-text: #3c5432; --holiday: #c8423b; --holiday-bg: #f8e3e1; --sat: #3567a8; --today: #2d8a4e;
+  --warn: #b7791f; --ok: #2f855a; --danger: #c53030;
+  --radius: 10px; --shadow: 0 1px 0 #1d2a1a; --card-shadow: 0 2px 8px #2f4f2b10;
+}
+
+[data-theme='contrast'] {
+  --bg: #ffffff; --surface: #ffffff; --surface-2: #ffffff; --text: #000000; --muted: #333333;
+  --border: #000000; --input-bg: #ffffff; --input-border: #000000; --table-head: #e6e6e6; --highlight: #fff3a0;
+  --primary: #0033cc; --primary-text: #fff; --accent: #000000; --link: #0033cc;
+  --header-bg: #000000; --header-text: #ffffff; --header-border: #ffffff;
+  --chip-bg: #000000; --chip-text: #ffffff; --holiday: #c00000; --holiday-bg: #ffe0e0; --sat: #0033cc; --today: #0033cc;
+  --warn: #9a4a00; --ok: #006400; --danger: #c00000;
+  --radius: 2px; --shadow: none; --card-shadow: none;
+}
+[data-theme='contrast'] body { font-size: 17px; }
+[data-theme='contrast'] .card { border-width: 2px; }

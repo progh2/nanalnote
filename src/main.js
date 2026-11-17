@@ -3,6 +3,7 @@ import './styles/themes.css';
 import { Store } from './store.js';
 import { LocalBackend } from './backends/local.js';
 import { NotionBackend } from './backends/notion.js';
+import { DropboxBackend, completeLogin } from './backends/dropbox.js';
 import { h, today, schoolYearOf, addDays, toast, modal, koDate } from './lib/util.js';
 import * as holidays from './lib/holidays.js';
 import { renderNotebook } from './views/notebook.js';
@@ -16,7 +17,9 @@ const CONFIG_KEY = 'sn:config';
 const loadConfig = () => { try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}'); } catch { return {}; } };
 
 function makeBackend(cfg) {
-  return cfg.backend === 'notion' ? new NotionBackend({ url: cfg.url, key: cfg.key }) : new LocalBackend();
+  if (cfg.backend === 'notion') return new NotionBackend({ url: cfg.url, key: cfg.key });
+  if (cfg.backend === 'dropbox') return new DropboxBackend();
+  return new LocalBackend();
 }
 
 const app = {
@@ -114,7 +117,7 @@ const app = {
         h('button.ghost', { onclick: () => this.setDate(today()) }, '오늘'),
         h('span.badge', s.year ? `${s.year}학년도` : '')),
       h('div.head-right',
-        h('span.badge.backend', { title: s.backend.label }, s.backend.name === 'notion' ? 'Notion' : '로컬'),
+        h('span.badge.backend', { title: s.backend.label }, { notion: 'Notion', dropbox: 'Dropbox' }[s.backend.name] || '로컬'),
         h(`span.status${s.dirty ? '.dirty' : ''}`, status),
         h('select.theme-pick', { title: '테마', onchange: (e) => this.setTheme(e.target.value) },
           THEMES.map(([v, l]) => h('option', { value: v, selected: v === this.theme }, l))),
@@ -159,9 +162,15 @@ window.addEventListener('beforeunload', (e) => {
 async function start() {
   app.setTheme(app.theme);
   document.getElementById('app').replaceChildren(h('header#header'), h('main#main'));
+  // 드롭박스 로그인 후 돌아온 경우 (?code=...)
+  let loginMsg = null;
+  try {
+    if (await completeLogin()) { app.saveConfig({ backend: 'dropbox' }); loginMsg = ['드롭박스에 연결했습니다. 이제 드롭박스 Apps 폴더에 마크다운으로 저장됩니다.', 'ok']; app.tab = 'settings'; }
+  } catch (e) { loginMsg = [e.message, 'error']; app.tab = 'settings'; }
   app.store = new Store(makeBackend(app.config));
   app.store.on(() => app.renderHeader());
   await app.loadYear(schoolYearOf(app.date));
+  if (loginMsg) toast(...loginMsg);
   // 원본처럼 실행할 때마다 이번 달 특일정보를 새로 받아온다 (API 사용 시)
   const f = app.holidayFetcher();
   if (f) {

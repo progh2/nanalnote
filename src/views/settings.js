@@ -1,21 +1,65 @@
-// 설정 탭: 저장소(로컬/노션), 학년도 전환, 화면 설정, 정보 일괄 등록, 백업/복원
+// 설정 탭: 저장소(로컬/드롭박스/노션), 학년도 전환, 화면 설정, 정보 일괄 등록, 백업/복원
 import { h, newId, toCSV, parseCSV, readTextFile, pickFile, downloadBlob, toast, confirmDialog, normalizeDate, schoolYearOf, today, yearRange, WEEKDAYS } from '../lib/util.js';
 import { NotionBackend } from '../backends/notion.js';
 import { LocalBackend } from '../backends/local.js';
+import { DropboxBackend, startLogin, logout as dropboxLogout } from '../backends/dropbox.js';
 import { COLLECTIONS } from '../store.js';
 import { THEMES } from '../themes.js';
 
 const card = (title, ...body) => h('section.card', h('div.card-head', h('h2', title)), ...body);
 
+/** 이 브라우저의 로컬 데이터를 다른 저장소로 복사 */
+async function migrateLocal(target, label, say) {
+  const local = new LocalBackend();
+  const years = await local.listYears();
+  if (!years.length) return say('옮길 로컬 데이터가 없습니다.');
+  if (!(await confirmDialog(`로컬 → ${label} 옮기기`, `이 브라우저에 저장된 ${years.join(', ')}학년도 데이터를 ${label}에 추가합니다. 이미 같은 데이터가 있으면 중복될 수 있습니다. 계속할까요?`, '옮기기'))) return;
+  let total = 0, failed = 0;
+  for (const y of years) {
+    const data = await local.loadYear(y);
+    const ops = [];
+    for (const col of COLLECTIONS) for (const item of data[col] || []) ops.push({ op: 'upsert', col, item: { ...item, id: newId() } });
+    say(`${y}학년도 ${ops.length}건 옮기는 중…`);
+    const res = await target.applyOps(y, ops);
+    total += ops.length; failed += res.filter((r) => !r.ok).length;
+  }
+  say(`완료: ${total}건 중 ${total - failed}건 옮김${failed ? `, ${failed}건 실패` : ''}. 다른 화면으로 갔다 오거나 새로고침하면 보입니다.`, failed ? 'err' : 'ok');
+}
+
 function storageCard(app) {
   const cfg = { backend: 'local', url: '', key: '', ...app.config };
-  const url = h('input', { value: cfg.url, placeholder: 'https://sammynote-worker.아이디.workers.dev' });
-  const key = h('input', { type: 'password', value: cfg.key, placeholder: 'Worker 에 설정한 APP_PASSWORD' });
   const out = h('div.result');
   const say = (msg, kind = '') => out.replaceChildren(h(`p.${kind || 'muted'}`, msg));
-  const nb = () => new NotionBackend({ url: url.value.trim(), key: key.value });
   const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); } catch (e) { say(e.message, 'err'); } finally { btn.disabled = false; } };
 
+  // ----- 드롭박스 -----
+  const dbx = new DropboxBackend();
+  const dbxInfo = h('span.muted', dbx.connected ? '연결됨 (계정 확인 중…)' : '연결 안 됨');
+  if (dbx.connected) dbx.account().then((a) => { dbxInfo.textContent = `연결됨 · ${a.name?.display_name || ''} (${a.email || ''})`; }).catch((e) => { dbxInfo.textContent = `연결 확인 실패: ${e.message}`; });
+  const dbxMigrate = h('button', { onclick: () => busy(dbxMigrate, () => migrateLocal(new DropboxBackend(), '드롭박스', say)) }, '로컬 데이터를 드롭박스로 옮기기');
+  const dropboxSection = h('div.storage-opt',
+    h('h3', '드롭박스 (추천)'),
+    h('p.muted.small', '드롭박스의 Apps 폴더 안 쌔미노트 앱 폴더에 학년도별 마크다운(.md) 파일로 저장합니다. PC·휴대폰 어디서나 이 주소로 접속해 쓰고, 파일은 메모장·Obsidian 으로 열거나 Claude(드롭박스 커넥터)가 읽을 수 있습니다. 서버가 없고 로그인 정보는 이 브라우저에만 남습니다.'),
+    h('p', '상태: ', dbxInfo),
+    h('div.row',
+      dbx.connected
+        ? [
+          cfg.backend !== 'dropbox' ? h('button.primary', { onclick: () => app.switchBackend({ backend: 'dropbox' }) }, '드롭박스 사용하기') : h('span.ok', '✓ 사용 중'),
+          h('button', { onclick: async () => {
+            if (!(await confirmDialog('드롭박스 연결 끊기', '이 브라우저의 드롭박스 로그인과 캐시를 지웁니다. 드롭박스의 파일은 그대로 남습니다.', '연결 끊기'))) return;
+            await dropboxLogout();
+            if (cfg.backend === 'dropbox') await app.switchBackend({ backend: 'local' });
+            else app.render();
+          } }, '연결 끊기'),
+          dbxMigrate]
+        : h('button.primary', { onclick: async () => { if (await app.confirmLeave()) startLogin(); } }, '드롭박스 연결'),
+    ),
+  );
+
+  // ----- 노션 (고급) -----
+  const url = h('input', { value: cfg.url, placeholder: 'https://sammynote-worker.아이디.workers.dev' });
+  const key = h('input', { type: 'password', value: cfg.key, placeholder: 'Worker 에 설정한 APP_PASSWORD' });
+  const nb = () => new NotionBackend({ url: url.value.trim(), key: key.value });
   const testBtn = h('button', { onclick: () => busy(testBtn, async () => {
     const r = await nb().ping();
     say(`연결 성공 · 노션 DB ${r.databases}/${r.total}개 확인${r.databases < r.total ? ' → [노션 DB 만들기]를 눌러 주세요' : ''} · 특일정보 API ${r.holidays ? '사용' : '미설정(내장 데이터 사용)'}`, 'ok');
@@ -24,45 +68,29 @@ function storageCard(app) {
     const r = await nb().setup();
     say(r.created.length ? `노션 DB를 만들었습니다: ${r.created.join(', ')}` : '필요한 노션 DB가 이미 모두 있습니다.', 'ok');
   }) }, '노션 DB 만들기');
-  const useBtn = h('button.primary', { onclick: () => busy(useBtn, async () => {
+  const useBtn = h('button', { onclick: () => busy(useBtn, async () => {
     await nb().ping();
     await app.switchBackend({ backend: 'notion', url: url.value.trim(), key: key.value });
     toast('노션 저장소로 전환했습니다.', 'ok');
   }) }, '노션 사용하기');
-  const migrateBtn = h('button', { onclick: () => busy(migrateBtn, async () => {
-    const local = new LocalBackend();
-    const years = await local.listYears();
-    if (!years.length) return say('옮길 로컬 데이터가 없습니다.');
-    if (!(await confirmDialog('로컬 → 노션 옮기기', `이 브라우저에 저장된 ${years.join(', ')}학년도 데이터를 노션에 추가합니다. 노션에 이미 같은 데이터가 있으면 중복될 수 있습니다. 계속할까요?`, '옮기기'))) return;
-    const remote = nb();
-    let total = 0, failed = 0;
-    for (const y of years) {
-      const data = await local.loadYear(y);
-      const ops = [];
-      for (const col of COLLECTIONS) for (const item of data[col] || []) ops.push({ op: 'upsert', col, item: { ...item, id: newId() } });
-      say(`${y}학년도 ${ops.length}건 업로드 중… (노션 API 속도 제한으로 시간이 걸립니다)`);
-      const res = await remote.applyOps(y, ops);
-      total += ops.length; failed += res.filter((r) => !r.ok).length;
-    }
-    say(`완료: ${total}건 중 ${total - failed}건 업로드${failed ? `, ${failed}건 실패` : ''}.`, failed ? 'err' : 'ok');
-  }) }, '로컬 데이터를 노션으로 옮기기');
+  const nMigrate = h('button', { onclick: () => busy(nMigrate, () => migrateLocal(nb(), '노션', say)) }, '로컬 데이터를 노션으로 옮기기');
+  const notionSection = h('details.storage-opt', { open: cfg.backend === 'notion' },
+    h('summary', '노션 (고급 · Cloudflare Worker 필요)'),
+    h('div.form', h('label', 'Worker 주소', url), h('label', '접속 비밀번호', key)),
+    h('div.row', testBtn, setupBtn, useBtn, nMigrate),
+    h('ol.small',
+      h('li', 'notion.so/my-integrations 에서 내부 통합(Integration)을 만들고 시크릿을 복사합니다.'),
+      h('li', '데이터를 둘 노션 페이지를 만들고, 페이지 메뉴 ⋯ > 연결(Connections)에서 방금 만든 통합을 추가합니다.'),
+      h('li', 'worker 폴더를 Cloudflare 에 배포하고 NOTION_TOKEN, NOTION_PARENT(페이지 ID), APP_PASSWORD 를 등록합니다. (README 참고)'),
+      h('li', '[연결 테스트] → [노션 DB 만들기] → [노션 사용하기] 순서로 누릅니다.')));
 
   return card('저장소',
-    h('p', '현재: ', h('strong', app.store.backend.label)),
-    h('div.form',
-      h('label', 'Worker 주소', url),
-      h('label', '접속 비밀번호', key)),
-    h('div.row', testBtn, setupBtn, useBtn,
-      cfg.backend === 'notion' ? h('button', { onclick: () => app.switchBackend({ backend: 'local' }) }, '로컬 저장소로 돌아가기') : null),
-    h('div.row', migrateBtn),
+    h('p', '현재: ', h('strong', app.store.backend.label),
+      cfg.backend !== 'local' ? h('button.small', { style: { marginLeft: '8px' }, onclick: () => app.switchBackend({ backend: 'local' }) }, '이 브라우저(로컬)로 전환') : null),
+    dropboxSection,
+    notionSection,
     out,
-    h('details', h('summary', '노션 연결 방법'),
-      h('ol',
-        h('li', 'notion.so/my-integrations 에서 내부 통합(Integration)을 만들고 시크릿을 복사합니다.'),
-        h('li', '데이터를 둘 노션 페이지를 만들고, 페이지 메뉴 ⋯ > 연결(Connections)에서 방금 만든 통합을 추가합니다.'),
-        h('li', '저장소의 worker 폴더를 Cloudflare 에 배포하고 NOTION_TOKEN, NOTION_PARENT(페이지 ID), APP_PASSWORD 를 등록합니다. (README 참고)'),
-        h('li', '위에 Worker 주소와 비밀번호를 입력하고 [연결 테스트] → [노션 DB 만들기] → [노션 사용하기] 순서로 누릅니다.')),
-      h('p.muted.small', '상담 일지 등 민감정보가 노션에 저장됩니다. 노션 페이지 공유 범위를 본인으로 한정하고, 학교 정보보호 지침을 확인하세요.')));
+    h('p.muted.small', '상담 일지 등 민감정보가 클라우드에 저장됩니다. 공유 범위를 본인으로 한정하고, 학교 정보보호 지침을 확인하세요. 공용 PC에서는 사용 후 연결을 끊으세요.'));
 }
 
 function yearCard(app) {

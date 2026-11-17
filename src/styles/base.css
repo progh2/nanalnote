@@ -209,3 +209,7 @@ textarea.counsel { min-height: 140px; background: var(--paper-lines, var(--input
   input, textarea, select { border: 0 !important; background: transparent !important; resize: none; }
   .nb-grid { grid-template-columns: 1fr 1fr; }
 }
+
+.storage-opt { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; margin: 10px 0; background: var(--surface-2); }
+.storage-opt h3 { margin: 0 0 4px; }
+ol.small { font-size: 13px; color: var(--muted); padding-left: 1.3em; }

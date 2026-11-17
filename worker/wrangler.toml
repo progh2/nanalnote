@@ -4,7 +4,7 @@ compatibility_date = "2026-01-01"
 
 [vars]
 # 웹앱 주소 (GitHub Pages). 여러 개는 쉼표로 구분. 로컬 개발용 주소도 함께 둡니다.
-ALLOWED_ORIGIN = "https://YOUR-GITHUB-ID.github.io,http://localhost:5173"
+ALLOWED_ORIGIN = "https://progh2.github.io,http://localhost:5173"
 
 # 아래 값들은 비밀값이므로 wrangler secret 으로 등록하세요.
 #   npx wrangler secret put NOTION_TOKEN

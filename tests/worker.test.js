@@ -62,8 +62,8 @@ test('Worker: 인증, setup, batch, 조회 왕복', async () => {
   assert.equal(pre.headers.get('Access-Control-Allow-Origin'), 'https://me.github.io');
 
   let r = await (await call('/api/setup', { method: 'POST' })).json();
-  assert.equal(r.created.length, 10);
-  assert.equal(dbs.size, 10);
+  assert.equal(r.created.length, 12);
+  assert.equal(dbs.size, 12);
   // 예전 버전 DB 에 없던 속성은 setup 이 덧붙인다
   const stuDb = [...dbs.values()].find((d) => d.title === '쌔미노트_학생');
   delete stuDb.props.학번;

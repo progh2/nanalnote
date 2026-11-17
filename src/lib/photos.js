@@ -15,7 +15,8 @@ export async function resizeImage(file, max = 360, quality = 0.85) {
 /** 파일 이름에 쓸 수 없는 문자 제거 */
 export const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '').trim() || '학생';
 
-// ---------- IndexedDB (로컬 저장소용) ----------
+// ---------- IndexedDB (로컬 저장소용, 잠금이 켜져 있으면 암호화) ----------
+import { vaultEnabled, isUnlocked, encryptBytes, decryptBytes } from './vault.js';
 let dbp;
 function db() {
   dbp ||= new Promise((res, rej) => {
@@ -35,6 +36,14 @@ async function tx(mode, fn) {
     t.onerror = () => rej(t.error);
   });
 }
-export const idbPut = (key, blob) => tx('readwrite', (s) => s.put(blob, key));
-export const idbGet = (key) => tx('readonly', (s) => s.get(key));
+export async function idbPut(key, blob) {
+  let val = blob;
+  if (vaultEnabled() && isUnlocked()) val = { enc: 1, type: blob.type, data: await encryptBytes(await blob.arrayBuffer()) };
+  return tx('readwrite', (s) => s.put(val, key));
+}
+export async function idbGet(key) {
+  const v = await tx('readonly', (s) => s.get(key));
+  if (v && v.enc) return new Blob([await decryptBytes(v.data)], { type: v.type });
+  return v;
+}
 export const idbDel = (key) => tx('readwrite', (s) => s.delete(key));

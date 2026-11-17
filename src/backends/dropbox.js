@@ -5,6 +5,14 @@
 
 import { serialize, parse, pathOf, yearDir, FILES } from '../lib/mdformat.js';
 import { safeName } from '../lib/photos.js';
+import { sget, sset, sdel } from '../lib/securestore.js';
+
+// 공용 PC 모드: 로그인 정보를 이 탭(sessionStorage)에만 두고, 캐시는 메모리에만 둔다. 탭을 닫으면 사라진다.
+const PUBLIC_KEY = 'sn:dropbox:public';
+export const isPublicMode = () => sessionStorage.getItem(PUBLIC_KEY) === '1';
+let memCache = {};
+const readSession = () => (isPublicMode() ? sessionStorage.getItem('sn:dropbox') : sget('sn:dropbox'));
+const writeSession = (v) => (isPublicMode() ? sessionStorage.setItem('sn:dropbox', v) : sset('sn:dropbox', v));
 
 export const DROPBOX_APP_KEY = import.meta.env?.VITE_DROPBOX_APP_KEY || 'r774qv1d7hq5fl6';
 const AUTH_URL = 'https://www.dropbox.com/oauth2/authorize';
@@ -47,11 +55,13 @@ function sessionFromToken(p, prev = null) {
 }
 
 export function loadSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; }
+  try { return JSON.parse(readSession() || 'null'); } catch { return null; }
 }
 
 /** 드롭박스 로그인 화면으로 이동 */
-export async function startLogin() {
+/** @param publicMode 공용 PC: 로그인 정보를 저장하지 않음 */
+export async function startLogin(publicMode = false) {
+  if (publicMode) sessionStorage.setItem(PUBLIC_KEY, '1'); else sessionStorage.removeItem(PUBLIC_KEY);
   const verifier = makeVerifier();
   const state = base64url(crypto.getRandomValues(new Uint8Array(16)));
   sessionStorage.setItem(PKCE_KEY, JSON.stringify({ verifier, state }));
@@ -78,15 +88,18 @@ export async function completeLogin() {
   });
   const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(`드롭박스 토큰 발급 실패: ${j.error_description || j.error || res.status}`);
-  localStorage.setItem(SESSION_KEY, JSON.stringify(sessionFromToken(j)));
+  writeSession(JSON.stringify(sessionFromToken(j)));
   return true;
 }
 
 /** 연결 끊기: 토큰 폐기 + 이 브라우저의 세션·캐시 삭제 */
 export async function logout() {
   const s = loadSession();
-  localStorage.removeItem(SESSION_KEY);
-  localStorage.removeItem(CACHE_KEY);
+  sdel(SESSION_KEY);
+  sdel(CACHE_KEY);
+  sessionStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(PUBLIC_KEY);
+  memCache = {};
   if (s?.accessToken) await fetch(REVOKE_URL, { method: 'POST', headers: { Authorization: `Bearer ${s.accessToken}` } }).catch(() => {});
 }
 
@@ -122,7 +135,7 @@ export class DropboxBackend {
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(`드롭박스 로그인 갱신 실패 (${j.error_description || res.status}). 다시 연결해 주세요.`);
     this.session = sessionFromToken(j, this.session);
-    localStorage.setItem(SESSION_KEY, JSON.stringify(this.session));
+    writeSession(JSON.stringify(this.session));
     return this.session.accessToken;
   }
 
@@ -181,9 +194,13 @@ export class DropboxBackend {
     return j; // metadata (rev)
   }
 
-  readCache() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); } catch { return {}; } }
+  readCache() {
+    if (isPublicMode()) return memCache;
+    try { return JSON.parse(sget(CACHE_KEY) || '{}'); } catch { return {}; }
+  }
   writeCache(cache) {
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); } catch { localStorage.removeItem(CACHE_KEY); }
+    if (isPublicMode()) { memCache = cache; return; }
+    try { sset(CACHE_KEY, JSON.stringify(cache)); } catch { sdel(CACHE_KEY); }
   }
 
   async loadYear(year) {
@@ -289,41 +306,49 @@ export class DropboxBackend {
 
   holidayFetcher() { return null; }
 
-  // ---------- 학생 사진: {학년도}학년도/사진/학번_이름.jpg ----------
-  photoPath(year, student) { return `${yearDir(year)}/사진/${student.photo}`; }
+  // ---------- 파일: {학년도}학년도/{폴더}/{이름} (학생 사진, 학사일정 자료) ----------
+  filePath(year, folder, name) { return `${yearDir(year)}/${folder}/${name}`; }
 
-  async savePhoto(year, student, blob) {
-    const name = `${safeName(student.studentNo ? `${student.studentNo}_${student.name}` : student.name)}.jpg`;
-    const path = `${yearDir(year)}/사진/${name}`;
+  async putFile(year, folder, name, blob) {
+    const path = this.filePath(year, folder, name);
     const res = await fetch(`${CONTENT}/files/upload`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${await this.token()}`, 'Content-Type': 'application/octet-stream', 'Dropbox-API-Arg': asciiHeader(JSON.stringify({ path, mode: { '.tag': 'overwrite' }, mute: true })) },
       body: blob,
     });
-    if (!res.ok) throw new Error(`사진 업로드 실패 (${res.status})`);
-    if (student.photo && student.photo !== name) await this.deletePhoto(year, student);
-    this.photoUrls ||= new Map();
-    this.photoUrls.set(path.toLowerCase(), URL.createObjectURL(blob));
+    if (!res.ok) throw new Error(`파일 업로드 실패 (${res.status})`);
+    this.fileUrls ||= new Map();
+    this.fileUrls.set(path.toLowerCase(), URL.createObjectURL(blob));
     return name;
   }
 
-  async photoUrl(year, student) {
-    if (!student?.photo) return null;
-    const path = this.photoPath(year, student);
-    this.photoUrls ||= new Map();
+  async fileUrl(year, folder, name) {
+    if (!name) return null;
+    const path = this.filePath(year, folder, name);
+    this.fileUrls ||= new Map();
     const k = path.toLowerCase();
-    if (this.photoUrls.has(k)) return this.photoUrls.get(k);
+    if (this.fileUrls.has(k)) return this.fileUrls.get(k);
     const res = await fetch(`${CONTENT}/files/download`, { method: 'POST', headers: { Authorization: `Bearer ${await this.token()}`, 'Dropbox-API-Arg': asciiHeader(JSON.stringify({ path })) } });
     if (!res.ok) return null;
     const url = URL.createObjectURL(await res.blob());
-    this.photoUrls.set(k, url);
+    this.fileUrls.set(k, url);
     return url;
   }
 
-  async deletePhoto(year, student) {
-    if (!student?.photo) return;
-    const path = this.photoPath(year, student);
+  async deleteFile(year, folder, name) {
+    if (!name) return;
+    const path = this.filePath(year, folder, name);
     await this.rpc('files/delete_v2', { path }).catch(() => {});
-    this.photoUrls?.delete(path.toLowerCase());
+    this.fileUrls?.delete(path.toLowerCase());
   }
+
+  // 학생 사진: 사진/학번_이름.jpg
+  async savePhoto(year, student, blob) {
+    const name = `${safeName(student.studentNo ? `${student.studentNo}_${student.name}` : student.name)}.jpg`;
+    await this.putFile(year, '사진', name, blob);
+    if (student.photo && student.photo !== name) await this.deleteFile(year, '사진', student.photo);
+    return name;
+  }
+  photoUrl(year, student) { return this.fileUrl(year, '사진', student?.photo); }
+  deletePhoto(year, student) { return this.deleteFile(year, '사진', student?.photo); }
 }

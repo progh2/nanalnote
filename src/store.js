@@ -1,12 +1,12 @@
 // 앱 상태 저장소: 학년도 단위로 데이터를 불러오고, 저장 시 변경분(diff)만 백엔드에 반영한다.
-// 원본 쌔미노트처럼 "저장" 버튼(Ctrl+S)을 눌렀을 때만 변경 내용이 반영된다.
+// 저장 버튼(Ctrl+S) 또는 자동 저장 때 변경분만 보낸다. 입력 중인 빈 항목은 화면에 남겨 두고 저장에서만 뺀다.
 
 import { clone, newId, isTempId } from './lib/util.js';
 import { splitParagraphs } from './lib/counsel.js';
 import { normStudent, sortStudents, buildIndex, toUid, labelOf, mentionedUids, classKeys, newUid } from './lib/students.js';
 import { bellOf, periodList, periodLabel } from './lib/bell.js';
 
-export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records', 'trips'];
+export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records', 'trips', 'notes', 'docs'];
 
 export const DEFAULT_SETTINGS = {
   teacherInfo: '',
@@ -16,7 +16,23 @@ export const DEFAULT_SETTINGS = {
   courses: [], // 내 수업명 목록
   rooms: [], // 교실·실습실 목록
   classes: [], // 담당 학반 목록 (예: 1-2)
+  homerooms: {}, // 학반 -> { main: 담임, sub: 부담임 }
 };
+
+/** 수업명 목록 항목: "인공지능 기초" 또는 { name, short } */
+export const courseOf = (c) => (c && typeof c === 'object' ? { name: c.name || '', short: c.short || '' } : { name: String(c || ''), short: '' });
+/** 수업명 → 화면에 보일 축약 이름 */
+export function courseShort(settings, subject) {
+  const c = (settings.courses || []).map(courseOf).find((x) => x.name === subject);
+  return c?.short || subject || '';
+}
+
+/** D-day 표시: 마감일 - 기준일 */
+export function dday(due, date) {
+  if (!due) return null;
+  const n = Math.round((new Date(due + 'T00:00') - new Date(date + 'T00:00')) / 86400000);
+  return { n, label: n === 0 ? 'D-day' : n > 0 ? `D-${n}` : `D+${-n}` };
+}
 
 /** 시간표 칸 → { subject, cls, room } */
 export function ttCell(v) {
@@ -61,7 +77,9 @@ export class Store {
   }
 
   markDirty() {
+    this.seq = (this.seq || 0) + 1;
     if (!this.dirty) { this.dirty = true; this.emit('dirty'); }
+    this.emit('change');
   }
 
   discard() {
@@ -204,42 +222,51 @@ export class Store {
     this.counselDraft = {};
   }
 
-  /** 의미 없는 빈 레코드 정리 및 요록 제목 자동 채번 */
+  /** 저장 전 값 다듬기 (항목을 지우지 않고 그 자리에서 고침: 화면이 들고 있는 객체가 그대로 유지되도록) */
   normalize() {
     const w = this.work;
-    const tt = this.settings.timetable;
-    w.tasks = w.tasks.filter((t) => (t.text || '').trim());
-    w.students = w.students.filter((x) => (x.name || '').trim()).map((x) => ({ ...normStudent(x), uid: x.uid || newUid() }));
-    w.attendance = w.attendance.filter((a) => a.student);
-    // 제목도 내용도 없는 요록은 삭제, 내용만 있으면 날짜+순번으로 제목 채번
-    w.records = w.records.filter((r) => (r.title || '').trim() || Object.values(r.entries || {}).some((v) => String(v).trim()));
+    for (const x of w.students) { Object.assign(x, normStudent(x)); x.uid ||= newUid(); }
+    // 내용만 있고 제목이 없는 요록은 날짜+순번으로 제목 채번
     for (const r of w.records) {
-      if (!(r.title || '').trim()) {
+      if (!(r.title || '').trim() && Object.values(r.entries || {}).some((v) => String(v).trim())) {
         const prefix = r.created.replace(/-/g, '');
         let n = 1;
         while (w.records.some((x) => x.title === `${prefix}-${n}`)) n++;
         r.title = `${prefix}-${n}`;
       }
     }
-    // 내용이 비어 있는 학사일정/수업일지는 저장하지 않음(기존 항목은 삭제)
-    w.schedule = w.schedule.filter((s) => (s.text || '').trim() || s.holiday);
-    w.lessons = w.lessons.filter((l) => {
-      const def = ttCell(tt[new Date(l.date + 'T00:00').getDay()]?.[l.period - 1]);
-      return (l.content || '').trim() || (l.subject || '') !== def.subject || (l.cls || '') !== def.cls || (l.room || '') !== def.room;
-    });
+  }
+
+  /** 저장할 가치가 있는 항목인가 (입력 중인 빈 항목은 저장하지 않음 → 기존 항목이면 삭제로 처리) */
+  saveable(col, x) {
+    switch (col) {
+      case 'tasks': return !!(x.text || '').trim();
+      case 'students': return !!(x.name || '').trim();
+      case 'attendance': return !!x.student;
+      case 'records': return !!(x.title || '').trim();
+      case 'schedule': return !!((x.text || '').trim() || x.holiday);
+      case 'trips': return !!((x.place || '').trim() || (x.purpose || '').trim() || (x.time || '').trim());
+      case 'notes': return !!(x.text || '').trim() || !x.temp;
+      case 'lessons': {
+        const def = ttCell(this.settings.timetable[new Date(x.date + 'T00:00').getDay()]?.[x.period - 1]);
+        return !!((x.content || '').trim() || (x.subject || '') !== def.subject || (x.cls || '') !== def.cls || (x.room || '') !== def.room);
+      }
+      default: return true;
+    }
   }
 
   diff() {
     const ops = [];
     for (const col of COLLECTIONS) {
       const baseMap = new Map(this.base[col].map((x) => [x.id, x]));
-      const workIds = new Set();
+      const keep = new Set();
       for (const item of this.work[col]) {
-        workIds.add(item.id);
+        if (!this.saveable(col, item)) continue;
+        keep.add(item.id);
         const b = baseMap.get(item.id);
         if (!b || JSON.stringify(b) !== JSON.stringify(item)) ops.push({ op: 'upsert', col, item: clone(item) });
       }
-      for (const b of this.base[col]) if (!workIds.has(b.id) && !isTempId(b.id)) ops.push({ op: 'delete', col, id: b.id });
+      for (const b of this.base[col]) if (!keep.has(b.id) && !isTempId(b.id)) ops.push({ op: 'delete', col, id: b.id });
     }
     return ops;
   }
@@ -248,13 +275,14 @@ export class Store {
   async save(touchDates = []) {
     if (this.saving) return { ok: false, busy: true };
     this.saving = true;
+    const seqAtStart = this.seq || 0;
     this.emit('saving');
     try {
       const draftDates = Object.keys(this.counselDraft);
       this.applyCounselDrafts();
       this.normalize();
       let ops = this.diff();
-      if (!ops.length) { this.dirty = false; this.emit('saved'); return { ok: true, count: 0 }; }
+      if (!ops.length) { this.dirty = (this.seq || 0) !== seqAtStart; this.emit('saved'); return { ok: true, count: 0 }; }
       const now = new Date().toISOString();
       for (const date of new Set([...touchDates, ...draftDates])) {
         let d = this.day(date);
@@ -271,6 +299,9 @@ export class Store {
         if (!r?.ok) { failed++; return; }
         if (op.op === 'delete') {
           this.base[op.col] = this.base[op.col].filter((x) => x.id !== op.id);
+          // 화면에 아직 남아 있는(입력 중인) 항목이면 새 항목으로 다시 저장되도록 임시 id 부여
+          const w = this.work[op.col].find((x) => x.id === op.id);
+          if (w) w.id = newId();
           return;
         }
         const newIdVal = r.id || op.item.id;
@@ -282,7 +313,8 @@ export class Store {
         const idx = this.base[op.col].findIndex((x) => x.id === newIdVal);
         if (idx >= 0) this.base[op.col][idx] = saved; else this.base[op.col].push(saved);
       });
-      this.dirty = failed > 0;
+      // 저장하는 동안 새로 고친 내용이 있으면 여전히 '저장 안 됨'
+      this.dirty = failed > 0 || (this.seq || 0) !== seqAtStart;
       this.emit('saved');
       if (failed) {
         const err = results.find((r) => !r?.ok)?.error || '알 수 없는 오류';

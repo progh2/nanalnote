@@ -4,17 +4,21 @@ import { Store } from './store.js';
 import { LocalBackend } from './backends/local.js';
 import { NotionBackend } from './backends/notion.js';
 import { DropboxBackend, completeLogin } from './backends/dropbox.js';
-import { h, today, schoolYearOf, addDays, toast, modal, koDate } from './lib/util.js';
+import { h, today, schoolYearOf, addDays, toast, modal, koDate, weekdayOf, WEEKDAYS, debounce } from './lib/util.js';
 import * as holidays from './lib/holidays.js';
+import { vaultEnabled, lockNow } from './lib/vault.js';
+import { sget, sset, loadAll, flush, memClear } from './lib/securestore.js';
 import { renderNotebook } from './views/notebook.js';
 import { renderStudents } from './views/students.js';
 import { renderReports } from './views/reports.js';
 import { renderSettings } from './views/settings.js';
+import { renderSchedule } from './views/schedule.js';
+import { renderNotes, addNote } from './views/notes.js';
+import { showLockScreen } from './views/lock.js';
 import { THEMES } from './themes.js';
 
-
 const CONFIG_KEY = 'sn:config';
-const loadConfig = () => { try { return JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}'); } catch { return {}; } };
+const loadConfig = () => { try { return JSON.parse(sget(CONFIG_KEY) || '{}'); } catch { return {}; } };
 
 function makeBackend(cfg) {
   if (cfg.backend === 'notion') return new NotionBackend({ url: cfg.url, key: cfg.key });
@@ -22,18 +26,27 @@ function makeBackend(cfg) {
   return new LocalBackend();
 }
 
+// 이 기기 설정 (민감하지 않음)
+export const prefs = {
+  get autosave() { return localStorage.getItem('sn:autosave') !== '0'; },
+  set autosave(v) { localStorage.setItem('sn:autosave', v ? '1' : '0'); },
+  get autolock() { return +(localStorage.getItem('sn:autolock') ?? 10); }, // 분, 0 = 끔
+  set autolock(v) { localStorage.setItem('sn:autolock', String(v)); },
+};
+
 const app = {
-  config: loadConfig(),
+  config: {},
   store: null,
   date: today(),
   tab: 'notebook',
   reportTab: 'calendar',
   selectedStudent: null,
   error: null,
+  prefs,
 
   saveConfig(patch) {
     this.config = { ...this.config, ...patch };
-    localStorage.setItem(CONFIG_KEY, JSON.stringify(this.config));
+    sset(CONFIG_KEY, JSON.stringify(this.config));
   },
 
   get theme() { return localStorage.getItem('sn:theme') || 'light'; },
@@ -43,9 +56,10 @@ const app = {
   specials(date) { return holidays.getDay(date, this.holidayFetcher()); },
   monthSpecials(y, m) { return holidays.getMonth(y, m, this.holidayFetcher()); },
 
-  /** 저장 안 된 내용이 있으면 물어본다. 진행해도 되면 true */
+  /** 다른 날짜·화면으로 가기 전에: 자동 저장이면 바로 저장, 아니면 물어본다. 진행해도 되면 true */
   async confirmLeave() {
     if (!this.store.dirty) return true;
+    if (prefs.autosave) { const r = await this.save({ silent: true }); return r.ok || r.busy; }
     const v = await modal('저장하지 않은 내용', h('p', '수정한 내용이 저장되지 않았습니다. 저장할까요?'), [
       { label: '취소', value: 'cancel' }, { label: '저장 안 함', value: 'discard' }, { label: '저장', value: 'save', primary: true },
     ]);
@@ -64,6 +78,7 @@ const app = {
   },
 
   async go(tab) {
+    if (this.store.dirty && prefs.autosave) await this.save({ silent: true });
     this.tab = tab;
     this.render();
   },
@@ -83,14 +98,24 @@ const app = {
     this.render();
   },
 
-  async save() {
+  /**
+   * 저장. silent: 자동 저장(화면을 다시 그리지 않고, 성공 알림도 띄우지 않음 — 입력 중인 칸이 끊기지 않게)
+   */
+  async save({ silent = false } = {}) {
+    if (this.store.saving) { this.pendingSave = true; return { ok: false, busy: true }; }
     const r = await this.store.save(this.tab === 'notebook' ? [this.date] : []);
-    if (r.busy) return r;
-    if (r.ok) toast(r.count ? '저장했습니다.' : '변경된 내용이 없습니다.', 'ok');
-    else toast(`일부 저장 실패: ${r.error}`, 'error');
-    this.render();
+    if (!r.ok && !r.busy) toast(`저장 실패: ${r.error}`, 'error');
+    else if (!silent) toast(r.count ? '저장했습니다.' : '변경된 내용이 없습니다.', 'ok');
+    if (!silent) this.render();
+    else this.renderHeader();
+    if (this.pendingSave) { this.pendingSave = false; if (this.store.dirty) this.scheduleAutosave(); }
     return r;
   },
+
+  scheduleAutosave: debounce(() => {
+    if (!prefs.autosave || !app.store?.dirty || app.locking) return;
+    app.save({ silent: true });
+  }, 1200),
 
   async switchBackend(cfg) {
     if (!(await this.confirmLeave())) return;
@@ -99,12 +124,28 @@ const app = {
     await this.loadYear(schoolYearOf(this.date));
   },
 
+  /** 지금 잠그기: 저장 → 암호화 쓰기 마무리 → 메모리 지우고 새로고침(잠금 화면) */
+  async lock() {
+    if (!vaultEnabled() || this.locking) return;
+    this.locking = true;
+    try { if (this.store?.dirty) await this.store.save(this.tab === 'notebook' ? [this.date] : []); } catch { /* 잠금은 계속 */ }
+    await flush();
+    memClear();
+    lockNow();
+    location.reload();
+  },
+
   renderHeader() {
     const el = document.getElementById('header');
     if (!el || !this.store) return;
     const s = this.store;
-    const status = this.loading ? '불러오는 중…' : s.saving ? '저장 중…' : s.dirty ? '저장 안 됨' : '저장됨';
-    const tabs = [['notebook', '교사수첩'], ['students', '학생관리'], ['reports', '보고서'], ['settings', '설정']];
+    const status = this.loading ? '불러오는 중…' : s.saving ? '저장 중…' : s.dirty ? (prefs.autosave ? '저장 대기' : '저장 안 됨') : '저장됨';
+    const tabs = [['notebook', '교사수첩'], ['schedule', '학사일정'], ['students', '학생관리'], ['reports', '보고서'], ['settings', '설정']];
+    // 요일: 일요일·공휴일·학교 휴업일은 빨강, 토요일은 파랑
+    const wd = weekdayOf(this.date);
+    const wdEl = h(`span.wd${wd === 0 ? '.sun' : wd === 6 ? '.sat' : ''}`, `(${WEEKDAYS[wd]})`);
+    if (s.year && s.isSchoolHoliday(this.date)) wdEl.classList.add('sun');
+    this.specials(this.date).then((list) => { if (list.some((x) => x.holiday)) wdEl.classList.add('sun'); }).catch(() => {});
     el.replaceChildren(
       h('div.brand',
         h('span.logo', '✎'),
@@ -112,13 +153,16 @@ const app = {
         h('span.teacher-info', s.year ? (s.settings.teacherInfo || '') : '')),
       h('div.date-nav',
         h('button.icon-btn', { title: '이전 날 (Alt+←)', onclick: () => this.setDate(addDays(this.date, -1)) }, '◀'),
-        h('input', { type: 'date', value: this.date, onchange: (e) => this.setDate(e.target.value) }),
+        h('input', { type: 'date', value: this.date, 'aria-label': '날짜', onchange: (e) => this.setDate(e.target.value) }),
+        wdEl,
         h('button.icon-btn', { title: '다음 날 (Alt+→)', onclick: () => this.setDate(addDays(this.date, 1)) }, '▶'),
         h('button.ghost', { onclick: () => this.setDate(today()) }, '오늘'),
         h('span.badge', s.year ? `${s.year}학년도` : '')),
       h('div.head-right',
         h('span.badge.backend', { title: s.backend.label }, { notion: 'Notion', dropbox: 'Dropbox' }[s.backend.name] || '로컬'),
         h(`span.status${s.dirty ? '.dirty' : ''}`, status),
+        h('button.icon-btn', { title: '포스트잇 추가', onclick: () => addNote(this) }, '🗒'),
+        vaultEnabled() ? h('button.icon-btn', { title: '지금 잠그기', onclick: () => this.lock() }, '🔒') : null,
         h('select.theme-pick', { title: '테마', onchange: (e) => this.setTheme(e.target.value) },
           THEMES.map(([v, l]) => h('option', { value: v, selected: v === this.theme }, l))),
         h('button.primary', { onclick: () => this.save(), disabled: s.saving, title: 'Ctrl+S' }, '저장')),
@@ -139,10 +183,11 @@ const app = {
         h('div.row', h('button.primary', { onclick: () => this.loadYear(schoolYearOf(this.date)) }, '다시 시도'),
           h('button', { onclick: () => this.go('settings') }, '설정으로 이동')));
     } else {
-      const views = { notebook: renderNotebook, students: renderStudents, reports: renderReports, settings: renderSettings };
+      const views = { notebook: renderNotebook, schedule: renderSchedule, students: renderStudents, reports: renderReports, settings: renderSettings };
       view = views[this.tab](this);
     }
     main.replaceChildren(view);
+    renderNotes(this);
     document.title = `쌔미노트 · ${koDate(this.date)}`;
   },
 };
@@ -156,19 +201,42 @@ window.addEventListener('keydown', (e) => {
 });
 
 window.addEventListener('beforeunload', (e) => {
-  if (app.store?.dirty) { e.preventDefault(); e.returnValue = ''; }
+  if (app.store?.dirty && !app.locking) {
+    if (prefs.autosave) app.save({ silent: true });
+    e.preventDefault(); e.returnValue = '';
+  }
 });
+
+// ---------- 자동 잠금: 설정한 시간 동안 쓰지 않으면 잠금 ----------
+let lastActive = Date.now();
+for (const ev of ['pointerdown', 'keydown', 'wheel', 'touchstart']) window.addEventListener(ev, () => { lastActive = Date.now(); }, { passive: true });
+function checkIdle() {
+  const min = prefs.autolock;
+  if (vaultEnabled() && min > 0 && Date.now() - lastActive > min * 60000) app.lock();
+}
+setInterval(checkIdle, 15000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkIdle(); });
 
 async function start() {
   app.setTheme(app.theme);
-  document.getElementById('app').replaceChildren(h('header#header'), h('main#main'));
+  // 잠금이 켜져 있으면 먼저 PIN/패스키로 열기
+  if (vaultEnabled()) {
+    await showLockScreen(document.getElementById('app'));
+    await loadAll();
+    lastActive = Date.now();
+  }
+  app.config = loadConfig();
+  document.getElementById('app').replaceChildren(h('header#header'), h('main#main'), h('div#notes'));
   // 드롭박스 로그인 후 돌아온 경우 (?code=...)
   let loginMsg = null;
   try {
     if (await completeLogin()) { app.saveConfig({ backend: 'dropbox' }); loginMsg = ['드롭박스에 연결했습니다. 이제 드롭박스 Apps 폴더에 마크다운으로 저장됩니다.', 'ok']; app.tab = 'settings'; }
   } catch (e) { loginMsg = [e.message, 'error']; app.tab = 'settings'; }
   app.store = new Store(makeBackend(app.config));
-  app.store.on(() => app.renderHeader());
+  app.store.on((type) => {
+    if (type === 'change') app.scheduleAutosave();
+    else app.renderHeader();
+  });
   await app.loadYear(schoolYearOf(app.date));
   if (loginMsg) toast(...loginMsg);
   // 원본처럼 실행할 때마다 이번 달 특일정보를 새로 받아온다 (API 사용 시)

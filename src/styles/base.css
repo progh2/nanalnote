@@ -264,3 +264,73 @@ ol.small { font-size: 13px; color: var(--muted); padding-left: 1.3em; }
 
 .card-head > .row { flex-wrap: nowrap; }
 .card-head select { width: auto; }
+
+/* 헤더 요일: 일요일·공휴일·휴업일 빨강, 토요일 파랑 */
+.date-nav .wd { font-weight: 800; font-size: 15px; min-width: 2.2em; text-align: center; }
+.date-nav .wd.sat { color: var(--sat); }
+.date-nav .wd.sun { color: var(--holiday); }
+
+/* 잠금 화면 */
+.lock-screen { min-height: 100vh; display: grid; place-items: center; background: var(--bg); padding: 20px; }
+.lock-box { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 28px 26px; width: min(340px, 100%); text-align: center; box-shadow: var(--card-shadow); display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.lock-box h2 { margin: 0; }
+.lock-logo { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; font-size: 28px; background: var(--primary); color: var(--primary-text); }
+.pin-dots { display: flex; gap: 12px; margin: 6px 0; }
+.pin-dots span { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--primary); }
+.pin-dots span.on { background: var(--primary); }
+.lock-msg { min-height: 1.4em; margin: 0; color: var(--danger); font-size: 13px; }
+.pinpad { display: grid; grid-template-columns: repeat(3, 64px); gap: 10px; }
+.pinpad button { height: 56px; font-size: 22px; border-radius: 14px; }
+.shake { animation: shake .35s; }
+@keyframes shake { 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+
+/* 포스트잇 */
+#notes { position: fixed; inset: 0; pointer-events: none; z-index: 30; }
+.postit { position: absolute; pointer-events: auto; display: flex; flex-direction: column; border-radius: 6px; box-shadow: 0 6px 18px #0003; resize: both; overflow: hidden; min-width: 150px; min-height: 34px; color: #333; }
+.postit.min { resize: none; }
+.postit-bar { display: flex; align-items: center; gap: 3px; padding: 3px 4px 3px 8px; cursor: grab; background: #0000000f; user-select: none; }
+.postit-bar:active { cursor: grabbing; }
+.postit-title { flex: 1; font-size: 12px; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.postit .icon-btn { color: #333; padding: 0 5px; }
+.dot-btn { width: 12px; height: 12px; padding: 0; border-radius: 50%; border: 1px solid #0003; }
+.postit textarea { flex: 1; border: 0 !important; background: transparent !important; resize: none; color: #333; font-size: 14px; padding: 8px; min-height: 0; }
+.postit textarea:focus { outline: none; }
+
+/* 업무 마감일, 수업 출결 표시, 축약 수업명 */
+.due { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.due input[type=date] { width: auto !important; padding: 2px 4px; font-size: 13px; }
+.due-btn { padding: 1px 7px; font-size: 12px; border-radius: 999px; background: var(--chip-bg); color: var(--chip-text); border-color: transparent; }
+.due-btn.soon { background: #ffedd5; color: #c2410c; }
+.due-btn.over { background: var(--holiday-bg); color: var(--holiday); }
+.due-cal { font-size: 11px; color: #c2410c; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.due-cal.done { text-decoration: line-through; opacity: .6; }
+.absent-badge { font-size: 10.5px; font-weight: 700; color: var(--holiday); }
+.subj-cell { min-width: 0; }
+.subj-view { width: 100%; text-align: left; background: transparent; border-color: transparent; font-weight: 700; padding: 4px 6px; overflow: hidden; text-overflow: ellipsis; }
+.subj-view:hover { border-color: var(--border); background: var(--input-bg); }
+.att-table select { min-width: 6em; }
+
+/* 시각 고르기 */
+.time-sel { display: inline-flex; gap: 2px; }
+.time-sel select { width: auto !important; min-width: 0 !important; padding: 3px 2px; font-size: 13px; }
+.range { white-space: nowrap; }
+.bell-table td.time-cell { white-space: nowrap; }
+.csat-box { margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: var(--radius); background: var(--surface-2); }
+
+/* 학생 연락처, 담임 */
+.homeroom { margin: 4px 0; font-size: 13px; color: var(--muted); font-weight: 600; }
+.contact { margin-top: 4px; }
+.contact a { margin-left: -4px; }
+
+/* 학사일정 자료 */
+.doc-layout { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: start; }
+.doc-viewer { min-height: 300px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); display: grid; place-items: center; overflow: auto; }
+.doc-img { max-width: 100%; display: block; }
+.doc-frame { width: 100%; height: 78vh; border: 0; }
+.doc-empty { text-align: center; padding: 40px; }
+.doc-side { width: 230px; font-size: 13px; }
+.doc-side ul { padding-left: 1em; margin: 0; }
+.doc-side li { margin: 3px 0; }
+.red { color: var(--holiday); }
+@media (max-width: 900px) { .doc-layout { grid-template-columns: 1fr; } .doc-side { width: auto; } }
+@media print { #notes { display: none; } }

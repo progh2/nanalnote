@@ -13,13 +13,15 @@ export function normStudent(s) {
   out.studentNo = String(out.studentNo ?? '').trim();
   const num = (v) => (v === '' || v == null || isNaN(+v) ? null : +v);
   out.grade = num(out.grade); out.cls = num(out.cls); out.no = num(out.no);
-  const m = out.studentNo.match(/^(\d)(\d{2})(\d{2})$/);
+  // 5자리(학년1+반2+번호2, 예: 10203) 또는 4자리(학년1+반1+번호2, 예: 2105)
+  const m = out.studentNo.match(/^(\d)(\d{2})(\d{2})$/) || out.studentNo.match(/^(\d)(\d)(\d{2})$/);
   if (m) {
     out.grade ??= +m[1]; out.cls ??= +m[2]; out.no ??= +m[3];
   } else if (!out.studentNo && out.grade && out.cls && out.no != null) {
     out.studentNo = `${out.grade}${String(out.cls).padStart(2, '0')}${String(out.no).padStart(2, '0')}`;
   }
   out.name = String(out.name ?? '').trim();
+  for (const k of ['gender', 'email', 'phone']) if (out[k] != null) out[k] = String(out[k]).trim();
   return out;
 }
 
@@ -70,7 +72,9 @@ export const labelOf = (ref, idx) => { const s = resolveRef(ref, idx); return s 
 
 // ---------- 상담 일지 속 학생 인식 ----------
 // 규칙: "학번 이름", "이름(학번)", 또는 (명단에 하나뿐인) "이름" 뒤에 띄어쓰기/구두점/끝
-const AFTER = '(?=[\\s,.:;!?)\\]]|$)';
+// 이름 뒤에 붙는 조사: 고은별이, 고은별이가, 고은별에게, 고은별을 …
+export const PARTICLE = '(?:이(?:가|는|를|의|도|랑|와|만|에게|한테|하고|께서)?|가|은|는|을|를|의|도|만|와|과|랑|하고|에게서|에게|한테|께서|께|로|으로|처럼|보다|부터|까지)?';
+const AFTER = `(?=${PARTICLE}(?:[\\s,.:;!?)\\]]|$))`;
 const BEFORE = '(^|[^0-9A-Za-z가-힣])';
 
 function patterns(students) {
@@ -120,4 +124,15 @@ export function matchPhotoFile(filename, students) {
   const names = [...idx.byName.keys()].sort((a, b) => b.length - a.length);
   for (const n of names) if (base.includes(n) && idx.byName.get(n).length === 1) return idx.byName.get(n)[0];
   return null;
+}
+
+/** 검색어로 학생 찾기: "2105 고은별이", "고은별에게" 처럼 조사가 붙어도 찾는다 */
+export function searchStudents(query, students) {
+  const q = String(query || '').trim();
+  if (!q) return students;
+  const tokens = q.split(/\s+/).map((t) => t.replace(new RegExp(`${PARTICLE}$`), '') || t);
+  return students.filter((s) => {
+    const hay = `${s.studentNo || ''} ${s.name || ''} ${classKey(s)}`;
+    return tokens.every((t) => hay.includes(t) || (t.length > 1 && hay.includes(t.slice(0, -1))));
+  });
 }

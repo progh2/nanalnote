@@ -47,13 +47,15 @@ function calendar(app) {
     if (store.work.attendance.some((a) => a.date === d)) marks.push(h('span.dot.att', { title: '출결' }));
     if (store.isSchoolHoliday(d)) cls.push('school-holiday');
     const trips = store.tripsOn(d);
+    const dues = store.work.tasks.filter((x) => x.due === d && (x.text || '').trim());
     const sched = store.scheduleText(d);
     const specials = h('div.cal-specials');
     const cell = h(`div.${cls.join('.')}`, { title: '더블클릭하면 이 날짜의 교사수첩으로 이동', ondblclick: () => goto(app, d), tabindex: 0, onkeydown: (e) => e.key === 'Enter' && goto(app, d) },
       h('div.cal-num', String(dd.getDate()), h('span.marks', marks)),
       specials,
       sched ? h(`div.cal-sched${store.isSchoolHoliday(d) ? '.red' : ''}`, sched) : null,
-      trips.length ? h('div.trip', `🚗 출장${trips[0].place ? ` ${trips[0].place}` : ''}${trips.length > 1 ? ` 외 ${trips.length - 1}` : ''}`) : null);
+      trips.length ? h('div.trip', `🚗 출장${trips[0].place ? ` ${trips[0].place}` : ''}${trips.length > 1 ? ` 외 ${trips.length - 1}` : ''}`) : null,
+      dues.map((x) => h(`div.due-cal${x.doneDate ? '.done' : ''}`, { title: `마감: ${x.text}` }, `📌 ${x.text}`)));
     cells.set(d, { cell, specials });
     grid.append(cell);
   }
@@ -75,47 +77,57 @@ function calendar(app) {
     h('div.card-head',
       h('div.row', h('button.icon-btn', { onclick: () => shift(-1) }, '◀'), h('h2', `${y}년 ${m}월`), h('button.icon-btn', { onclick: () => shift(1) }, '▶'),
         h('button.ghost.small', { onclick: () => { app.calMonth = today().slice(0, 7); app.render(); } }, '이번 달')),
-      h('div.legend', h('span.dot.lesson'), '수업 ', h('span.dot.counsel'), '상담 ', h('span.dot.att'), '출결 · 🚗 출장')),
+      h('div.legend', h('span.dot.lesson'), '수업 ', h('span.dot.counsel'), '상담 ', h('span.dot.att'), '출결 · 🚗 출장 · 📌 업무 마감')),
     grid,
     h('p.muted.small', '날짜를 더블클릭하면 그 날의 교사수첩으로 이동합니다. 공휴일과 학교 휴업일은 빨간색, 오늘은 파란색으로 표시됩니다.'));
 }
 
-// ---------- 학생출결 ----------
+// ---------- 학생출결 (수업별 시수) ----------
 function attendance(app) {
   const { store } = app;
   const yr = yearRange(store.year);
-  app.attRange ||= { start: yr.start, end: yr.end, cls: '' };
+  app.attRange ||= { start: yr.start, end: yr.end, cls: '', subject: '' };
   const st = app.attRange;
+  const subjects = [...new Set(store.work.attendance.map((a) => a.subject).filter(Boolean))].sort();
   const wrap = h('div');
+  // 한 기록의 시수: 수업별 기록이면 교시 수, 종일 기록이면 1
+  const hours = (a) => (a.periods?.length || 1);
   const draw = () => {
     const studs = store.studentsOf(st.cls);
     const inCls = new Set(studs.map((x) => x.uid));
-    const rows = store.work.attendance.filter((a) => a.date >= st.start && a.date <= st.end && (!st.cls || inCls.has(a.student)))
-      .sort((a, b) => (a.date + store.label(a.student)).localeCompare(b.date + store.label(b.student)));
+    const rows = store.work.attendance.filter((a) => a.date >= st.start && a.date <= st.end && (!st.cls || inCls.has(a.student) || a.cls === st.cls) && (!st.subject || a.subject === st.subject))
+      .sort((a, b) => (a.date + (a.periods?.[0] ?? 0) + store.label(a.student)).localeCompare(b.date + (b.periods?.[0] ?? 0) + store.label(b.student)));
     const cellFor = (uid, type) => {
       const list = rows.filter((a) => a.student === uid && a.type === type);
       if (!list.length) return h('td.center.muted', '·');
       const by = {};
-      for (const a of list) by[a.reason || '-'] = (by[a.reason || '-'] || 0) + 1;
-      return h('td.center', String(list.length), h('div.small.muted', Object.entries(by).map(([k, v]) => `${k}${v}`).join(' ')));
+      for (const a of list) by[a.reason || '-'] = (by[a.reason || '-'] || 0) + hours(a);
+      return h('td.center', String(list.reduce((n, a) => n + hours(a), 0)), h('div.small.muted', Object.entries(by).map(([k, v]) => `${k}${v}`).join(' ')));
     };
     const withRec = studs.filter((x) => rows.some((a) => a.student === x.uid));
     wrap.replaceChildren(
       h('label.check.small', h('input', { type: 'checkbox', checked: !!st.onlyRec, onchange: (e) => { st.onlyRec = e.target.checked; draw(); } }), ' 기록 있는 학생만'),
-      h('table.grid', h('thead', h('tr', h('th', '학생'), ATT_TYPES.map((t) => h('th', t)), h('th', '합계'))),
-        h('tbody', (st.onlyRec ? withRec : studs).map((x) => h('tr', h('th', studentLabel(x)), ATT_TYPES.map((t) => cellFor(x.uid, t)), h('td.center', String(rows.filter((a) => a.student === x.uid).length)))))),
+      h('p.muted.small', '숫자는 시수(빠진 교시 수)입니다. 수업을 정하지 않은 "종일" 기록은 1로 셉니다.'),
+      h('table.grid', h('thead', h('tr', h('th', '학생'), ATT_TYPES.map((t) => h('th', t)), h('th', '합계(시수)'))),
+        h('tbody', (st.onlyRec ? withRec : studs).map((x) => h('tr', h('th', studentLabel(x)), ATT_TYPES.map((t) => cellFor(x.uid, t)),
+          h('td.center', String(rows.filter((a) => a.student === x.uid).reduce((n, a) => n + hours(a), 0))))))),
       h('h3', `상세 내역 (${rows.length}건)`),
-      rows.length ? h('table.grid', h('thead', h('tr', h('th', '날짜'), h('th', '학생'), h('th', '구분'), h('th', '사유'), h('th', '비고'))),
-        h('tbody', rows.map((a) => h('tr', h('td', h('button.link', { onclick: () => goto(app, a.date) }, a.date)), h('td', store.label(a.student)), h('td', a.type), h('td', a.reason), h('td', a.note)))))
-        : h('p.muted', '해당 기간의 출결 기록이 없습니다.'),
+      rows.length ? h('table.grid', h('thead', h('tr', h('th', '날짜'), h('th', '수업'), h('th', '학생'), h('th', '구분'), h('th', '사유'), h('th', '비고'))),
+        h('tbody', rows.map((a) => h('tr', h('td', h('button.link', { onclick: () => goto(app, a.date) }, a.date)),
+          h('td', a.periods?.length ? `${a.periods.join('·')}교시 ${a.subject || ''} ${a.cls || ''}` : '종일'),
+          h('td', store.label(a.student)), h('td', a.type), h('td', a.reason), h('td', a.note)))))
+        : h('p.muted', '해당 조건의 출결 기록이 없습니다.'),
     );
     wrap.rows = rows;
   };
   draw();
   return h('section.card',
     h('div.card-head', h('h2', '학생출결 모아보기'),
-      h('button.small', { onclick: async () => downloadBlob(await exportAttendance(wrap.rows.map((a) => ({ ...a, student: store.label(a.student) })), st), `학생출결_${st.cls || '전체'}_${st.start}_${st.end}.docx`) }, '⬇ Word')),
-    h('div.row', store.classList().length ? classSelect(store, st.cls, (v) => { st.cls = v; draw(); }) : null, dateRangeInputs(st, draw)), wrap);
+      h('button.small', { onclick: async () => downloadBlob(await exportAttendance(wrap.rows.map((a) => ({ ...a, student: store.label(a.student) })), st), `학생출결_${[st.subject, st.cls].filter(Boolean).join('_') || '전체'}_${st.start}_${st.end}.docx`) }, '⬇ Word')),
+    h('div.row',
+      store.classList().length ? classSelect(store, st.cls, (v) => { st.cls = v; draw(); }) : null,
+      subjects.length ? h('select', { 'aria-label': '수업명', onchange: (e) => { st.subject = e.target.value; draw(); } }, h('option', { value: '' }, '모든 수업'), subjects.map((x) => h('option', { value: x, selected: x === st.subject }, x))) : null,
+      dateRangeInputs(st, draw)), wrap);
 }
 
 // ---------- 수업일지 (수업명·학반별) ----------

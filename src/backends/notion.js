@@ -80,5 +80,8 @@ export class NotionBackend {
 }
 
 NotionBackend.prototype.savePhoto = async function () { throw new Error('노션 저장소는 학생 사진을 지원하지 않습니다. 드롭박스나 로컬 저장소를 사용하세요.'); };
+NotionBackend.prototype.putFile = async function () { throw new Error('노션 저장소는 파일 올리기를 지원하지 않습니다. 드롭박스나 로컬 저장소를 사용하세요.'); };
+NotionBackend.prototype.fileUrl = async function () { return null; };
+NotionBackend.prototype.deleteFile = async function () {};
 NotionBackend.prototype.photoUrl = async function () { return null; };
 NotionBackend.prototype.deletePhoto = async function () {};

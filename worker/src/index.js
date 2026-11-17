@@ -57,9 +57,9 @@ const SCHEMAS = {
   },
   schedule: {
     name: '학사일정',
-    props: { 일정: 'title', 날짜: 'date', 휴업: 'checkbox' },
-    to: (x) => ({ 일정: T(x.text), 날짜: D(x.date), 휴업: CB(x.holiday) }),
-    from: (p) => ({ text: gT(p, '일정'), date: gDay(p, '날짜'), ...(p.properties.휴업?.checkbox ? { holiday: true } : {}) }),
+    props: { 일정: 'title', 날짜: 'date', 휴업: 'checkbox', 수능대비: 'checkbox' },
+    to: (x) => ({ 일정: T(x.text), 날짜: D(x.date), 휴업: CB(x.holiday), 수능대비: CB(x.csat) }),
+    from: (p) => ({ text: gT(p, '일정'), date: gDay(p, '날짜'), ...(p.properties.휴업?.checkbox ? { holiday: true } : {}), ...(p.properties.수능대비?.checkbox ? { csat: true } : {}) }),
   },
   days: {
     name: '교사수첩',

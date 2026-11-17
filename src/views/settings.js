@@ -7,7 +7,7 @@ import { COLLECTIONS } from '../store.js';
 import { THEMES } from '../themes.js';
 import { ttCell, courseOf } from '../store.js';
 import { importStudentsCSV } from './students.js';
-import { bellOf, rawBell, cascadeFrom, addMin, EVENING_BASE } from '../lib/bell.js';
+import { bellOf, rawBell, cascadeFrom, addMin, csatTimes, EVENING_BASE } from '../lib/bell.js';
 import { timeSelect } from './ui.js';
 import { vaultEnabled, setupPin, changePin, removeVault, validPin, registerPasskey, removePasskey, hasPasskey, passkeyAvailable } from '../lib/vault.js';
 import { loadAll, decryptAllToPlain } from '../lib/securestore.js';
@@ -220,19 +220,11 @@ function timetableCard(app) {
         h('thead', h('tr', h('th', '교시'), h('th', '시간'), [1, 2, 3, 4, 5].map((d) => h('th', WEEKDAYS[d])))),
         h('tbody', rows))),
       h('div.csat-box',
-        h('label.check', h('input', { type: 'checkbox', checked: c.enabled, onchange: (e) => {
-          c.enabled = e.target.checked;
-          // 처음 켤 때 기본값: 3교시 끝 → 점심(원래 점심 길이) → 4교시
-          if (c.enabled && !c.lunch.start && bell.times[2]?.end) {
-            const lunchLen = bell.lunch.start && bell.lunch.end ? Math.max(30, minutes(bell.lunch.end) - minutes(bell.lunch.start)) : 50;
-            c.lunch = { start: bell.times[2].end, end: addMin(bell.times[2].end, lunchLen) };
-            c.p4 = { start: c.lunch.end, end: addMin(c.lunch.end, bell.lessonLen) };
-          }
-          draw();
-        } }), h('strong', ' 수능대비 시간표'), h('span.muted.small', ' — 점심을 3교시 다음으로 옮깁니다 (켜 두는 동안 교사수첩에 적용)')),
-        c.enabled ? h('div.inline-form', { style: { marginTop: '6px' } },
-          h('label', '점심', range(c.lunch, '수능대비 점심', { onStart: (v) => { if (!c.lunch.end) c.lunch.end = addMin(v, 50); } })),
-          h('label', '4교시', range(c.p4, '수능대비 4교시', { onStart: (v) => { c.p4.end = addMin(v, bell.lessonLen); } }))) : null));
+        h('div', h('strong', '수능대비 시간표 시각'), h('span.muted.small', ' — 교사수첩에서 날짜별로 "수능대비 시간표"를 체크한 날에만 점심이 3교시 다음으로 옮겨집니다. 비워 두면 3교시 끝 기준으로 자동 계산합니다.')),
+        h('div.inline-form', { style: { marginTop: '6px' } },
+          h('label', '점심', range(c.lunch, '수능대비 점심', { onStart: (v) => { c.lunch.end = addMin(v, minutes(bell.lunch.end) - minutes(bell.lunch.start) > 0 ? minutes(bell.lunch.end) - minutes(bell.lunch.start) : 50); } })),
+          h('label', '4교시', range(c.p4, '수능대비 4교시', { onStart: (v) => { c.p4.end = addMin(v, bell.lessonLen); } })),
+          h('button.small', { onclick: () => { const t = csatTimes({ ...bell, csat: { lunch: {}, p4: {} } }); c.lunch = t.lunch; c.p4 = t.p4; draw(); } }, '3교시 기준으로 채우기'))));
   };
   const minutes = (t) => { const m = /^(\d+):(\d+)$/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : 0; };
   draw();
@@ -334,14 +326,14 @@ function securityCard(app) {
 // ---------- 정보 일괄 등록 (CSV) ----------
 const TEMPLATES = {
   schedule: { name: '학사일정', file: '학사일정_예제.csv', rows: (y) => {
-    const out = [['날짜', '일정', '휴업']];
+    const out = [['날짜', '일정', '휴업', '수능대비']];
     const { start, end } = yearRange(y);
     const d = new Date(start + 'T00:00');
     const e = new Date(end + 'T00:00');
-    const sample = { [`${y}-03-02`]: ['입학식, 시업식', ''], [`${y}-05-04`]: ['재량휴업일', 'O'] };
+    const sample = { [`${y}-03-02`]: ['입학식, 시업식', '', ''], [`${y}-05-04`]: ['재량휴업일', 'O', ''], [`${y}-11-05`]: ['3학년 수능대비', '', 'O'] };
     for (; d <= e; d.setDate(d.getDate() + 1)) {
       const s = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      out.push([s, ...(sample[s] || ['', ''])]);
+      out.push([s, ...(sample[s] || ['', '', ''])]);
     }
     return out;
   } },
@@ -370,16 +362,18 @@ async function importCSV(app, kind) {
   let msg = '';
   if (kind === 'schedule') {
     let n = 0, skipped = 0;
-    for (const [d, text = '', holRaw = ''] of body) {
-      const hol = /^(o|y|yes|1|예|휴업|휴일|v|✓|true)$/i.test(holRaw.trim());
-      if (!text.trim() && !hol) continue;
+    const yes = (v) => /^(o|y|yes|1|예|휴업|휴일|수능대비|v|✓|true)$/i.test(String(v || '').trim());
+    for (const [d, text = '', holRaw = '', csatRaw = ''] of body) {
+      const hol = yes(holRaw), csat = yes(csatRaw);
+      if (!text.trim() && !hol && !csat) continue;
       const date = normalizeDate(d);
       if (!date) { skipped++; continue; }
       if (schoolYearOf(date) !== store.year) { skipped++; continue; }
       let ex = store.work.schedule.find((x) => x.date === date);
       if (!ex) { ex = { id: newId(), date, text: '' }; store.work.schedule.push(ex); }
-      ex.text = text.trim() || ex.text || '휴업일';
+      ex.text = text.trim() || ex.text || (hol ? '휴업일' : '');
       if (hol) ex.holiday = true;
+      if (csat) ex.csat = true;
       n++;
     }
     store.markDirty();

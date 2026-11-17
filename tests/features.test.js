@@ -143,3 +143,21 @@ test('업무 중요도 자동 정렬과 직접 순서', async () => {
   s2.work.tasks.find((t) => t.id === 'later').order = -100;
   assert.equal(s2.visibleTasks('2032-03-03').at(-1).id, 'later');
 });
+
+const { extractTags, splitTags, tagEntries, tagCounts } = await import('../src/lib/tags.js');
+test('#태그 추출과 모아보기', async () => {
+  assert.deepEqual(extractTags('교무회의 #회의 정리, #수행평가-2차 준비 (#회의) 이메일 a#b #1 #12번'), ['회의', '수행평가-2차', '12번']);
+  assert.deepEqual(splitTags('오늘 #회의 끝').map((p) => p.tag || p.text), ['오늘 ', '회의', ' 끝']);
+  const s = new Store(new LocalBackend());
+  await s.load(2033);
+  s.setDayNote('2033-03-02', '학년 협의 #회의');
+  s.work.tasks.push({ id: 'n_t', text: '회의록 작성 #회의', created: '2033-03-03', doneDate: null });
+  s.setLesson('2033-03-02', 1, { content: '조건문 #수행평가' });
+  await s.save(['2033-03-02']);
+  const s2 = new Store(new LocalBackend());
+  await s2.load(2033);
+  assert.equal(s2.dayNote('2033-03-02'), '학년 협의 #회의');
+  const entries = tagEntries(s2);
+  assert.deepEqual(tagCounts(entries), [['회의', 2], ['수행평가', 1]]);
+  assert.deepEqual(entries.filter((e) => e.tag === '회의').map((e) => e.type).sort(), ['note', 'task']);
+});

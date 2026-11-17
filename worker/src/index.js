@@ -63,9 +63,9 @@ const SCHEMAS = {
   },
   days: {
     name: '교사수첩',
-    props: { 날짜: 'title', 일자: 'date', 최종수정: 'date' },
-    to: (x) => ({ 날짜: T(x.date), 일자: D(x.date), 최종수정: D(x.updatedAt) }),
-    from: (p) => ({ date: gT(p, '날짜'), updatedAt: gD(p, '최종수정') }),
+    props: { 날짜: 'title', 일자: 'date', 최종수정: 'date', 노트: 'rich_text' },
+    to: (x) => ({ 날짜: T(x.date), 일자: D(x.date), 최종수정: D(x.updatedAt), 노트: R(x.note) }),
+    from: (p) => ({ date: gT(p, '날짜'), updatedAt: gD(p, '최종수정'), ...(gR(p, '노트') ? { note: gR(p, '노트') } : {}) }),
   },
   lessons: {
     name: '수업일지',

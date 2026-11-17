@@ -226,6 +226,7 @@ export function serialize(year, input) {
       for (const t of trips) out.push(`- ${[t.time, t.place, t.purpose].map(dash).join(' · ')}`);
       out.push('');
     }
+    if (day?.note) out.push('## 노트', '', escBlock(day.note), '');
     out.push('## 상담일지', '');
     if (counsel.length) out.push(counsel.map((c) => escBlock(c.text)).join('\n\n'), '');
     if (day?.extra) out.push(day.extra.trimEnd(), '');
@@ -426,6 +427,7 @@ export function parse(year, files, makeId) {
       body = body.slice(fm[0].length);
     }
     const extra = [];
+    let note = '';
     for (const sec of sections(body)) {
       if (sec.title == null) continue;
       if (sec.title === '수업일지') {
@@ -457,6 +459,8 @@ export function parse(year, files, makeId) {
         splitParagraphs(unescBlock(trimBlank(sec.lines).join('\n'))).forEach((t, i) => {
           data.counsel.push({ id: makeId(), date, order: i, text: t, students: mentionedUids(t, data.students) });
         });
+      } else if (sec.title === '노트') {
+        note = unescBlock(trimBlank(sec.lines).join('\n'));
       } else if (sec.title === '출장') {
         for (const line of sec.lines) {
           const m = line.match(/^\s*[-*]\s+(.+)$/);
@@ -470,6 +474,7 @@ export function parse(year, files, makeId) {
     }
     const day = { id: makeId(), date, updatedAt };
     if (extra.length) day.extra = extra.join('\n\n');
+    if (note) day.note = note;
     data.days.push(day);
   }
   return data;

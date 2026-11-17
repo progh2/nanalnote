@@ -415,3 +415,20 @@ button.active-size { background: var(--primary); color: var(--primary-text); bor
 .task-row { -webkit-touch-callout: none; touch-action: pan-y; }
 .task-row.lifted { background: var(--surface); box-shadow: 0 6px 18px #0003; transform: scale(1.02); position: relative; z-index: 2; touch-action: none; }
 .task-row.lifted input.task-text { pointer-events: none; }
+
+/* 노트와 태그 */
+textarea.day-note { min-height: 110px; line-height: 1.7; background: var(--paper-lines, var(--input-bg)); }
+.note-tags { margin: 6px 0 0; }
+.tag-chip, .tag-link { color: var(--link); font-weight: 700; }
+.tag-link { padding: 0 2px; border: 0; background: transparent; font-size: inherit; }
+.tag-link.active { background: var(--highlight); border-radius: 4px; }
+.tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; max-height: 70vh; overflow: auto; }
+.tag-timeline { display: flex; flex-direction: column; gap: 12px; }
+.tag-date { font-weight: 800; margin-bottom: 4px; }
+.tag-item { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: 0 var(--radius) var(--radius) 0; margin-bottom: 4px; }
+.tag-text { white-space: pre-wrap; flex: 1 1 60%; }
+.type-badge { flex: none; font-size: calc(11.5px * var(--fs, 1)); font-weight: 800; padding: 1px 7px; border-radius: 999px; background: var(--chip-bg); color: var(--chip-text); }
+.type-badge.t-note { background: #e0f2fe; color: #0369a1; }
+.type-badge.t-task { background: #fef3c7; color: #b45309; }
+.type-badge.t-lesson { background: #dcfce7; color: #15803d; }
+.type-badge.t-counsel { background: #fce7f3; color: #be185d; }

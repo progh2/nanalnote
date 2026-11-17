@@ -9,6 +9,8 @@ import { studentSelect, classSelect } from './ui.js';
 import { ATT_TYPES, ATT_REASONS, ttCell, courseShort, dday, PRIORITIES, priorityOf, priorityLabel } from '../store.js';
 import { exportDay } from '../lib/export.js';
 import { showStudentCounsel } from './students.js';
+import { extractTags, tagNodes } from '../lib/tags.js';
+import { openTag } from './tags.js';
 
 /** textarea 높이 자동 조절 */
 export function autoGrow(el) {
@@ -332,6 +334,18 @@ export function renderNotebook(app) {
   drawTrips();
   const tripCard = card('출장', h('div.row', { style: { margin: 0 } }, h('label.check.small', tripCheck, ' 출장 있음'), h('button.small', { onclick: () => { tripCheck.checked = true; addTrip(); } }, '+ 추가')), tripBody);
 
+  // ----- 오늘의 노트 (날짜별, #태그) -----
+  const noteTags = h('div.chips.note-tags');
+  const drawNoteTags = (text) => noteTags.replaceChildren(...extractTags(text).map((t) => h('button.chip-btn.tag-chip', { onclick: () => openTag(app, t), title: `#${t} 모아보기` }, `#${t}`)));
+  let noteT;
+  const noteTa = autoGrow(h('textarea.day-note', {
+    rows: 4, value: store.dayNote(date), 'aria-label': '오늘의 노트',
+    placeholder: '오늘의 노트 — 회의 내용, 생각, 아이디어, 메모를 자유롭게.\n#회의 #수행평가 처럼 #태그를 붙이면 태그 메뉴에서 모아 볼 수 있어요.',
+    oninput: (e) => { store.setDayNote(date, e.target.value); clearTimeout(noteT); noteT = setTimeout(() => drawNoteTags(e.target.value), 300); },
+  }));
+  drawNoteTags(noteTa.value);
+  const noteCard = card('오늘의 노트', h('button.small', { onclick: () => { app.tab = 'tags'; app.render(); } }, '# 태그 모아보기'), noteTa, noteTags);
+
   // ----- 학생 상담 일지 (가리기 기능) -----
   const counselView = h('div.counsel-view');
   let liveT;
@@ -340,7 +354,7 @@ export function renderNotebook(app) {
     const paras = splitParagraphs(text);
     counselView.replaceChildren(...paras.map((p) => h('p.counsel-para', tokenizeStudents(p, store.work.students).map((t) => t.uid
       ? h('button.name-link', { onclick: () => showStudentCounsel(app, t.uid), title: `${store.label(t.uid)} 상담 모아보기` }, t.text)
-      : t.text))));
+      : tagNodes(t.text, (tag) => openTag(app, tag))))));
   };
   const counselTa = autoGrow(h('textarea.counsel', {
     rows: 6,
@@ -434,6 +448,7 @@ export function renderNotebook(app) {
     sec
       ? [h('div.nb-grid', h('div.col', scheduleCard, attCard), h('div.col', taskCard, tripCard)), lessonCard]
       : h('div.nb-grid', h('div.col', scheduleCard, lessonCard), h('div.col', taskCard, attCard, tripCard)),
+    noteCard,
     privacy,
     recCard,
     footer);

@@ -176,6 +176,15 @@ export class Store {
 
   day(date) { return this.work.days.find((x) => x.date === date); }
 
+  /** 날짜별 노트 (프랭클린 플래너의 Daily Notes) */
+  dayNote(date) { return this.day(date)?.note || ''; }
+  setDayNote(date, text) {
+    let d = this.day(date);
+    if (!d) { d = { id: newId(), date }; this.work.days.push(d); }
+    if (text) d.note = text; else delete d.note;
+    this.markDirty();
+  }
+
   /** 해당 날짜에 보일 업무일지: 작성일 <= 날짜 && (미완료 || 완료일 >= 날짜) */
   visibleTasks(date) {
     const list = this.work.tasks.filter((t) => t.created <= date && (!t.doneDate || t.doneDate >= date));

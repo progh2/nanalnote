@@ -84,6 +84,9 @@ function dayBlocks(store, date, specials, { mode = 'single', includeIncomplete =
     out.push(table(['시간', '출장지', '목적·내용'], trips.map((t) => [t.time, t.place, t.purpose]), [20, 30, 50]));
   }
 
+  const note = store.dayNote(date);
+  if (note) { out.push(heading('노트')); out.push(multiline(note)); }
+
   const counsel = store.counselText(date);
   out.push(heading('학생 상담 일지 및 특이사항'));
   out.push(multiline(counsel || '-'));

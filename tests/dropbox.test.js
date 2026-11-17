@@ -26,7 +26,7 @@ const sample = {
     courses: ['정보', { name: '인공지능 기초', short: 'AI' }], rooms: ['컴퓨터실'], classes: ['1-2'], homerooms: { '1-2': { main: '김담임', sub: '박부담' } } } }],
   students: [{ id: 'b', uid: 'U1', studentNo: '10201', grade: 1, cls: 2, no: 1, name: '이몽룡', photo: '10201_이몽룡.jpg', gender: '남', email: 'a@b.kr', phone: '010-1234-5678' }, { id: 'c', uid: 'U2', studentNo: '10202', grade: 1, cls: 2, no: 2, name: '성춘향', photo: '' }],
   schedule: [{ id: 'd', date: '2026-03-02', text: '입학식\n시업식' }, { id: 'd2', date: '2026-05-04', text: '재량휴업일', holiday: true }, { id: 'd3', date: '2026-11-05', text: '', csat: true }],
-  days: [{ id: 'e', date: '2026-03-02', updatedAt: '2026-03-02T07:00:00.000Z' }],
+  days: [{ id: 'e', date: '2026-03-02', updatedAt: '2026-03-02T07:00:00.000Z', note: '교무회의 #회의\n## 줄 시작 샵도 보존' }],
   lessons: [{ id: 'f', date: '2026-03-02', period: 1, subject: '정보', cls: '1-2', room: '컴퓨터실', content: '받아쓰기\n# 제목처럼 보이는 줄\n- 목록' }, { id: 'g', date: '2026-03-02', period: 3, subject: '', cls: '', room: '', content: '' }, { id: 'g3', date: '2026-03-02', period: 4, subject: '', cls: '2-1', room: '', content: '' }, { id: 'g2', date: '2026-03-02', period: 11, subject: '자습', cls: '', room: '', content: '수학 질문 받음' }],
   tasks: [{ id: 'h', text: '가정통신문 (2장)', created: '2026-03-02', doneDate: '2026-03-04', due: '2026-03-06', priority: 'A', order: 10 }, { id: 'i', text: '회의', created: '2026-03-03', doneDate: null }],
   attendance: [{ id: 'j', date: '2026-03-02', student: 'U2', type: '지각', reason: '질병', note: '병원 · 진료' },
@@ -57,6 +57,7 @@ test('마크다운 왕복 변환이 손실 없이 동일', () => {
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('- [3·4교시 인공지능 기초 1-2] 10201 이몽룡 · 결석 · 질병 · 독감A형'));
   assert.ok(files.get('/2026학년도/업무일지.md').includes('- [x] (A) 가정통신문 (2장) (작성 2026-03-02, 마감 2026-03-06, 완료 2026-03-04, 순서 10)'));
   assert.ok(files.get('/2026학년도/설정.md').includes('- 인공지능 기초 | AI'));
+  assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('## 노트\n\n교무회의 #회의'));
   assert.ok(files.get('/2026학년도/학사일정자료.md').includes('- [월중] 2026-03 · 3월 월중일정 · 2판 · 2026-03_월중일정_개정.pdf · 올림 2026-03-10 · 형식 pdf · 쪽 b_p1.jpg'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('### 4교시 · - · 2-1'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('## 출장\n\n- 13:00~17:00 · 교육청 · 정보교육 연수 · 1일차'));

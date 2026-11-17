@@ -1,7 +1,7 @@
 // 학생관리 탭: 학반별 명단(학번·사진) 편집 + 학생별 상담/출결/요록 + 지난 학년도 기록
 import { h, koDate, downloadBlob, confirmDialog, modal, toast, pickFile, newId } from '../lib/util.js';
 import { exportCounsel } from '../lib/export.js';
-import { studentLabel, classKey, newUid, normStudent, matchPhotoFile, buildIndex } from '../lib/students.js';
+import { studentLabel, classKey, newUid, normStudent, matchPhotoFile, buildIndex, searchStudents } from '../lib/students.js';
 import { resizeImage } from '../lib/photos.js';
 import { migrateRefs } from '../store.js';
 import { classSelect, avatar } from './ui.js';
@@ -61,8 +61,9 @@ export function renderStudents(app) {
   app.stuFilter ??= { cls: '', q: '' };
   const f = app.stuFilter;
   const all = store.students();
-  const match = (s) => (!f.cls || classKey(s) === f.cls) && (!f.q || studentLabel(s).includes(f.q.trim()));
-  const list = all.filter(match);
+  const list = searchStudents(f.q, all.filter((s) => !f.cls || classKey(s) === f.cls));
+  const hr = (cls) => store.settings.homerooms?.[cls] || {};
+  const hrLine = (cls) => { const x = hr(cls); return x.main || x.sub ? h('p.homeroom', `${cls}반 · 담임 ${x.main || '-'} · 부담임 ${x.sub || '-'}`) : null; };
   const sel = all.find((s) => s.uid === app.selectedStudent) || list[0];
 
   // ----- 왼쪽: 명단 -----
@@ -94,6 +95,7 @@ export function renderStudents(app) {
           app.render();
         } }, '📷 사진 일괄 등록'))),
     h('div.row', store.classList().length ? classSelect(store, f.cls, (v) => { f.cls = v; app.render(); }) : null, search),
+    f.cls ? hrLine(f.cls) : null,
     all.length ? listEl : h('p.muted', '학생이 없습니다. [+ 학생]으로 추가하거나 설정 > 정보 일괄 등록에서 CSV(학번, 이름 …)로 한 번에 올리세요.'),
     h('div.row', h('button.primary', { onclick: () => {
       const nos = store.work.students.map((s) => normStudent(s).studentNo).filter(Boolean);
@@ -116,13 +118,31 @@ export function renderStudents(app) {
     const att = store.work.attendance.filter((a) => a.student === st.uid).sort((a, b) => a.date.localeCompare(b.date));
     const recs = store.work.records.filter((r) => (r.entries?.[st.uid] || '').trim());
     const pastBox = h('div');
+    // 연락처: 평소에는 가려 두고 눌렀을 때만 보이기 (교실 화면 노출 방지)
+    const contactBox = () => {
+      const box = h('div.contact');
+      const draw = (open) => box.replaceChildren(open
+        ? h('div.inline-form',
+          h('label', '이메일', h('input', { type: 'email', value: st.email || '', 'aria-label': '이메일', style: { width: '15em' }, oninput: (e) => { st.email = e.target.value; store.markDirty(); } })),
+          st.email ? h('a.small', { href: `mailto:${st.email}` }, '메일 쓰기') : null,
+          h('label', '전화번호', h('input', { type: 'tel', value: st.phone || '', 'aria-label': '전화번호', style: { width: '10em' }, oninput: (e) => { st.phone = e.target.value; store.markDirty(); } })),
+          st.phone ? h('a.small', { href: `tel:${st.phone.replace(/[^\d+]/g, '')}` }, '전화 걸기') : null,
+          h('button.small', { onclick: () => draw(false) }, '가리기'))
+        : h('button.small', { onclick: () => draw(true) }, `📇 연락처 보기${st.email || st.phone ? '' : ' / 입력'}`));
+      draw(false);
+      return box;
+    };
     right = h('div.col.stu-detail',
       h('section.card',
         h('div.stu-head',
           avatar(app, sel, 96),
           h('div.col', { style: { gap: '8px', flex: 1 } },
             h('div.inline-form', field('학번', 'studentNo', 'text', '7em'), field('학년', 'grade', 'number'), field('반', 'cls', 'number'), field('번호', 'no', 'number')),
-            h('div.inline-form', field('이름', 'name', 'text', '10em')),
+            h('div.inline-form', field('이름', 'name', 'text', '10em'),
+              h('label', '성별', h('select', { 'aria-label': '성별', onchange: (e) => { st.gender = e.target.value; store.markDirty(); } },
+                ['', '남', '여'].map((g) => h('option', { value: g, selected: (st.gender || '') === g }, g || '-'))))),
+            classKey(sel) ? hrLine(classKey(sel)) : null,
+            contactBox(),
             h('div.row', { style: { margin: 0 } },
               h('button.small', { onclick: async () => {
                 const file = await pickFile('image/*');
@@ -174,12 +194,13 @@ export async function importStudentsCSV(app, rows) {
   const hasHead = head.some((c) => /이름|학번|번호/.test(c));
   const col = (name) => head.findIndex((c) => c.replace(/\s/g, '') === name);
   let ci;
-  if (hasHead && col('이름') >= 0) ci = { no: col('학번'), grade: col('학년'), cls: col('반'), num: col('번호'), name: col('이름'), prev: col('이전학번') };
-  else ci = head.length >= 2 ? { num: 0, name: 1, no: -1, grade: -1, cls: -1, prev: -1 } : null; // 예전 형식: 번호, 이름
+  if (hasHead && col('이름') >= 0) ci = { no: col('학번'), grade: col('학년'), cls: col('반'), num: col('번호'), name: col('이름'), prev: col('이전학번'), gender: col('성별'), email: col('이메일'), phone: Math.max(col('전화번호'), col('전화')) };
+  else ci = head.length >= 2 ? { num: 0, name: 1, no: -1, grade: -1, cls: -1, prev: -1, gender: -1, email: -1, phone: -1 } : null; // 예전 형식: 번호, 이름
   if (!ci) throw new Error('CSV 형식을 알 수 없습니다. 예제 파일을 참고하세요.');
   const at = (r, i) => (i >= 0 ? (r[i] || '').trim() : '');
   const list = (hasHead ? rows.slice(1) : rows).filter((r) => at(r, ci.name)).map((r) => normStudent({
     studentNo: at(r, ci.no), grade: at(r, ci.grade), cls: at(r, ci.cls), no: at(r, ci.num), name: at(r, ci.name), prevNo: at(r, ci.prev),
+    ...Object.fromEntries(['gender', 'email', 'phone'].filter((k) => at(r, ci[k])).map((k) => [k, at(r, ci[k])])),
   }));
   const nos = list.map((x) => x.studentNo).filter(Boolean);
   const dup = nos.filter((n, i) => nos.indexOf(n) !== i);
@@ -206,7 +227,7 @@ export async function importStudentsCSV(app, rows) {
       if (p) { uid = p.uid; linked++; }
     }
     const { prevNo, ...rest } = x;
-    return { id: same?.id || newId(), ...rest, uid: uid || newUid(), photo: same?.photo || '' };
+    return { id: same?.id || newId(), ...Object.fromEntries(['gender', 'email', 'phone'].filter((k) => same?.[k]).map((k) => [k, same[k]])), ...rest, uid: uid || newUid(), photo: same?.photo || '' };
   });
   store.markDirty();
   return { count: list.length, linked };

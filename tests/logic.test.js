@@ -7,6 +7,8 @@ globalThis.localStorage = {
   getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)),
   removeItem: (k) => mem.delete(k), key: (i) => [...mem.keys()][i], get length() { return mem.size; },
 };
+const smem = new Map();
+globalThis.sessionStorage = { getItem: (k) => (smem.has(k) ? smem.get(k) : null), setItem: (k, v) => smem.set(k, String(v)), removeItem: (k) => smem.delete(k) };
 
 const { splitParagraphs, mentionedStudents, tokenize } = await import('../src/lib/counsel.js');
 const { Store } = await import('../src/store.js');
@@ -70,11 +72,11 @@ test('Store: 저장/diff/업무일지 노출 규칙/상담 단락 변환', async
   // 상담 단락 줄이면 삭제 op, 수업 내용 지우면 삭제
   s.setCounselText('2026-03-02', '이몽룡 울었다');
   s.setLesson('2026-03-02', 1, { content: '' });
-  const before = s.work.lessons.length;
+  const before = s.base.lessons.length;
   r = await s.save(['2026-03-02']);
   assert.ok(r.ok);
   assert.equal(s.work.counsel.length, 1);
-  assert.equal(s.work.lessons.length, before - 1);
+  assert.equal(s.base.lessons.length, before - 1); // 저장소에서는 삭제 (화면의 빈 줄은 남음)
   assert.equal(s.diff().length, 0);
 
   // 다시 불러와도 동일
@@ -91,8 +93,8 @@ test('Store: 요록 제목 자동 채번, 빈 요록 제거', async () => {
   s.work.records.push({ id: 'n_r2', title: '', created: '2027-03-05', doneDate: null, entries: {} });
   s.markDirty();
   await s.save();
-  assert.equal(s.work.records.length, 1);
-  assert.equal(s.work.records[0].title, '20270305-1');
+  assert.equal(s.base.records.length, 1);
+  assert.equal(s.base.records[0].title, '20270305-1');
 });
 
 const { normStudent, mentionedUids, resolveRef, buildIndex, matchPhotoFile, tokenizeStudents } = await import('../src/lib/students.js');

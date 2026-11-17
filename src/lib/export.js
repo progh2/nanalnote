@@ -72,11 +72,11 @@ function dayBlocks(store, date, specials, { mode = 'single', includeIncomplete =
   if (mode === 'range') tasks = tasks.filter((t) => t.doneDate === date || (includeIncomplete && !t.doneDate) || (includeIncomplete && t.doneDate > date));
   out.push(heading('업무일지'));
   if (!tasks.length) out.push(p('-'));
-  for (const t of tasks) out.push(p(`${t.doneDate === date ? '☑' : '☐'} ${t.text}`));
+  for (const t of tasks) out.push(p(`${t.doneDate === date ? '☑' : '☐'} ${t.text}${t.due ? ` (마감 ${t.due})` : ''}`));
 
   const att = store.work.attendance.filter((a) => a.date === date);
   out.push(heading('학생출결상황'));
-  out.push(att.length ? table(['학생', '구분', '사유', '비고'], att.map((a) => [store.label(a.student), a.type, a.reason, a.note]), [24, 13, 13, 50]) : p('-'));
+  out.push(att.length ? table(['수업', '학생', '구분', '사유', '비고'], att.map((a) => [a.periods?.length ? `${a.periods.join('·')}교시 ${a.subject || ''} ${a.cls || ''}` : '종일', store.label(a.student), a.type, a.reason, a.note]), [22, 20, 11, 11, 36]) : p('-'));
 
   const trips = store.tripsOn(date);
   if (trips.length) {
@@ -152,7 +152,7 @@ export async function exportCounsel(name, items) {
 export async function exportAttendance(rows, range) {
   return pack([
     heading(`학생출결 (${range.start} ~ ${range.end})`, HeadingLevel.HEADING_1),
-    table(['날짜', '학생', '구분', '사유', '비고'], rows.map((a) => [a.date, a.student, a.type, a.reason, a.note]), [20, 15, 12, 12, 41]),
+    table(['날짜', '수업', '학생', '구분', '사유', '비고'], rows.map((a) => [a.date, a.periods?.length ? `${a.periods.join('·')}교시 ${a.subject || ''} ${a.cls || ''}` : '종일', a.student, a.type, a.reason, a.note]), [15, 20, 15, 10, 10, 30]),
   ]);
 }
 

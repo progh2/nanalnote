@@ -1,13 +1,16 @@
 // 설정 탭: 저장소(로컬/드롭박스/노션), 학년도 전환, 화면 설정, 정보 일괄 등록, 백업/복원
-import { h, newId, toCSV, parseCSV, readTextFile, pickFile, downloadBlob, toast, confirmDialog, normalizeDate, schoolYearOf, today, yearRange, WEEKDAYS } from '../lib/util.js';
+import { h, newId, toCSV, parseCSV, readTextFile, pickFile, downloadBlob, toast, confirmDialog, modal, normalizeDate, schoolYearOf, today, yearRange, WEEKDAYS } from '../lib/util.js';
 import { NotionBackend } from '../backends/notion.js';
 import { LocalBackend } from '../backends/local.js';
-import { DropboxBackend, startLogin, logout as dropboxLogout } from '../backends/dropbox.js';
+import { DropboxBackend, startLogin, logout as dropboxLogout, isPublicMode } from '../backends/dropbox.js';
 import { COLLECTIONS } from '../store.js';
 import { THEMES } from '../themes.js';
-import { ttCell } from '../store.js';
+import { ttCell, courseOf } from '../store.js';
 import { importStudentsCSV } from './students.js';
-import { bellOf, autoTimes, EVENING_BASE } from '../lib/bell.js';
+import { bellOf, rawBell, cascadeFrom, addMin, EVENING_BASE } from '../lib/bell.js';
+import { timeSelect } from './ui.js';
+import { vaultEnabled, setupPin, changePin, removeVault, validPin, registerPasskey, removePasskey, hasPasskey, passkeyAvailable } from '../lib/vault.js';
+import { loadAll, decryptAllToPlain } from '../lib/securestore.js';
 
 const card = (title, ...body) => h('section.card', h('div.card-head', h('h2', title)), ...body);
 
@@ -37,8 +40,9 @@ function storageCard(app) {
 
   // ----- 드롭박스 -----
   const dbx = new DropboxBackend();
-  const dbxInfo = h('span.muted', dbx.connected ? '연결됨 (계정 확인 중…)' : '연결 안 됨');
-  if (dbx.connected) dbx.account().then((a) => { dbxInfo.textContent = `연결됨 · ${a.name?.display_name || ''} (${a.email || ''})`; }).catch((e) => { dbxInfo.textContent = `연결 확인 실패: ${e.message}`; });
+  const publicPc = h('input', { type: 'checkbox' });
+  const dbxInfo = h('span.muted', dbx.connected ? `연결됨${isPublicMode() ? ' · 공용 PC 모드' : ''} (계정 확인 중…)` : '연결 안 됨');
+  if (dbx.connected) dbx.account().then((a) => { dbxInfo.textContent = `연결됨${isPublicMode() ? ' · 공용 PC 모드' : ''} · ${a.name?.display_name || ''} (${a.email || ''})`; }).catch((e) => { dbxInfo.textContent = `연결 확인 실패: ${e.message}`; });
   const dbxMigrate = h('button', { onclick: () => busy(dbxMigrate, () => migrateLocal(new DropboxBackend(), '드롭박스', say)) }, '로컬 데이터를 드롭박스로 옮기기');
   const dropboxSection = h('div.storage-opt',
     h('h3', '드롭박스 (추천)'),
@@ -55,7 +59,8 @@ function storageCard(app) {
             else app.render();
           } }, '연결 끊기'),
           dbxMigrate]
-        : h('button.primary', { onclick: async () => { if (await app.confirmLeave()) startLogin(); } }, '드롭박스 연결'),
+        : [h('button.primary', { onclick: async () => { if (await app.confirmLeave()) startLogin(publicPc.checked); } }, '드롭박스 연결'),
+          h('label.check.small', publicPc, ' 공용 PC (로그인 정보를 저장하지 않음 — 탭을 닫으면 로그아웃)')],
     ),
   );
 
@@ -138,7 +143,14 @@ function displayCard(app) {
     h('div.row', h('button.primary', { onclick: async () => {
       const patch = { teacherInfo: info.value, schoolLevel: level.value, showModified: showMod.checked };
       // 학교급을 바꿨고 아직 시정표를 손대지 않았다면 교시 수 기본값도 따라간다
-      if (level.value !== s.schoolLevel && !s.bell) patch.bell = { ...bellOf({ schoolLevel: level.value }) };
+      if (level.value !== s.schoolLevel) {
+        if (!s.bell) patch.bell = { ...rawBell({ schoolLevel: level.value }) };
+        else {
+          // 수업 길이를 손대지 않았다면(이전 학교급 기본값) 새 학교급 기본값(초등 40분, 중·고 50분)으로
+          const b = rawBell(s);
+          if (b.lessonLen === (s.schoolLevel === 'secondary' ? 50 : 40)) patch.bell = { ...b, lessonLen: level.value === 'secondary' ? 50 : 40 };
+        }
+      }
       store.updateSettings(patch);
       await app.save();
     } }, '적용')));
@@ -149,13 +161,12 @@ function timetableCard(app) {
   const { store } = app;
   const s = store.settings;
   const tt = JSON.parse(JSON.stringify(s.timetable));
-  const bell = JSON.parse(JSON.stringify(bellOf(s)));
+  const bell = JSON.parse(JSON.stringify(rawBell(s)));
   const subj = s.schoolLevel === 'secondary' ? '수업명·학반·교실' : '과목';
   const wrap = h('div');
-  const time = (val, on, label) => h('input', { type: 'time', value: val || '', 'aria-label': label, oninput: (e) => on(e.target.value) });
   const sec = s.schoolLevel === 'secondary';
   const ttInput = (d, i, label) => {
-    if (!sec) return h('td', h('input', { value: ttCell(tt[d]?.[i]).subject, 'aria-label': `${WEEKDAYS[d]} ${label}`, oninput: (e) => { (tt[d] ||= [])[i] = e.target.value; } }));
+    if (!sec) return h('td', h('input', { value: ttCell(tt[d]?.[i]).subject, list: 'set-course-list', 'aria-label': `${WEEKDAYS[d]} ${label}`, oninput: (e) => { (tt[d] ||= [])[i] = e.target.value; } }));
     const c = ttCell(tt[d]?.[i]);
     const set = (k) => (e) => { c[k] = e.target.value; (tt[d] ||= [])[i] = { ...c }; };
     return h('td.tt-cell',
@@ -163,60 +174,71 @@ function timetableCard(app) {
       h('input', { value: c.cls, list: 'set-class-list', placeholder: '학반', 'aria-label': `${WEEKDAYS[d]} ${label} 학반`, oninput: set('cls') }),
       h('input', { value: c.room, list: 'set-room-list', placeholder: '교실', 'aria-label': `${WEEKDAYS[d]} ${label} 교실`, oninput: set('room') }));
   };
-  const auto = { first: bell.times[0]?.start || (s.schoolLevel === 'secondary' ? '08:50' : '09:00'), lesson: s.schoolLevel === 'secondary' ? 50 : 40, rest: 10, lunchLen: 50 };
+  const range = (obj, label, { onStart } = {}) => h('span.range',
+    timeSelect(obj.start, (v) => { obj.start = v; if (onStart) { onStart(v); draw(); } }, `${label} 시작`), ' ~ ',
+    timeSelect(obj.end, (v) => { obj.end = v; }, `${label} 끝`));
 
   const draw = () => {
     const count = bell.periodCount;
     const rows = [];
+    const lunchRow = () => h('tr.bell-row', h('th', '🍚 점심'), h('td.time-cell', range(bell.lunch, '점심')), h('td.muted.small', { colspan: 5 }, `${bell.lunch.after}교시 다음`));
+    if (bell.lunch.after === 0) rows.push(lunchRow());
     for (let i = 0; i < count; i++) {
       const t = (bell.times[i] ||= { start: '', end: '' });
       rows.push(h('tr', h('th', `${i + 1}교시`),
-        h('td.time-cell', time(t.start, (v) => (t.start = v), `${i + 1}교시 시작`), ' ~ ', time(t.end, (v) => (t.end = v), `${i + 1}교시 끝`)),
+        // 시작을 고르면 끝(수업 길이)과 다음 교시들이 점심 전까지/끝까지 자동으로 채워진다
+        h('td.time-cell', range(t, `${i + 1}교시`, { onStart: () => cascadeFrom(bell, i + 1) })),
         [1, 2, 3, 4, 5].map((d) => ttInput(d, i, `${i + 1}교시`))));
-      if (bell.lunch.after === i + 1) rows.push(h('tr.bell-row', h('th', '🍚 점심'), h('td.time-cell', time(bell.lunch.start, (v) => (bell.lunch.start = v), '점심 시작'), ' ~ ', time(bell.lunch.end, (v) => (bell.lunch.end = v), '점심 끝')), h('td.muted.small', { colspan: 5 }, `${i + 1}교시 다음`)));
+      if (bell.lunch.after === i + 1) rows.push(lunchRow());
     }
-    if (bell.dinner.enabled) rows.push(h('tr.bell-row', h('th', '🍱 저녁'), h('td.time-cell', time(bell.dinner.start, (v) => (bell.dinner.start = v), '저녁 시작'), ' ~ ', time(bell.dinner.end, (v) => (bell.dinner.end = v), '저녁 끝')), h('td.muted.small', { colspan: 5 }, '저녁 식사')));
+    if (bell.dinner.enabled) rows.push(h('tr.bell-row', h('th', '🍱 저녁'), h('td.time-cell', range(bell.dinner, '저녁')), h('td.muted.small', { colspan: 5 }, '저녁 식사')));
     bell.evening.forEach((ev, k) => {
-      const idx = EVENING_BASE + k; // 교시 번호 11+k -> timetable index 10+k
+      const idx = EVENING_BASE + k;
       rows.push(h('tr.evening',
         h('th', h('input', { value: ev.label, 'aria-label': `저녁 방과후 ${k + 1} 이름`, style: { width: '6.5em' }, oninput: (e) => (ev.label = e.target.value.trim() || `방과후${k + 1}`) })),
-        h('td.time-cell', time(ev.start, (v) => (ev.start = v), `${ev.label} 시작`), ' ~ ', time(ev.end, (v) => (ev.end = v), `${ev.label} 끝`)),
+        h('td.time-cell', range(ev, ev.label, { onStart: (v) => { ev.end = addMin(v, bell.lessonLen); } })),
         [1, 2, 3, 4, 5].map((d) => ttInput(d, idx, ev.label))));
     });
 
     const sel = (val, opts, on, label) => h('select', { 'aria-label': label, onchange: (e) => { on(+e.target.value); draw(); } }, opts.map(([v, l]) => h('option', { value: v, selected: v === val }, l)));
+    const num = (val, on, label, min, max) => h('input', { type: 'number', min, max, step: 5, value: val, 'aria-label': label, onchange: (e) => { on(+e.target.value); } });
+    const c = bell.csat;
     wrap.replaceChildren(
       h('div.inline-form',
-        h('label', '🏫 등교', time(bell.arrival, (v) => (bell.arrival = v), '등교 시각')),
+        h('label', '🏫 등교', timeSelect(bell.arrival, (v) => (bell.arrival = v), '등교')),
         h('label', '정규 교시', sel(bell.periodCount, [4, 5, 6, 7, 8].map((n) => [n, `${n}교시까지`]), (v) => (bell.periodCount = v), '정규 교시 수')),
+        h('label', '수업', num(bell.lessonLen, (v) => (bell.lessonLen = v), '수업 시간(분)', 20, 120), '분'),
+        h('label', '쉬는 시간', num(bell.breakLen, (v) => (bell.breakLen = v), '쉬는 시간(분)', 0, 60), '분'),
         h('label', '점심', sel(bell.lunch.after, [[0, '없음'], ...Array.from({ length: bell.periodCount }, (_, i) => [i + 1, `${i + 1}교시 다음`])], (v) => (bell.lunch.after = v), '점심 위치')),
         h('label', h('input', { type: 'checkbox', checked: bell.dinner.enabled, onchange: (e) => { bell.dinner.enabled = e.target.checked; draw(); } }), '저녁 식사'),
         h('label', '저녁 방과후', sel(bell.evening.length, [0, 1, 2, 3, 4].map((n) => [n, n ? `${n}개` : '없음']), (v) => {
           while (bell.evening.length < v) bell.evening.push({ label: `방과후${bell.evening.length + 1}`, start: '', end: '' });
           bell.evening.length = v;
         }, '저녁 방과후 수'))),
-      h('details', h('summary.small', '⏱ 시각 자동 채우기'),
-        h('div.inline-form', { style: { marginTop: '8px' } },
-          h('label', '1교시 시작', h('input', { type: 'time', value: auto.first, oninput: (e) => (auto.first = e.target.value) })),
-          h('label', '수업(분)', h('input', { type: 'number', min: 20, max: 120, value: auto.lesson, oninput: (e) => (auto.lesson = +e.target.value) })),
-          h('label', '쉬는 시간(분)', h('input', { type: 'number', min: 0, max: 60, value: auto.rest, oninput: (e) => (auto.rest = +e.target.value) })),
-          h('label', '점심(분)', h('input', { type: 'number', min: 0, max: 120, value: auto.lunchLen, oninput: (e) => (auto.lunchLen = +e.target.value) })),
-          h('button.small', { onclick: () => {
-            const r = autoTimes({ ...auto, count: bell.periodCount, lunchAfter: bell.lunch.after });
-            if (!r) return toast('1교시 시작 시각을 입력하세요.', 'error');
-            bell.times = r.times;
-            if (r.lunch) bell.lunch = { ...bell.lunch, ...r.lunch };
-            draw();
-          } }, '채우기')),
-        h('p.muted.small', '정규 교시만 채웁니다. 학교 시정표와 다르면 표에서 직접 고치세요.')),
+      h('p.muted.small', '1교시 시작을 고르면 수업 시간에 맞춰 점심 전 교시까지, 점심 뒤 첫 교시 시작을 고르면 마지막 교시까지 자동으로 채워집니다. 끝 시각은 따로 고칠 수 있습니다.'),
       h('div.records-wrap', h('table.grid.timetable.bell-table',
         h('thead', h('tr', h('th', '교시'), h('th', '시간'), [1, 2, 3, 4, 5].map((d) => h('th', WEEKDAYS[d])))),
-        h('tbody', rows))));
+        h('tbody', rows))),
+      h('div.csat-box',
+        h('label.check', h('input', { type: 'checkbox', checked: c.enabled, onchange: (e) => {
+          c.enabled = e.target.checked;
+          // 처음 켤 때 기본값: 3교시 끝 → 점심(원래 점심 길이) → 4교시
+          if (c.enabled && !c.lunch.start && bell.times[2]?.end) {
+            const lunchLen = bell.lunch.start && bell.lunch.end ? Math.max(30, minutes(bell.lunch.end) - minutes(bell.lunch.start)) : 50;
+            c.lunch = { start: bell.times[2].end, end: addMin(bell.times[2].end, lunchLen) };
+            c.p4 = { start: c.lunch.end, end: addMin(c.lunch.end, bell.lessonLen) };
+          }
+          draw();
+        } }), h('strong', ' 수능대비 시간표'), h('span.muted.small', ' — 점심을 3교시 다음으로 옮깁니다 (켜 두는 동안 교사수첩에 적용)')),
+        c.enabled ? h('div.inline-form', { style: { marginTop: '6px' } },
+          h('label', '점심', range(c.lunch, '수능대비 점심', { onStart: (v) => { if (!c.lunch.end) c.lunch.end = addMin(v, 50); } })),
+          h('label', '4교시', range(c.p4, '수능대비 4교시', { onStart: (v) => { c.p4.end = addMin(v, bell.lessonLen); } }))) : null));
   };
+  const minutes = (t) => { const m = /^(\d+):(\d+)$/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : 0; };
   draw();
 
   const lists = h('div', { style: { display: 'none' } },
-    h('datalist#set-course-list', (s.courses || []).map((x) => h('option', { value: x }))),
+    h('datalist#set-course-list', (s.courses || []).map(courseOf).map((x) => h('option', { value: x.name }))),
     h('datalist#set-class-list', store.classList().map((x) => h('option', { value: x }))),
     h('datalist#set-room-list', (s.rooms || []).map((x) => h('option', { value: x }))));
   return card('일과 시간 · 기본 시간표', lists,
@@ -230,19 +252,83 @@ function timetableCard(app) {
     } }, '일과 시간·시간표 저장')));
 }
 
-/** 내 수업명 · 교실/실습실 · 담당 학반 목록 */
+/** 내 수업명(축약) · 교실/실습실 · 담당 학반(담임·부담임) */
 function listsCard(app) {
   const { store } = app;
   const s = store.settings;
-  const ta = (label, arr, ph) => h('label', label, h('textarea', { rows: 5, placeholder: ph, value: (arr || []).join('\n') }));
-  const c = ta('내 수업명', s.courses, '한 줄에 하나씩\n예: 정보\n프로그래밍\n인공지능 기초');
-  const r = ta('교실 · 실습실', s.rooms, '예: 컴퓨터실1\n메이커실\n1-2 교실');
-  const k = ta('담당 학반', s.classes, '예: 1-2\n1-3\n2-1');
+  const ta = (label, text, ph) => h('label', label, h('textarea', { rows: 6, placeholder: ph, value: text }));
+  const c = ta('내 수업명 (| 뒤는 축약 이름)', (s.courses || []).map(courseOf).map((x) => (x.short ? `${x.name} | ${x.short}` : x.name)).join('\n'), '한 줄에 하나씩\n예: 정보\n인공지능 기초 | AI기초\n프로그래밍 | 프로그');
+  const r = ta('교실 · 실습실', (s.rooms || []).join('\n'), '예: 컴퓨터실1\n메이커실\n1-2 교실');
+  const k = ta('담당 학반', (s.classes || []).join('\n'), '예: 1-2\n1-3\n2-1');
   const lines = (el) => [...new Set(el.querySelector('textarea').value.split('\n').map((x) => x.trim()).filter(Boolean))];
+  const homerooms = JSON.parse(JSON.stringify(s.homerooms || {}));
+  const hrTable = h('div.records-wrap', h('table.grid',
+    h('thead', h('tr', h('th', '학반'), h('th', '담임'), h('th', '부담임'))),
+    h('tbody', store.classList().map((cls) => {
+      const x = (homerooms[cls] ||= { main: '', sub: '' });
+      return h('tr', h('th', cls),
+        h('td', h('input', { value: x.main, placeholder: '담임 선생님', 'aria-label': `${cls} 담임`, oninput: (e) => (x.main = e.target.value) })),
+        h('td', h('input', { value: x.sub, placeholder: '부담임 선생님', 'aria-label': `${cls} 부담임`, oninput: (e) => (x.sub = e.target.value) })));
+    }))));
   return card('내 수업 · 교실 · 학반',
-    h('p.muted.small', '여기 넣은 목록은 시간표와 수업일지에서 골라 쓸 수 있습니다. 학반은 학생 명단의 학년·반에서도 자동으로 모입니다.'),
+    h('p.muted.small', '여기 넣은 목록은 시간표와 수업일지에서 골라 쓸 수 있습니다. 수업명 뒤에 "| 축약"을 붙이면 교사수첩에 짧게 표시됩니다. 학반은 학생 명단의 학년·반에서도 자동으로 모입니다.'),
     h('div.lists-grid', c, r, k),
-    h('div.row', h('button.primary', { onclick: async () => { store.updateSettings({ courses: lines(c), rooms: lines(r), classes: lines(k) }); await app.save(); app.render(); } }, '목록 저장')));
+    h('h3', '학반별 담임 · 부담임'),
+    store.classList().length ? hrTable : h('p.muted.small', '담당 학반을 넣거나 학생 명단을 등록하면 학반별로 담임·부담임을 적을 수 있습니다.'),
+    h('div.row', h('button.primary', { onclick: async () => {
+      const courses = lines(c).map((x) => { const [name, short] = x.split(/\s*\|\s*/); return short ? { name, short } : name; });
+      const hrs = Object.fromEntries(Object.entries(homerooms).filter(([, x]) => x.main.trim() || x.sub.trim()).map(([kk, x]) => [kk, { main: x.main.trim(), sub: x.sub.trim() }]));
+      store.updateSettings({ courses, rooms: lines(r), classes: lines(k), homerooms: hrs });
+      await app.save(); app.render();
+    } }, '목록 저장')));
+}
+
+/** 이 기기 보안: PIN 잠금·암호화, 패스키, 자동 잠금, 자동 저장 */
+function securityCard(app) {
+  const enabled = vaultEnabled();
+  const out = h('div.result');
+  const say = (m, k = 'muted') => out.replaceChildren(h(`p.${k}`, m));
+  const askPin = async (title) => {
+    const a = h('input', { type: 'password', inputmode: 'numeric', maxlength: 6, autocomplete: 'new-password', placeholder: '숫자 6자리', 'aria-label': '새 PIN' });
+    const b = h('input', { type: 'password', inputmode: 'numeric', maxlength: 6, autocomplete: 'new-password', placeholder: '한 번 더', 'aria-label': 'PIN 확인' });
+    const ok = await modal(title, h('div.form', h('label', '새 PIN', a), h('label', 'PIN 확인', b),
+      h('p.muted.small', 'PIN 을 잊으면 이 기기에 저장된 로그인 정보·캐시를 지우고 다시 연결해야 합니다. 로컬 저장소만 쓴다면 먼저 JSON 백업을 받아 두세요.')),
+    [{ label: '취소', value: false }, { label: '설정', value: true, primary: true }]);
+    if (!ok) return null;
+    if (!validPin(a.value)) { toast('PIN 은 숫자 6자리여야 합니다.', 'error'); return null; }
+    if (a.value !== b.value) { toast('두 PIN 이 다릅니다.', 'error'); return null; }
+    return a.value;
+  };
+  const autolockSel = h('select', { 'aria-label': '자동 잠금', disabled: !enabled, onchange: (e) => { app.prefs.autolock = +e.target.value; toast('자동 잠금 시간을 바꿨습니다.', 'ok'); } },
+    [[0, '사용 안 함'], [1, '1분'], [3, '3분'], [5, '5분'], [10, '10분'], [15, '15분'], [30, '30분'], [60, '1시간']].map(([v, l]) => h('option', { value: v, selected: app.prefs.autolock === v }, l)));
+  return card('보안 · 저장 (이 기기)',
+    h('p.muted.small', 'PIN 을 설정하면 이 브라우저에 남는 드롭박스 로그인 정보, 캐시된 일지, 로컬 데이터, 사진을 암호화합니다. 앱을 열 때와 자동 잠금 뒤에 PIN(또는 지문·얼굴·Windows Hello)이 필요합니다.'),
+    h('p', '잠금: ', h('strong', enabled ? '사용 중 (PIN 6자리)' : '사용 안 함')),
+    h('div.row',
+      !enabled ? h('button.primary', { onclick: async () => {
+        const pin = await askPin('PIN 설정');
+        if (!pin) return;
+        await setupPin(pin);
+        await loadAll(); // 지금까지 평문으로 있던 정보를 암호화해서 다시 저장
+        toast('PIN 을 설정하고 저장된 정보를 암호화했습니다.', 'ok');
+        app.render();
+      } }, 'PIN 설정') : [
+        h('button', { onclick: async () => { const pin = await askPin('PIN 바꾸기'); if (!pin) return; await changePin(pin); toast('PIN 을 바꿨습니다.', 'ok'); } }, 'PIN 바꾸기'),
+        h('button', { onclick: async () => {
+          if (!(await confirmDialog('잠금 해제', '잠금과 암호화를 끄고 저장된 정보를 평문으로 되돌립니다. 계속할까요?', '끄기'))) return;
+          await decryptAllToPlain(); removeVault(); toast('잠금을 껐습니다.', 'ok'); app.render();
+        } }, '잠금 끄기'),
+        h('button', { onclick: () => app.lock() }, '🔒 지금 잠그기')]),
+    enabled ? h('div.row',
+      hasPasskey()
+        ? [h('span.ok', '✓ 지문·얼굴·Windows Hello 등록됨'), h('button.small', { onclick: () => { removePasskey(); toast('패스키를 지웠습니다.', 'ok'); app.render(); } }, '해제')]
+        : h('button', { disabled: !passkeyAvailable(), onclick: async () => {
+          try { await registerPasskey(); toast('등록했습니다. 다음부터 지문·얼굴·Windows Hello 로 열 수 있습니다.', 'ok'); app.render(); } catch (e) { say(e.message, 'err'); }
+        } }, '🔑 지문·얼굴·Windows Hello 등록')) : null,
+    h('div.inline-form', { style: { marginTop: '8px' } },
+      h('label', '자동 잠금', autolockSel, h('span.muted.small', enabled ? ' 동안 쓰지 않으면 잠금' : ' (PIN 설정 후 사용)')),
+      h('label', h('input', { type: 'checkbox', checked: app.prefs.autosave, onchange: (e) => { app.prefs.autosave = e.target.checked; toast(e.target.checked ? '고치면 자동으로 저장합니다.' : '저장 버튼(Ctrl+S)을 눌러야 저장됩니다.', 'ok'); } }), '자동 저장')),
+    out);
 }
 
 // ---------- 정보 일괄 등록 (CSV) ----------
@@ -259,7 +345,7 @@ const TEMPLATES = {
     }
     return out;
   } },
-  students: { name: '학생정보', file: '학생정보_예제.csv', rows: () => [['학번', '학년', '반', '번호', '이름', '이전학번'], ['10101', '1', '1', '1', '홍길동', ''], ['10102', '1', '1', '2', '성춘향', ''], ['20305', '2', '3', '5', '이몽룡', '10412']] },
+  students: { name: '학생정보', file: '학생정보_예제.csv', rows: () => [['학번', '학년', '반', '번호', '이름', '성별', '이메일', '전화번호', '이전학번'], ['10101', '1', '1', '1', '홍길동', '남', '', '', ''], ['10102', '1', '1', '2', '성춘향', '여', '', '', ''], ['20305', '2', '3', '5', '이몽룡', '남', '', '', '10412']] },
   timetable: { name: '시간표(일과 시간)', file: '시간표_예제.csv', rows: () => [
     ['교시', '시작', '끝', '월', '화', '수', '목', '금'],
     ['등교', '08:30', '', '', '', '', '', ''],
@@ -387,7 +473,7 @@ export function renderSettings(app) {
     return h('div.settings', h('section.card.error-card', h('p', app.error)), storageCard(app));
   }
   return h('div.settings',
-    h('div.col', storageCard(app), yearCard(app)),
+    h('div.col', storageCard(app), securityCard(app), yearCard(app)),
     h('div.col', displayCard(app), listsCard(app), bulkCard(app), backupCard(app)),
     h('div.full', timetableCard(app)));
 }

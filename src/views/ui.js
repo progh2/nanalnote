@@ -36,3 +36,27 @@ export function avatar(app, s, size = 44) {
   }
   return el;
 }
+
+/**
+ * 시각 고르기: [오전/오후] [시] [분(5분 단위)] — 값은 'HH:MM'(24시간)
+ */
+export function timeSelect(value, onChange, label = '시각') {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(value || '');
+  let H = m ? +m[1] : null, M = m ? +m[2] : null;
+  const ap = h('select.t-ap', { 'aria-label': `${label} 오전/오후` }, h('option', { value: '' }, '--'), h('option', { value: 'am', selected: H != null && H < 12 }, '오전'), h('option', { value: 'pm', selected: H != null && H >= 12 }, '오후'));
+  const hh = h('select.t-h', { 'aria-label': `${label} 시` }, h('option', { value: '' }, '--'),
+    Array.from({ length: 12 }, (_, i) => i + 1).map((n) => h('option', { value: n, selected: H != null && ((H % 12) || 12) === n }, String(n))));
+  const mins = Array.from({ length: 12 }, (_, i) => i * 5);
+  if (M != null && !mins.includes(M)) mins.push(M), mins.sort((a, b) => a - b);
+  const mm = h('select.t-m', { 'aria-label': `${label} 분` }, h('option', { value: '' }, '--'), mins.map((n) => h('option', { value: n, selected: M === n }, String(n).padStart(2, '0'))));
+  const emit = () => {
+    if (!ap.value || !hh.value) { if (!ap.value && !hh.value && !mm.value) onChange(''); return; }
+    let hr = +hh.value % 12;
+    if (ap.value === 'pm') hr += 12;
+    const mi = mm.value === '' ? 0 : +mm.value;
+    if (mm.value === '') mm.value = '0';
+    onChange(`${String(hr).padStart(2, '0')}:${String(mi).padStart(2, '0')}`);
+  };
+  for (const el of [ap, hh, mm]) el.addEventListener('change', emit);
+  return h('span.time-sel', ap, hh, mm);
+}

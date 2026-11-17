@@ -6,6 +6,8 @@ globalThis.localStorage = {
   getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)),
   removeItem: (k) => mem.delete(k), key: (i) => [...mem.keys()][i], get length() { return mem.size; },
 };
+const smem = new Map();
+globalThis.sessionStorage = { getItem: (k) => (smem.has(k) ? smem.get(k) : null), setItem: (k, v) => smem.set(k, String(v)), removeItem: (k) => smem.delete(k) };
 
 const { serialize, parse } = await import('../src/lib/mdformat.js');
 const { DropboxBackend } = await import('../src/backends/dropbox.js');
@@ -19,16 +21,20 @@ const sample = {
   settings: [{ id: 'a', key: 'main', value: { teacherInfo: '3학년 2반 | 담임', schoolLevel: 'secondary', showModified: false,
     timetable: { 1: [{ subject: '정보', cls: '1-2', room: '컴퓨터실' }, '수학', '', '', '', '', '', '', '', '', '자습'], 2: ['', '사회'], 3: [], 4: [], 5: ['체육'] },
     bell: { arrival: '08:20', periodCount: 7, times: [{ start: '08:40', end: '09:30' }, { start: '09:40', end: '10:30' }], lunch: { start: '12:20', end: '13:10', after: 4 },
-      dinner: { enabled: true, start: '17:20', end: '18:10' }, evening: [{ label: '야자1', start: '18:20', end: '19:40' }, { label: '방과후2', start: '', end: '' }] },
-    courses: ['정보', '프로그래밍'], rooms: ['컴퓨터실'], classes: ['1-2'] } }],
-  students: [{ id: 'b', uid: 'U1', studentNo: '10201', grade: 1, cls: 2, no: 1, name: '이몽룡', photo: '10201_이몽룡.jpg' }, { id: 'c', uid: 'U2', studentNo: '10202', grade: 1, cls: 2, no: 2, name: '성춘향', photo: '' }],
+      dinner: { enabled: true, start: '17:20', end: '18:10' }, evening: [{ label: '야자1', start: '18:20', end: '19:40' }, { label: '방과후2', start: '', end: '' }],
+      lessonLen: 50, breakLen: 10, csat: { enabled: true, lunch: { start: '11:30', end: '12:20' }, p4: { start: '12:20', end: '13:10' } } },
+    courses: ['정보', { name: '인공지능 기초', short: 'AI' }], rooms: ['컴퓨터실'], classes: ['1-2'], homerooms: { '1-2': { main: '김담임', sub: '박부담' } } } }],
+  students: [{ id: 'b', uid: 'U1', studentNo: '10201', grade: 1, cls: 2, no: 1, name: '이몽룡', photo: '10201_이몽룡.jpg', gender: '남', email: 'a@b.kr', phone: '010-1234-5678' }, { id: 'c', uid: 'U2', studentNo: '10202', grade: 1, cls: 2, no: 2, name: '성춘향', photo: '' }],
   schedule: [{ id: 'd', date: '2026-03-02', text: '입학식\n시업식' }, { id: 'd2', date: '2026-05-04', text: '재량휴업일', holiday: true }],
   days: [{ id: 'e', date: '2026-03-02', updatedAt: '2026-03-02T07:00:00.000Z' }],
   lessons: [{ id: 'f', date: '2026-03-02', period: 1, subject: '정보', cls: '1-2', room: '컴퓨터실', content: '받아쓰기\n# 제목처럼 보이는 줄\n- 목록' }, { id: 'g', date: '2026-03-02', period: 3, subject: '', cls: '', room: '', content: '' }, { id: 'g3', date: '2026-03-02', period: 4, subject: '', cls: '2-1', room: '', content: '' }, { id: 'g2', date: '2026-03-02', period: 11, subject: '자습', cls: '', room: '', content: '수학 질문 받음' }],
-  tasks: [{ id: 'h', text: '가정통신문 (2장)', created: '2026-03-02', doneDate: '2026-03-04' }, { id: 'i', text: '회의', created: '2026-03-03', doneDate: null }],
-  attendance: [{ id: 'j', date: '2026-03-02', student: 'U2', type: '지각', reason: '질병', note: '병원 · 진료' }],
+  tasks: [{ id: 'h', text: '가정통신문 (2장)', created: '2026-03-02', doneDate: '2026-03-04', due: '2026-03-06' }, { id: 'i', text: '회의', created: '2026-03-03', doneDate: null }],
+  attendance: [{ id: 'j', date: '2026-03-02', student: 'U2', type: '지각', reason: '질병', note: '병원 · 진료' },
+    { id: 'j2', date: '2026-03-02', student: 'U1', type: '결석', reason: '질병', note: '독감A형', periods: [3, 4], subject: '인공지능 기초', cls: '1-2' }],
   counsel: [{ id: 'k', date: '2026-03-02', order: 0, text: '10201 이몽룡 울었다.\n달래줌', students: ['U1'] }, { id: 'l', date: '2026-03-02', order: 1, text: '## 성춘향 지각', students: [] }],
   records: [{ id: 'm', title: '독서록', created: '2026-03-05', doneDate: null, cls: '1-2', entries: { U1: 'O', U2: '미제출 | 다음주' } }],
+  notes: [{ id: 'n1', text: '수행평가 채점\n# 마감 금요일', color: 'pink', x: 1210, y: 140, w: 220, h: 160 }, { id: 'n2', text: '', color: 'yellow', x: 5, y: 6, w: 200, h: 150, min: true }],
+  docs: [{ id: 'dc2', kind: 'annual', period: '', title: '', file: '연간.png' }, { id: 'dc1', kind: 'monthly', period: '2026-03', title: '3월 월중일정', file: '2026-03_월중일정.pdf' }],
   trips: [{ id: 't', date: '2026-03-02', time: '13:00~17:00', place: '교육청', purpose: '정보교육 연수 · 1일차' }, { id: 't2', date: '2026-03-02', time: '', place: '', purpose: '' }],
 };
 
@@ -41,9 +47,12 @@ test('마크다운 왕복 변환이 손실 없이 동일', () => {
   const got = strip(back);
   got.counsel[1].students = [];
   assert.deepEqual(got, exp);
-  assert.ok(files.get('/2026학년도/학생명단.md').includes('| 10201 | 1 | 2 | 1 | 이몽룡 | 10201_이몽룡.jpg | U1 |'));
+  assert.ok(files.get('/2026학년도/학생명단.md').includes('| 10201 | 1 | 2 | 1 | 이몽룡 | 남 | a@b.kr | 010-1234-5678 | 10201_이몽룡.jpg | U1 |'));
   assert.ok(files.get('/2026학년도/학사일정.md').includes('- 2026-05-04: [휴업] 재량휴업일'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('- 10202 성춘향 · 지각'));
+  assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('- [3·4교시 인공지능 기초 1-2] 10201 이몽룡 · 결석 · 질병 · 독감A형'));
+  assert.ok(files.get('/2026학년도/업무일지.md').includes('(작성 2026-03-02, 마감 2026-03-06, 완료 2026-03-04)'));
+  assert.ok(files.get('/2026학년도/설정.md').includes('- 인공지능 기초 | AI'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('### 4교시 · - · 2-1'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('## 출장\n\n- 13:00~17:00 · 교육청 · 정보교육 연수 · 1일차'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('### 1교시 · 정보 · 1-2 · 컴퓨터실'));

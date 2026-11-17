@@ -51,9 +51,9 @@ const SCHEMAS = {
   },
   students: {
     name: '학생',
-    props: { 이름: 'title', 학번: 'rich_text', 학년: 'number', 반: 'number', 번호: 'number', 사진: 'rich_text', ID: 'rich_text' },
-    to: (x) => ({ 이름: T(x.name), 학번: R(x.studentNo), 학년: N(x.grade), 반: N(x.cls), 번호: N(x.no), 사진: R(x.photo), ID: R(x.uid) }),
-    from: (p) => ({ name: gT(p, '이름'), studentNo: gR(p, '학번'), grade: gN(p, '학년'), cls: gN(p, '반'), no: gN(p, '번호'), photo: gR(p, '사진'), uid: gR(p, 'ID') || undefined }),
+    props: { 이름: 'title', 학번: 'rich_text', 학년: 'number', 반: 'number', 번호: 'number', 성별: 'rich_text', 이메일: 'email', 전화번호: 'phone_number', 사진: 'rich_text', ID: 'rich_text' },
+    to: (x) => ({ 이름: T(x.name), 학번: R(x.studentNo), 학년: N(x.grade), 반: N(x.cls), 번호: N(x.no), 성별: R(x.gender), 이메일: { email: x.email || null }, 전화번호: { phone_number: x.phone || null }, 사진: R(x.photo), ID: R(x.uid) }),
+    from: (p) => ({ name: gT(p, '이름'), studentNo: gR(p, '학번'), grade: gN(p, '학년'), cls: gN(p, '반'), no: gN(p, '번호'), gender: gR(p, '성별'), email: p.properties.이메일?.email || '', phone: p.properties.전화번호?.phone_number || '', photo: gR(p, '사진'), uid: gR(p, 'ID') || undefined }),
   },
   schedule: {
     name: '학사일정',
@@ -75,15 +75,19 @@ const SCHEMAS = {
   },
   tasks: {
     name: '업무일지',
-    props: { 내용: 'title', 작성일: 'date', 완료일: 'date', 완료: 'checkbox' },
-    to: (x) => ({ 내용: T(x.text), 작성일: D(x.created), 완료일: D(x.doneDate), 완료: CB(x.doneDate) }),
-    from: (p) => ({ text: gT(p, '내용'), created: gDay(p, '작성일'), doneDate: gDay(p, '완료일') }),
+    props: { 내용: 'title', 작성일: 'date', 마감일: 'date', 완료일: 'date', 완료: 'checkbox' },
+    to: (x) => ({ 내용: T(x.text), 작성일: D(x.created), 마감일: D(x.due), 완료일: D(x.doneDate), 완료: CB(x.doneDate) }),
+    from: (p) => ({ text: gT(p, '내용'), created: gDay(p, '작성일'), doneDate: gDay(p, '완료일'), ...(gDay(p, '마감일') ? { due: gDay(p, '마감일') } : {}) }),
   },
   attendance: {
     name: '학생출결',
-    props: { 학생: 'title', 날짜: 'date', 구분: 'select', 사유: 'select', 비고: 'rich_text' },
-    to: (x) => ({ 학생: T(x._label || x.student), 날짜: D(x.date), 구분: S(x.type), 사유: S(x.reason), 비고: R(x.note) }),
-    from: (p) => ({ student: gT(p, '학생'), date: gDay(p, '날짜'), type: gS(p, '구분'), reason: gS(p, '사유'), note: gR(p, '비고') }),
+    props: { 학생: 'title', 날짜: 'date', 교시: 'rich_text', 수업: 'rich_text', 학반: 'rich_text', 구분: 'select', 사유: 'select', 비고: 'rich_text' },
+    to: (x) => ({ 학생: T(x._label || x.student), 날짜: D(x.date), 교시: R((x.periods || []).join(',')), 수업: R(x.subject), 학반: R(x.cls), 구분: S(x.type), 사유: S(x.reason), 비고: R(x.note) }),
+    from: (p) => {
+      const periods = gR(p, '교시').split(',').map(Number).filter(Boolean);
+      return { student: gT(p, '학생'), date: gDay(p, '날짜'), type: gS(p, '구분'), reason: gS(p, '사유'), note: gR(p, '비고'),
+        ...(periods.length ? { periods } : {}), ...(gR(p, '수업') ? { subject: gR(p, '수업') } : {}), ...(gR(p, '학반') ? { cls: gR(p, '학반') } : {}) };
+    },
   },
   counsel: {
     name: '상담일지',
@@ -96,6 +100,18 @@ const SCHEMAS = {
     props: { 제목: 'title', 등록일: 'date', 완료일: 'date', 대상: 'rich_text', 학생별: 'rich_text' },
     to: (x) => ({ 제목: T(x.title), 등록일: D(x.created), 완료일: D(x.doneDate), 대상: R(x.cls), 학생별: R(JSON.stringify(x._entries || x.entries || {})) }),
     from: (p) => ({ title: gT(p, '제목'), created: gDay(p, '등록일'), doneDate: gDay(p, '완료일'), ...(gR(p, '대상') ? { cls: gR(p, '대상') } : {}), entries: parseJSON(gR(p, '학생별'), {}) }),
+  },
+  notes: {
+    name: '포스트잇',
+    props: { 메모: 'title', 내용: 'rich_text', 색: 'rich_text', 위치: 'rich_text' },
+    to: (x) => ({ 메모: T(Array.from(x.text || '').slice(0, 40).join('').replace(/\n/g, ' ')), 내용: R(x.text), 색: R(x.color), 위치: R(JSON.stringify({ x: x.x, y: x.y, w: x.w, h: x.h, min: !!x.min })) }),
+    from: (p) => ({ text: gR(p, '내용'), color: gR(p, '색') || 'yellow', ...parseJSON(gR(p, '위치'), {}) }),
+  },
+  docs: {
+    name: '학사일정자료',
+    props: { 제목: 'title', 종류: 'select', 기간: 'rich_text', 파일: 'rich_text' },
+    to: (x) => ({ 제목: T(x.title), 종류: S(x.kind), 기간: R(x.period), 파일: R(x.file) }),
+    from: (p) => ({ title: gT(p, '제목'), kind: gS(p, '종류'), period: gR(p, '기간'), file: gR(p, '파일') }),
   },
   trips: {
     name: '출장',

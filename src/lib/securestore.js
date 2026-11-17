@@ -2,7 +2,7 @@
 // 읽기·쓰기는 동기 API(localStorage 와 같은 모양), 실제 암호화 쓰기는 순서대로 비동기 처리한다.
 import { vaultEnabled, isUnlocked, encryptString, decryptString } from './vault.js';
 
-const SENSITIVE = [/^sn:config$/, /^sn:dropbox$/, /^sn:dropbox:cache$/, /^sn:data:\d{4}$/];
+const SENSITIVE = [/^sn:config$/, /^sn:dropbox$/, /^sn:dropbox:cache$/, /^sn:data:\d{4}$/, /^sn:ai$/];
 export const isSensitive = (k) => SENSITIVE.some((r) => r.test(k));
 
 const mem = new Map();

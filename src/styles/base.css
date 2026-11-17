@@ -350,3 +350,60 @@ ol.small { font-size: 13px; color: var(--muted); padding-left: 1.3em; }
 .drag-handle { flex: none; cursor: grab; color: var(--muted); letter-spacing: -3px; padding: 0 2px; user-select: none; }
 .drag-handle.blank { visibility: hidden; }
 .task-row.dragging { opacity: .45; }
+
+/* 문서 보관(학사일정·연락) */
+.doc-pages { display: flex; flex-direction: column; gap: 10px; width: 100%; padding: 8px; }
+.doc-pages a { display: block; }
+.doc-pages .doc-img { width: 100%; height: auto; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
+.doc-viewer { place-items: start center; }
+.doc-text pre { white-space: pre-wrap; font-size: 13px; max-height: 60vh; overflow: auto; background: var(--surface); padding: 10px; border-radius: var(--radius); }
+.chips.revs { align-items: center; }
+.contact-memo { min-height: 220px; font-size: 15px; line-height: 1.7; }
+.ai-table input { min-width: 14em; }
+.day-pick { display: flex; gap: 4px; align-items: center; margin: 6px 0; }
+.day-pick button.active { background: var(--primary); color: var(--primary-text); border-color: transparent; }
+
+/* 좁은 화면 (갤럭시 폴드 커버 화면, 휴대폰) */
+@media (max-width: 720px) {
+  body { font-size: 14px; }
+  #main { padding: 8px; }
+  .card { padding: 12px; border-radius: 12px; }
+  .date-nav { flex-wrap: wrap; gap: 4px; }
+  .date-nav input[type=date] { padding: 4px 6px; font-size: 14px; }
+  .tabs button { padding: 8px 10px; font-size: 14px; }
+  .head-right .status, .head-right .badge.backend { display: none; }
+
+  /* 수업일지: 표 → 교시별 카드 */
+  table.lessons, table.lessons tbody { display: block; width: 100%; }
+  table.lessons thead { display: none; }
+  table.lessons tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+  table.lessons td { border: 0 !important; padding: 0 !important; }
+  table.lessons td.plabel { font-size: 15px; min-width: 3.6em; text-align: left; }
+  table.lessons td.time { font-size: 12.5px; }
+  table.lessons td:has(.subj-cell) { flex: 1 1 8em; }
+  table.lessons td:has(input[list="class-list"]) { flex: 0 0 4.6em; }
+  table.lessons td:has(input[list="room-list"]) { flex: 1 1 6em; }
+  table.lessons td:has(textarea) { flex: 1 1 100%; }
+  table.lessons td textarea { border: 1px solid var(--input-border) !important; background: var(--input-bg) !important; min-height: 38px; }
+  table.lessons tr.bell-row { background: var(--chip-bg); border-radius: 8px; padding: 4px 8px; margin: 4px 0; }
+  table.lessons tr.bell-row td { background: transparent !important; }
+  table.lessons tr.now { box-shadow: inset 3px 0 0 var(--today); }
+  table.lessons tr.now td { box-shadow: none; }
+
+  /* 출결 표도 줄 단위로 */
+  table.att-table, table.att-table tbody { display: block; }
+  table.att-table thead { display: none; }
+  table.att-table tr { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  table.att-table td { border: 0 !important; padding: 0 !important; flex: 1 1 30%; }
+  table.att-table td:last-child { flex: 0 0 auto; }
+
+  /* 설정 시간표 */
+  .bell-table td.time-cell .range { display: grid; gap: 2px; }
+  .bell-table td.time-cell .range > .tilde { display: none; }
+  .bell-table th, .bell-table td { padding: 3px !important; }
+  .bell-table td.tt-cell { min-width: 0; }
+  .inline-form { gap: 6px 10px; }
+  .doc-side { width: auto; }
+  .stu-list { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  .postit { max-width: 80vw; }
+}

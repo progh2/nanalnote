@@ -113,9 +113,9 @@ const SCHEMAS = {
   },
   docs: {
     name: '학사일정자료',
-    props: { 제목: 'title', 종류: 'select', 기간: 'rich_text', 파일: 'rich_text' },
-    to: (x) => ({ 제목: T(x.title), 종류: S(x.kind), 기간: R(x.period), 파일: R(x.file) }),
-    from: (p) => ({ title: gT(p, '제목'), kind: gS(p, '종류'), period: gR(p, '기간'), file: gR(p, '파일') }),
+    props: { 제목: 'title', 종류: 'select', 기간: 'rich_text', 판: 'number', 파일: 'rich_text', 쪽: 'rich_text', 올린날: 'date' },
+    to: (x) => ({ 제목: T(x.title), 종류: S(x.kind), 기간: R(x.period), 판: N(x.rev || 1), 파일: R(x.file), 쪽: R(JSON.stringify({ pages: x.pages || [], src: x.src || '', textFile: x.textFile || '' })), 올린날: D(x.uploaded) }),
+    from: (p) => ({ title: gT(p, '제목'), kind: gS(p, '종류'), period: gR(p, '기간'), rev: gN(p, '판') || 1, file: gR(p, '파일'), uploaded: gDay(p, '올린날'), ...parseJSON(gR(p, '쪽'), {}) }),
   },
   trips: {
     name: '출장',

@@ -185,10 +185,13 @@ export function serialize(year, input) {
 
   // 학사일정 자료 (연간·월중·주간 이미지/PDF 목록)
   if (data.docs.length) {
-    const kinds = { annual: '연간', monthly: '월중', weekly: '주간' };
-    const dc = [...data.docs].sort((a, b) => (a.kind + (a.period || '')).localeCompare(b.kind + (b.period || '')));
-    files.set(`${dir}/${FILES.docs}`, [header('학사일정 자료'), '> 파일은 같은 폴더의 "학사일정자료" 폴더에 있습니다.', '',
-      ...dc.map((d) => `- [${kinds[d.kind] || d.kind}] ${d.period || '-'} · ${oneLine(d.title) || '-'} · ${d.file}`), ''].join('\n'));
+    const kinds = { annual: '연간', monthly: '월중', weekly: '주간', contacts: '연락처' };
+    const dc = [...data.docs].sort((a, b) => (a.kind + (a.period || '') + a.title + String(a.rev || 1).padStart(3, '0')).localeCompare(b.kind + (b.period || '') + b.title + String(b.rev || 1).padStart(3, '0')));
+    files.set(`${dir}/${FILES.docs}`, [header('학사일정 · 연락처 자료'), '> 파일은 같은 폴더의 "학사일정자료", "연락처자료" 폴더에 있습니다. 같은 제목의 문서는 판(개정판)으로 묶입니다.', '',
+      ...dc.map((d) => {
+        const extra = [d.uploaded ? `올림 ${d.uploaded}` : '', d.src ? `형식 ${d.src}` : '', d.pages?.length ? `쪽 ${d.pages.join(', ')}` : '', d.textFile ? `본문 ${d.textFile}` : ''].filter(Boolean);
+        return `- [${kinds[d.kind] || d.kind}] ${d.period || '-'} · ${oneLine(d.title) || '-'} · ${d.rev || 1}판 · ${d.file}${extra.length ? ` · ${extra.join(' · ')}` : ''}`;
+      }), ''].join('\n'));
   }
 
   // 일지 (하루 한 파일)
@@ -263,10 +266,24 @@ export function parse(year, files, makeId) {
   // 학사일정 자료
   const dcs = get(FILES.docs);
   if (dcs != null) {
-    const kinds = { 연간: 'annual', 월중: 'monthly', 주간: 'weekly' };
+    const kinds = { 연간: 'annual', 월중: 'monthly', 주간: 'weekly', 연락처: 'contacts' };
     for (const line of dcs.split('\n')) {
-      const m = line.match(/^\s*[-*]\s*\[(연간|월중|주간)\]\s*(\S+)\s*·\s*(.*?)\s*·\s*(.+?)\s*$/);
-      if (m) data.docs.push({ id: makeId(), kind: kinds[m[1]], period: m[2] === '-' ? '' : m[2], title: undash(m[3]), file: m[4] });
+      const m = line.match(/^\s*[-*]\s*\[(연간|월중|주간|연락처)\]\s*(\S+)\s*·\s*(.+)$/);
+      if (!m) continue;
+      const parts = m[3].split(/\s*·\s*/);
+      const title = undash(parts.shift() || '');
+      let rev = 1;
+      if (/^\d+판$/.test(parts[0] || '')) rev = parseInt(parts.shift(), 10);
+      const file = (parts.shift() || '').trim();
+      const d = { id: makeId(), kind: kinds[m[1]], period: m[2] === '-' ? '' : m[2], title, file, rev };
+      for (const p of parts) {
+        let mm;
+        if ((mm = p.match(/^올림\s+(\S+)/))) d.uploaded = mm[1];
+        else if ((mm = p.match(/^형식\s+(\S+)/))) d.src = mm[1];
+        else if ((mm = p.match(/^쪽\s+(.+)$/))) d.pages = mm[1].split(/\s*,\s*/).filter(Boolean);
+        else if ((mm = p.match(/^본문\s+(.+)$/))) d.textFile = mm[1].trim();
+      }
+      if (file) data.docs.push(d);
     }
   }
 

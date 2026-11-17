@@ -36,14 +36,15 @@ const PRANK = { A: 0, B: 1, C: 2, Z: 3 };
 
 /**
  * auto: 중요도(A→B→C→언젠가) → 마감일 빠른 순(없으면 뒤) → 작성 순, 그 날 완료한 일은 아래로
- * manual: 사용자가 정한 순서(order), 없으면 작성 순
+ * manual: 중요도 → 사용자가 정한 순서(order) → 작성 순
  */
 export function sortTasks(list, mode = 'auto', date = null) {
   const by = (a, b) => (a.created + a.id).localeCompare(b.created + b.id);
-  if (mode === 'manual') return [...list].sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || by(a, b));
   const done = (t) => (date && t.doneDate && t.doneDate <= date ? 1 : 0);
-  return [...list].sort((a, b) => done(a) - done(b) || PRANK[priorityOf(a)] - PRANK[priorityOf(b)]
-    || (a.due || '9999').localeCompare(b.due || '9999') || by(a, b));
+  const prio = (a, b) => PRANK[priorityOf(a)] - PRANK[priorityOf(b)];
+  // 항상 중요도로 먼저 묶는다. 그 안에서 manual 은 직접 정한 순서, auto 는 마감일 순
+  if (mode === 'manual') return [...list].sort((a, b) => done(a) - done(b) || prio(a, b) || (a.order ?? 1e9) - (b.order ?? 1e9) || by(a, b));
+  return [...list].sort((a, b) => done(a) - done(b) || prio(a, b) || (a.due || '9999').localeCompare(b.due || '9999') || by(a, b));
 }
 
 /** D-day 표시: 마감일 - 기준일 */

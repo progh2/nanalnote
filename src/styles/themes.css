@@ -41,7 +41,7 @@
   --radius: 4px; --shadow: 0 3px 0 #3d2a1c; --card-shadow: inset 0 0 0 1px #ffffff10;
   color-scheme: dark;
 }
-[data-theme='chalk'] body { font-size: 16px; }
+[data-theme='chalk'] body { font-size: calc(16px * var(--fs, 1)); }
 
 [data-theme='paper'] {
   --bg: #efe6d4; --surface: #fffaf0; --surface-2: #fbf3e2; --text: #3d3326; --muted: #8a7a62;
@@ -85,5 +85,5 @@
   --warn: #9a4a00; --ok: #006400; --danger: #c00000;
   --radius: 2px; --shadow: none; --card-shadow: none;
 }
-[data-theme='contrast'] body { font-size: 17px; }
+[data-theme='contrast'] body { font-size: calc(17px * var(--fs, 1)); }
 [data-theme='contrast'] .card { border-width: 2px; }

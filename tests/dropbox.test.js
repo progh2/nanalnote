@@ -22,10 +22,10 @@ const sample = {
     timetable: { 1: [{ subject: '정보', cls: '1-2', room: '컴퓨터실' }, '수학', '', '', '', '', '', '', '', '', '자습'], 2: ['', '사회'], 3: [], 4: [], 5: ['체육'] },
     bell: { arrival: '08:20', periodCount: 7, times: [{ start: '08:40', end: '09:30' }, { start: '09:40', end: '10:30' }], lunch: { start: '12:20', end: '13:10', after: 4 },
       dinner: { enabled: true, start: '17:20', end: '18:10' }, evening: [{ label: '야자1', start: '18:20', end: '19:40' }, { label: '방과후2', start: '', end: '' }],
-      lessonLen: 50, breakLen: 10, csat: { enabled: true, lunch: { start: '11:30', end: '12:20' }, p4: { start: '12:20', end: '13:10' } } },
+      lessonLen: 50, breakLen: 10, csat: { lunch: { start: '11:30', end: '12:20' }, p4: { start: '12:20', end: '13:10' } } },
     courses: ['정보', { name: '인공지능 기초', short: 'AI' }], rooms: ['컴퓨터실'], classes: ['1-2'], homerooms: { '1-2': { main: '김담임', sub: '박부담' } } } }],
   students: [{ id: 'b', uid: 'U1', studentNo: '10201', grade: 1, cls: 2, no: 1, name: '이몽룡', photo: '10201_이몽룡.jpg', gender: '남', email: 'a@b.kr', phone: '010-1234-5678' }, { id: 'c', uid: 'U2', studentNo: '10202', grade: 1, cls: 2, no: 2, name: '성춘향', photo: '' }],
-  schedule: [{ id: 'd', date: '2026-03-02', text: '입학식\n시업식' }, { id: 'd2', date: '2026-05-04', text: '재량휴업일', holiday: true }],
+  schedule: [{ id: 'd', date: '2026-03-02', text: '입학식\n시업식' }, { id: 'd2', date: '2026-05-04', text: '재량휴업일', holiday: true }, { id: 'd3', date: '2026-11-05', text: '', csat: true }],
   days: [{ id: 'e', date: '2026-03-02', updatedAt: '2026-03-02T07:00:00.000Z' }],
   lessons: [{ id: 'f', date: '2026-03-02', period: 1, subject: '정보', cls: '1-2', room: '컴퓨터실', content: '받아쓰기\n# 제목처럼 보이는 줄\n- 목록' }, { id: 'g', date: '2026-03-02', period: 3, subject: '', cls: '', room: '', content: '' }, { id: 'g3', date: '2026-03-02', period: 4, subject: '', cls: '2-1', room: '', content: '' }, { id: 'g2', date: '2026-03-02', period: 11, subject: '자습', cls: '', room: '', content: '수학 질문 받음' }],
   tasks: [{ id: 'h', text: '가정통신문 (2장)', created: '2026-03-02', doneDate: '2026-03-04', due: '2026-03-06' }, { id: 'i', text: '회의', created: '2026-03-03', doneDate: null }],
@@ -49,6 +49,7 @@ test('마크다운 왕복 변환이 손실 없이 동일', () => {
   assert.deepEqual(got, exp);
   assert.ok(files.get('/2026학년도/학생명단.md').includes('| 10201 | 1 | 2 | 1 | 이몽룡 | 남 | a@b.kr | 010-1234-5678 | 10201_이몽룡.jpg | U1 |'));
   assert.ok(files.get('/2026학년도/학사일정.md').includes('- 2026-05-04: [휴업] 재량휴업일'));
+  assert.ok(files.get('/2026학년도/학사일정.md').includes('- 2026-11-05: [수능대비]\n'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('- 10202 성춘향 · 지각'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('- [3·4교시 인공지능 기초 1-2] 10201 이몽룡 · 결석 · 질병 · 독감A형'));
   assert.ok(files.get('/2026학년도/업무일지.md').includes('(작성 2026-03-02, 마감 2026-03-06, 완료 2026-03-04)'));

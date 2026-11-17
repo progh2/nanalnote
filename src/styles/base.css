@@ -334,3 +334,6 @@ ol.small { font-size: 13px; color: var(--muted); padding-left: 1.3em; }
 .red { color: var(--holiday); }
 @media (max-width: 900px) { .doc-layout { grid-template-columns: 1fr; } .doc-side { width: auto; } }
 @media print { #notes { display: none; } }
+
+.csat-on { color: #b45309; font-weight: 700; }
+.csat-cal { font-size: 11px; font-weight: 700; color: #b45309; }

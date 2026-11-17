@@ -48,7 +48,7 @@ function dayBlocks(store, date, specials, { mode = 'single', includeIncomplete =
   const sched = store.scheduleText(date);
   const sp = specials.map((x) => x.name + (x.holiday ? '(휴일)' : '')).join(', ');
   out.push(heading('학사일정'));
-  out.push(multiline([store.isSchoolHoliday(date) ? '[학교 휴업일]' : '', sched, sp && `특일: ${sp}`].filter(Boolean).join('\n') || '-'));
+  out.push(multiline([store.isSchoolHoliday(date) ? '[학교 휴업일]' : '', store.isCsat(date) ? '[수능대비 시간표]' : '', sched, sp && `특일: ${sp}`].filter(Boolean).join('\n') || '-'));
 
   const lessons = store.lessonsFor(date, weekdayOf(date));
   out.push(heading('수업일지'));
@@ -57,7 +57,7 @@ function dayBlocks(store, date, specials, { mode = 'single', includeIncomplete =
   const cols = (l) => (sec ? [l?.subject || '', l?.cls || '', l?.room || ''] : [l?.subject || '']);
   const rows = [];
   const used = new Set();
-  for (const r of dayRows(s)) {
+  for (const r of dayRows(s, store.bellOpts(date))) {
     if (r.p == null) { rows.push([r.label, fmtRange(r), ...cols(null), '']); continue; }
     const l = lessons.find((x) => x.period === r.p);
     used.add(r.p);

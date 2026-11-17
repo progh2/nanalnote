@@ -53,8 +53,10 @@ export function renderNotebook(app) {
     h('datalist#class-list', uniq([...store.classList(), ...cells.map((c) => c.cls)]).map((x) => h('option', { value: x }))),
     h('datalist#room-list', uniq([...(s.rooms || []), ...cells.map((c) => c.room)]).map((x) => h('option', { value: x }))));
   const lessons = store.lessonsFor(date, wd);
-  const hasTimes = dayRows(s).some((r) => r.start || r.end);
-  const nowRow = date === today() ? currentRow(dayRows(s), nowHM()) : null;
+  const bopts = store.bellOpts(date);
+  const rowsOfDay = dayRows(s, bopts);
+  const hasTimes = rowsOfDay.some((r) => r.start || r.end);
+  const nowRow = date === today() ? currentRow(rowsOfDay, nowHM()) : null;
   // 이 교시에 기록된 결석·지각 등 (수업별 출결)
   const absentBadge = (p) => {
     const n = store.work.attendance.filter((a) => a.date === date && (a.periods || []).includes(p)).length;
@@ -91,7 +93,7 @@ export function renderNotebook(app) {
   // 시정표 순서(등교 → 교시 → 점심 → … → 저녁 → 방과후)대로, 식사·등교는 안내 줄로 표시
   const used = new Set();
   const trs = [];
-  for (const r of dayRows(s)) {
+  for (const r of rowsOfDay) {
     if (r.p == null) {
       trs.push(h(`tr.bell-row.${r.kind}${nowRow === r ? '.now' : ''}`,
         h('td.center.plabel', { colspan: hasTimes ? 1 : 2 }, { arrival: '🏫 ', lunch: '🍚 ', dinner: '🍱 ' }[r.kind] + r.label),
@@ -105,7 +107,10 @@ export function renderNotebook(app) {
   }
   for (const l of lessons) if (!used.has(l.period)) trs.push(lessonTr(l, null));
   const lessonCard = card('수업일지',
-    h('span.muted.small', store.bell.csat.enabled ? h('span.badge', '수능대비 시간표 ') : null, ' ', isHol ? '휴업일' : nowRow ? `지금: ${nowRow.label} ${fmtRange(nowRow)}` : wd === 0 || wd === 6 ? '주말' : ''),
+    h('div.row', { style: { margin: 0 } },
+      h('span.muted.small', isHol ? '휴업일' : nowRow ? `지금: ${nowRow.label} ${fmtRange(nowRow)}` : wd === 0 || wd === 6 ? '주말' : ''),
+      h(`label.check.small${bopts.csat ? '.csat-on' : ''}`, { title: '이 날만 점심을 3교시 다음으로 (시각은 설정 > 일과 시간)' },
+        h('input', { type: 'checkbox', checked: bopts.csat, onchange: (e) => { store.setCsat(date, e.target.checked); app.render(); } }), ' 수능대비 시간표')),
     dl,
     h('table.grid.lessons',
       h('thead', h('tr', h('th', { style: { width: '4.8em' } }, '교시'), hasTimes ? h('th', { style: { width: '7.5em' } }, '시간') : null, h('th', { style: { width: sec ? '10em' : '8em' } }, subjLabel),

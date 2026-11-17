@@ -127,7 +127,7 @@ export function serialize(year, input) {
       `- 점심: ${b.lunch.after ? `${fmtRange(b.lunch) || '-'} (${b.lunch.after}교시 다음)` : '없음'}`,
       `- 저녁: ${b.dinner.enabled ? fmtRange(b.dinner) || '-' : '없음'}`,
       `- 수업 시간: ${b.lessonLen}분, 쉬는 시간: ${b.breakLen}분`,
-      `- 수능대비 시간표: ${b.csat.enabled ? '사용' : '사용 안 함'} (점심 ${fmtRange(b.csat.lunch) || '-'}, 4교시 ${fmtRange(b.csat.p4) || '-'})`,
+      `- 수능대비 시간표: 날짜별 (점심 ${fmtRange(b.csat.lunch) || '-'}, 4교시 ${fmtRange(b.csat.p4) || '-'})`,
       '', '## 기본 시간표', '',
       '> 시간표의 "방과후" 줄은 저녁 방과후·자율학습입니다. 이름을 바꿔도 됩니다. 중·고등학교 칸은 "수업명 / 학반 / 교실" 입니다.', '',
       table(['교시', '시간', '월', '화', '수', '목', '금'], rows),
@@ -148,7 +148,7 @@ export function serialize(year, input) {
   // 학사일정
   if (data.schedule.length) {
     const sc = [...data.schedule].sort((a, b) => a.date.localeCompare(b.date));
-    files.set(`${dir}/${FILES.schedule}`, [header('학사일정'), ...sc.map((x) => `- ${x.date}: ${x.holiday ? '[휴업] ' : ''}${oneLine(x.text)}`), ''].join('\n'));
+    files.set(`${dir}/${FILES.schedule}`, [header('학사일정'), ...sc.map((x) => `- ${x.date}: ${x.holiday ? '[휴업] ' : ''}${x.csat ? '[수능대비] ' : ''}${oneLine(x.text)}`.trimEnd()), ''].join('\n'));
   }
 
   // 업무일지
@@ -286,8 +286,8 @@ export function parse(year, files, makeId) {
         bellRaw.lunch = /없음/.test(m[1]) ? { start: '', end: '', after: 0 } : { ...range(m[1]), after: after ? +after[1] : 4 };
       } else if ((m = line.match(/^-\s*저녁\s*:\s*(.*)$/))) bellRaw.dinner = /없음/.test(m[1]) ? { enabled: false } : { enabled: true, ...range(m[1]) };
       else if ((m = line.match(/^-\s*수업 시간\s*:\s*(\d+)\s*분(?:\s*,\s*쉬는 시간\s*:\s*(\d+)\s*분)?/))) { bellRaw.lessonLen = +m[1]; if (m[2]) bellRaw.breakLen = +m[2]; }
-      else if ((m = line.match(/^-\s*수능대비 시간표\s*:\s*(사용 안 함|사용)\s*(?:\(점심\s*([^,]*),\s*4교시\s*([^)]*)\))?/))) {
-        bellRaw.csat = { enabled: m[1] === '사용', lunch: range(m[2]), p4: range(m[3]) };
+      else if ((m = line.match(/^-\s*수능대비 시간표\s*:\s*[^(]*(?:\(점심\s*([^,]*),\s*4교시\s*([^)]*)\))?/))) {
+        bellRaw.csat = { lunch: range(m[1]), p4: range(m[2]) };
       }
     }
     const tsec = sections(st).find((x) => x.title === '기본 시간표');
@@ -341,9 +341,13 @@ export function parse(year, files, makeId) {
     for (const line of sch.split('\n')) {
       const m = line.match(/^\s*[-*]\s*(\d{4}-\d{2}-\d{2})\s*[:：]?\s*(.*)$/);
       if (!m || !m[2].trim()) continue;
-      const hol = m[2].match(/^\[휴업\]\s*(.*)$/);
-      const item = { id: makeId(), date: m[1], text: fromOneLine((hol ? hol[1] : m[2]).trim()) };
-      if (hol) item.holiday = true;
+      let rest = m[2].trim();
+      const flags = {};
+      let fm;
+      while ((fm = rest.match(/^\[(휴업|수능대비)\]\s*/))) { flags[fm[1]] = true; rest = rest.slice(fm[0].length); }
+      const item = { id: makeId(), date: m[1], text: fromOneLine(rest.trim()) };
+      if (flags['휴업']) item.holiday = true;
+      if (flags['수능대비']) item.csat = true;
       data.schedule.push(item);
     }
   }

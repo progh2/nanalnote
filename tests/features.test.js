@@ -78,10 +78,16 @@ test('시정표: 50분 자동 채우기, 수능대비 점심 3교시 다음', ()
   b.times[4] = { start: '13:10' }; cascadeFrom(b, 5);
   assert.equal(b.lunch.end, '13:10');
   assert.deepEqual(b.times.slice(4).map((t) => `${t.start}-${t.end}`), ['13:10-14:00', '14:10-15:00', '15:10-16:00']);
-  b.csat = { enabled: true, lunch: { start: '11:20', end: '12:10' }, p4: { start: '12:10', end: '13:00' } };
-  const rows = dayRows({ schoolLevel: 'secondary', bell: b });
+  // 수능대비 시간표는 그 날에만 (opts.csat)
+  const normal = dayRows({ schoolLevel: 'secondary', bell: b });
+  assert.deepEqual(normal.slice(0, 6).map((r) => r.label), ['1교시', '2교시', '3교시', '4교시', '점심', '5교시']);
+  // 시각을 비워 두면 3교시 끝 기준 자동: 점심 11:20~12:10(평소 점심 50분), 4교시 12:10~13:00
+  let rows = dayRows({ schoolLevel: 'secondary', bell: b }, { csat: true });
   assert.deepEqual(rows.slice(0, 6).map((r) => r.label), ['1교시', '2교시', '3교시', '점심', '4교시', '5교시']);
-  assert.equal(rows[4].start, '12:10');
+  assert.deepEqual([rows[3].start, rows[3].end, rows[4].start, rows[4].end], ['11:20', '12:10', '12:10', '13:00']);
+  b.csat = { lunch: { start: '11:30', end: '12:20' }, p4: { start: '12:20', end: '13:10' } };
+  rows = dayRows({ schoolLevel: 'secondary', bell: b }, { csat: true });
+  assert.equal(rows[4].start, '12:20');
 });
 
 test('조사 붙은 이름 인식, 검색, D-day, 축약 수업명', () => {
@@ -96,4 +102,18 @@ test('조사 붙은 이름 인식, 검색, D-day, 축약 수업명', () => {
   assert.equal(dday('2026-11-15', '2026-11-17').label, 'D+2');
   assert.equal(courseShort({ courses: [{ name: '인공지능 기초', short: 'AI기초' }, '정보'] }, '인공지능 기초'), 'AI기초');
   assert.equal(courseShort({ courses: ['정보'] }, '정보'), '정보');
+});
+
+test('수능대비 시간표: 날짜별 표시 저장·복원', async () => {
+  const s = new Store(new LocalBackend());
+  await s.load(2031);
+  s.setCsat('2031-11-05', true);
+  await s.save();
+  const s2 = new Store(new LocalBackend());
+  await s2.load(2031);
+  assert.equal(s2.isCsat('2031-11-05'), true);
+  assert.equal(s2.isCsat('2031-11-06'), false);
+  s2.setCsat('2031-11-05', false);
+  await s2.save();
+  assert.equal(s2.base.schedule.length, 0); // 일정 글도 표시도 없으면 지움
 });

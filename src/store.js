@@ -125,6 +125,17 @@ export class Store {
   // ----- 휴업일 -----
   scheduleItem(date) { return this.work.schedule.find((x) => x.date === date); }
   isSchoolHoliday(date) { return !!this.scheduleItem(date)?.holiday; }
+  /** 수능대비 시간표를 쓰는 날 (학사일정에 표시) */
+  isCsat(date) { return !!this.scheduleItem(date)?.csat; }
+  setCsat(date, on) {
+    let s = this.scheduleItem(date);
+    if (!s) { s = { id: newId(), date, text: '' }; this.work.schedule.push(s); }
+    if (on) s.csat = true; else delete s.csat;
+    this.markDirty();
+  }
+  /** 그 날의 시정표 옵션 */
+  bellOpts(date) { return { csat: this.isCsat(date) }; }
+
   setSchoolHoliday(date, on) {
     let s = this.scheduleItem(date);
     if (!s) { s = { id: newId(), date, text: '' }; this.work.schedule.push(s); }
@@ -244,7 +255,7 @@ export class Store {
       case 'students': return !!(x.name || '').trim();
       case 'attendance': return !!x.student;
       case 'records': return !!(x.title || '').trim();
-      case 'schedule': return !!((x.text || '').trim() || x.holiday);
+      case 'schedule': return !!((x.text || '').trim() || x.holiday || x.csat);
       case 'trips': return !!((x.place || '').trim() || (x.purpose || '').trim() || (x.time || '').trim());
       case 'notes': return !!(x.text || '').trim() || !x.temp;
       case 'lessons': {

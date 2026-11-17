@@ -8,7 +8,7 @@
 //   dinner: { enabled, start, end },        저녁 식사 (고등학교 등)
 //   evening: [{ label, start, end }, ...],  저녁 방과후/자율학습 (수업일지 교시 번호 11, 12, ...)
 //   lessonLen: 50, breakLen: 10,            수업·쉬는 시간(분) — 시작 시각만 넣으면 끝·다음 교시 자동 계산
-//   csat: { enabled, lunch: {start,end}, p4: {start,end} }   수능대비 시간표: 점심을 3교시 다음으로
+//   csat: { lunch: {start,end}, p4: {start,end} }   수능대비 시간표 시각 (적용 여부는 날짜별: 학사일정의 csat 표시)
 // }
 
 export const EVENING_BASE = 10; // 저녁 방과후 i번째(0부터) = 교시 번호 11+i
@@ -24,7 +24,7 @@ export function defaultBell(level = 'elem') {
     evening: [],
     lessonLen: level === 'secondary' ? 50 : 40,
     breakLen: 10,
-    csat: { enabled: false, lunch: { start: '', end: '' }, p4: { start: '', end: '' } },
+    csat: { lunch: { start: '', end: '' }, p4: { start: '', end: '' } },
   };
 }
 
@@ -42,20 +42,33 @@ export function rawBell(settings) {
     lessonLen: clampInt(b.lessonLen, 10, 180, d.lessonLen),
     breakLen: clampInt(b.breakLen, 0, 60, d.breakLen),
     csat: {
-      enabled: !!b.csat?.enabled,
       lunch: { start: b.csat?.lunch?.start || '', end: b.csat?.lunch?.end || '' },
       p4: { start: b.csat?.p4?.start || '', end: b.csat?.p4?.end || '' },
     },
   };
 }
 
-/** 실제로 쓰는 시정표 (수능대비 시간표가 켜져 있으면 점심을 3교시 다음으로, 4교시 시각 교체) */
-export function bellOf(settings) {
+/** 수능대비 시간표 시각: 설정값, 비어 있으면 3교시 끝 → 점심(평소 점심 길이) → 4교시(수업 길이)로 계산 */
+export function csatTimes(b) {
+  const lunchLen = b.lunch.start && b.lunch.end ? Math.max(20, toMin(b.lunch.end) - toMin(b.lunch.start)) : 50;
+  const p3end = b.times[2]?.end || '';
+  const lunch = { start: b.csat.lunch.start || p3end, end: b.csat.lunch.end || (b.csat.lunch.start || p3end ? addMin(b.csat.lunch.start || p3end, lunchLen) : '') };
+  const p4 = { start: b.csat.p4.start || lunch.end, end: b.csat.p4.end || (b.csat.p4.start || lunch.end ? addMin(b.csat.p4.start || lunch.end, b.lessonLen) : '') };
+  return { lunch, p4 };
+}
+
+/**
+ * 실제로 쓰는 시정표.
+ * @param opts.csat 그 날이 수능대비 시간표인 날이면 true → 점심을 3교시 다음으로, 4교시 시각 교체
+ */
+export function bellOf(settings, { csat = false } = {}) {
   const b = rawBell(settings);
-  if (b.csat.enabled) {
-    b.lunch = { ...b.lunch, ...pick(b.csat.lunch), after: 3 };
+  if (csat) {
+    const t = csatTimes(b);
+    b.lunch = { ...t.lunch, after: 3 };
     b.times = [...b.times];
-    if (b.csat.p4.start || b.csat.p4.end) b.times[3] = { ...b.csat.p4 };
+    b.times[3] = { ...t.p4 };
+    b.csatDay = true;
   }
   return b;
 }
@@ -90,8 +103,8 @@ function clampInt(v, lo, hi, dflt) {
 }
 
 /** 수업일지에 쓰는 교시 목록: 정규 1..N + 저녁 방과후 */
-export function periodList(settings) {
-  const b = bellOf(settings);
+export function periodList(settings, opts = {}) {
+  const b = bellOf(settings, opts);
   const out = [];
   for (let p = 1; p <= b.periodCount; p++) out.push({ p, label: `${p}교시`, start: b.times[p - 1]?.start || '', end: b.times[p - 1]?.end || '', kind: 'period' });
   b.evening.forEach((e, i) => out.push({ p: EVENING_BASE + 1 + i, label: e.label, start: e.start, end: e.end, kind: 'evening' }));
@@ -116,9 +129,9 @@ export function parsePeriodLabel(settings, label) {
 }
 
 /** 하루 일과 행: 등교 → 교시들(점심 끼워 넣기) → 저녁 식사 → 저녁 방과후 */
-export function dayRows(settings) {
-  const b = bellOf(settings);
-  const periods = periodList(settings);
+export function dayRows(settings, opts = {}) {
+  const b = bellOf(settings, opts);
+  const periods = periodList(settings, opts);
   const rows = [];
   if (b.arrival) rows.push({ kind: 'arrival', label: '등교', start: b.arrival, end: '' });
   const lunchRow = { kind: 'lunch', label: '점심', start: b.lunch.start, end: b.lunch.end };

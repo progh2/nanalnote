@@ -337,3 +337,16 @@ ol.small { font-size: 13px; color: var(--muted); padding-left: 1.3em; }
 
 .csat-on { color: #b45309; font-weight: 700; }
 .csat-cal { font-size: 11px; font-weight: 700; color: #b45309; }
+
+/* 업무 중요도·순서 */
+.task-tools { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.task-tools select { width: auto; font-size: 13px; padding: 3px 6px; }
+.prio { flex: none; min-width: 2.2em; padding: 1px 6px; font-size: 12px; font-weight: 800; border-radius: 6px; border: 1px solid transparent; }
+.prio.p-A { background: #fee2e2; color: #b91c1c; }
+.prio.p-B { background: #fef3c7; color: #b45309; }
+.prio.p-C { background: #dbeafe; color: #1d4ed8; }
+.prio.p-Z { background: var(--chip-bg); color: var(--muted); font-weight: 600; }
+.prio.ghost-prio { opacity: .35; }
+.drag-handle { flex: none; cursor: grab; color: var(--muted); letter-spacing: -3px; padding: 0 2px; user-select: none; }
+.drag-handle.blank { visibility: hidden; }
+.task-row.dragging { opacity: .45; }

@@ -72,7 +72,7 @@ function dayBlocks(store, date, specials, { mode = 'single', includeIncomplete =
   if (mode === 'range') tasks = tasks.filter((t) => t.doneDate === date || (includeIncomplete && !t.doneDate) || (includeIncomplete && t.doneDate > date));
   out.push(heading('업무일지'));
   if (!tasks.length) out.push(p('-'));
-  for (const t of tasks) out.push(p(`${t.doneDate === date ? '☑' : '☐'} ${t.text}${t.due ? ` (마감 ${t.due})` : ''}`));
+  for (const t of tasks) out.push(p(`${t.doneDate === date ? '☑' : '☐'} [${{ A: 'A', B: 'B', C: 'C', Z: '언젠가' }[t.priority] || 'B'}] ${t.text}${t.due ? ` (마감 ${t.due})` : ''}`));
 
   const att = store.work.attendance.filter((a) => a.date === date);
   out.push(heading('학생출결상황'));

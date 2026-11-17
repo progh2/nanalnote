@@ -17,6 +17,7 @@ export const DEFAULT_SETTINGS = {
   rooms: [], // 교실·실습실 목록
   classes: [], // 담당 학반 목록 (예: 1-2)
   homerooms: {}, // 학반 -> { main: 담임, sub: 부담임 }
+  taskSort: 'auto', // 업무일지 정렬: auto(중요도·마감일) | manual(직접)
 };
 
 /** 수업명 목록 항목: "인공지능 기초" 또는 { name, short } */
@@ -25,6 +26,24 @@ export const courseOf = (c) => (c && typeof c === 'object' ? { name: c.name || '
 export function courseShort(settings, subject) {
   const c = (settings.courses || []).map(courseOf).find((x) => x.name === subject);
   return c?.short || subject || '';
+}
+
+// ---------- 업무 중요도·정렬 ----------
+export const PRIORITIES = [['A', 'A'], ['B', 'B'], ['C', 'C'], ['Z', '언젠가']];
+export const priorityOf = (t) => (PRIORITIES.some(([k]) => k === t?.priority) ? t.priority : 'B');
+export const priorityLabel = (p) => PRIORITIES.find(([k]) => k === p)?.[1] || 'B';
+const PRANK = { A: 0, B: 1, C: 2, Z: 3 };
+
+/**
+ * auto: 중요도(A→B→C→언젠가) → 마감일 빠른 순(없으면 뒤) → 작성 순, 그 날 완료한 일은 아래로
+ * manual: 사용자가 정한 순서(order), 없으면 작성 순
+ */
+export function sortTasks(list, mode = 'auto', date = null) {
+  const by = (a, b) => (a.created + a.id).localeCompare(b.created + b.id);
+  if (mode === 'manual') return [...list].sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || by(a, b));
+  const done = (t) => (date && t.doneDate && t.doneDate <= date ? 1 : 0);
+  return [...list].sort((a, b) => done(a) - done(b) || PRANK[priorityOf(a)] - PRANK[priorityOf(b)]
+    || (a.due || '9999').localeCompare(b.due || '9999') || by(a, b));
 }
 
 /** D-day 표시: 마감일 - 기준일 */
@@ -158,8 +177,20 @@ export class Store {
 
   /** 해당 날짜에 보일 업무일지: 작성일 <= 날짜 && (미완료 || 완료일 >= 날짜) */
   visibleTasks(date) {
-    return this.work.tasks.filter((t) => t.created <= date && (!t.doneDate || t.doneDate >= date))
-      .sort((a, b) => (a.created + a.id).localeCompare(b.created + b.id));
+    const list = this.work.tasks.filter((t) => t.created <= date && (!t.doneDate || t.doneDate >= date));
+    return sortTasks(list, this.settings.taskSort, date);
+  }
+
+  /** 업무일지 순서를 직접 정하기: 보이는 순서대로 order 를 다시 매긴다 (자동 정렬이면 직접 정하기로 전환) */
+  reorderTasks(orderedIds) {
+    if (this.settings.taskSort !== 'manual') this.updateSettings({ taskSort: 'manual' });
+    // 지금 안 보이는 업무까지 포함해 전체 순서를 유지: 보이는 것들의 자리에 새 순서를 넣는다
+    const all = sortTasks(this.work.tasks, 'manual', null);
+    const visible = new Set(orderedIds);
+    const queue = orderedIds.map((id) => this.work.tasks.find((t) => t.id === id)).filter(Boolean);
+    const merged = all.map((t) => (visible.has(t.id) ? queue.shift() : t));
+    merged.forEach((t, i) => { t.order = (i + 1) * 10; });
+    this.markDirty();
   }
 
   visibleRecords(date) {

@@ -11,7 +11,7 @@ globalThis.sessionStorage = { getItem: (k) => (smem.has(k) ? smem.get(k) : null)
 
 const vault = await import('../src/lib/vault.js');
 const ss = await import('../src/lib/securestore.js');
-const { Store, dday, courseShort } = await import('../src/store.js');
+const { Store, dday, courseShort, sortTasks } = await import('../src/store.js');
 const { LocalBackend } = await import('../src/backends/local.js');
 const { rawBell, cascadeFrom, dayRows } = await import('../src/lib/bell.js');
 const { mentionedUids, searchStudents } = await import('../src/lib/students.js');
@@ -116,4 +116,26 @@ test('수능대비 시간표: 날짜별 표시 저장·복원', async () => {
   s2.setCsat('2031-11-05', false);
   await s2.save();
   assert.equal(s2.base.schedule.length, 0); // 일정 글도 표시도 없으면 지움
+});
+
+test('업무 중요도 자동 정렬과 직접 순서', async () => {
+  const T = (id, priority, due, created = '2032-03-02') => ({ id, text: id, created, doneDate: null, ...(priority ? { priority } : {}), ...(due ? { due } : {}) });
+  const list = [T('later', 'Z'), T('c', 'C'), T('b-late', 'B', '2032-03-20'), T('a', 'A'), T('b-soon', 'B', '2032-03-05'), T('none')];
+  assert.deepEqual(sortTasks(list, 'auto', '2032-03-03').map((t) => t.id), ['a', 'b-soon', 'b-late', 'none', 'c', 'later']);
+  const done = { ...T('a-done', 'A'), doneDate: '2032-03-03' };
+  assert.equal(sortTasks([...list, done], 'auto', '2032-03-03').at(-1).id, 'a-done'); // 그날 완료한 일은 아래로
+
+  const s = new Store(new LocalBackend());
+  await s.load(2032);
+  s.work.tasks.push(...list.map((t) => ({ ...t })));
+  s.markDirty(); await s.save();
+  const auto = s.visibleTasks('2032-03-03').map((t) => t.id);
+  assert.equal(auto[0], 'a');
+  // 끌어서 'later' 를 맨 위로 → 직접 정하기로 전환
+  s.reorderTasks(['later', ...auto.filter((x) => x !== 'later')]);
+  assert.equal(s.settings.taskSort, 'manual');
+  await s.save();
+  const s2 = new Store(new LocalBackend());
+  await s2.load(2032);
+  assert.deepEqual(s2.visibleTasks('2032-03-03').map((t) => t.id), ['later', ...auto.filter((x) => x !== 'later')]);
 });

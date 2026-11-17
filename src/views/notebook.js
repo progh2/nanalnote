@@ -6,7 +6,7 @@ const nowHM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d
 import { splitParagraphs } from '../lib/counsel.js';
 import { tokenizeStudents, studentLabel } from '../lib/students.js';
 import { studentSelect, classSelect } from './ui.js';
-import { ATT_TYPES, ATT_REASONS, ttCell, courseShort, dday } from '../store.js';
+import { ATT_TYPES, ATT_REASONS, ttCell, courseShort, dday, PRIORITIES, priorityOf, priorityLabel } from '../store.js';
 import { exportDay } from '../lib/export.js';
 import { showStudentCounsel } from './students.js';
 
@@ -131,11 +131,13 @@ export function renderNotebook(app) {
         oninput: (e) => {
           if (!t) {
             // 빈 줄에 입력을 시작하면 그 줄이 새 업무가 되고, 아래에 새 빈 줄이 생긴다 (한글 조합이 끊기지 않도록 다시 그리지 않음)
-            t = { id: newId(), text: e.target.value, created: date, doneDate: null };
+            t = { id: newId(), text: e.target.value, created: date, doneDate: null, priority: 'B' };
+            if (store.settings.taskSort === 'manual') t.order = Math.max(0, ...store.work.tasks.map((x) => x.order || 0)) + 10;
             store.work.tasks.push(t);
             check.disabled = false;
             input.placeholder = '';
             drawDue();
+            activate();
             taskList.append(row(null));
           } else t.text = e.target.value;
           store.markDirty();
@@ -161,16 +163,59 @@ export function renderNotebook(app) {
         }, d ? d.label : '📅'));
       };
       drawDue();
-      const rowEl = h(`div.task-row${t?.doneDate === date ? '.done' : ''}`, check, input, dueWrap);
+      // 중요도 배지: 누를 때마다 A → B → C → 언젠가
+      const prio = h('button.prio', { title: '중요도 (눌러서 바꾸기)', onclick: () => {
+        if (!t) return;
+        const keys = PRIORITIES.map(([k]) => k);
+        t.priority = keys[(keys.indexOf(priorityOf(t)) + 1) % keys.length];
+        store.markDirty();
+        if (store.settings.taskSort === 'manual') paintPrio(); else drawTasks(); // 자동 정렬이면 바로 자리 이동
+      } });
+      const paintPrio = () => { const p = t ? priorityOf(t) : 'B'; prio.textContent = priorityLabel(p); prio.className = `prio p-${p}${t ? '' : ' ghost-prio'}`; };
+      paintPrio();
+      // 끌어서 순서 바꾸기 손잡이
+      const handle = h(`span.drag-handle${t ? '' : '.blank'}`, { title: '끌어서 순서 바꾸기', 'aria-hidden': 'true' }, '⋮⋮');
+      const rowEl = h(`div.task-row${t?.doneDate === date ? '.done' : ''}`, handle, prio, check, input, dueWrap);
+      // 업무가 생기면(처음부터 있거나, 빈 줄에 입력을 시작하면) 순서 바꾸기·중요도를 켠다
+      function activate() {
+        rowEl.dataset.id = t.id;
+        handle.classList.remove('blank');
+        paintPrio();
+      }
+      handle.addEventListener('pointerdown', () => { if (t) rowEl.draggable = true; });
+      rowEl.addEventListener('dragstart', (e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id); rowEl.classList.add('dragging'); });
+      rowEl.addEventListener('dragend', () => { rowEl.draggable = false; rowEl.classList.remove('dragging'); });
+      if (t) activate();
       return rowEl;
     };
+    const sortSel = h('select.task-sort', { 'aria-label': '업무 정렬', onchange: (e) => {
+      if (e.target.value === 'manual') store.reorderTasks(store.visibleTasks(date).map((x) => x.id));
+      else store.updateSettings({ taskSort: 'auto' });
+      drawTasks();
+    } }, h('option', { value: 'auto', selected: store.settings.taskSort !== 'manual' }, '자동 정렬 (중요도·마감일)'), h('option', { value: 'manual', selected: store.settings.taskSort === 'manual' }, '직접 정한 순서'));
     taskList.replaceChildren(
+      h('div.task-tools', sortSel, h('span.muted.small', '⋮⋮ 를 끌면 순서를 바꿀 수 있어요')),
       h('label.bulk', h('input', { type: 'checkbox', checked: allDone, onchange: (e) => {
         for (const t of store.visibleTasks(date)) t.doneDate = e.target.checked ? date : null;
         store.markDirty(); drawTasks();
       } }), ' 전체 완료'),
       ...tasks.map(row), row(null));
   };
+  // 끌어다 놓기: 놓은 위치 기준으로 순서를 다시 매긴다
+  taskList.addEventListener('dragover', (e) => {
+    const dragging = taskList.querySelector('.task-row.dragging');
+    if (!dragging) return;
+    e.preventDefault();
+    const rows = [...taskList.querySelectorAll('.task-row[data-id]:not(.dragging)')];
+    const after = rows.find((r) => e.clientY < r.getBoundingClientRect().top + r.offsetHeight / 2);
+    if (after) taskList.insertBefore(dragging, after);
+    else rows.at(-1)?.after(dragging);
+  });
+  taskList.addEventListener('drop', (e) => {
+    e.preventDefault();
+    store.reorderTasks([...taskList.querySelectorAll('.task-row[data-id]')].map((r) => r.dataset.id));
+    drawTasks();
+  });
   drawTasks();
   const taskCard = card('업무일지', h('span.muted.small', '완료한 일은 다음 날부터 보이지 않아요'), taskList);
 

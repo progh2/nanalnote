@@ -28,7 +28,7 @@ const sample = {
   schedule: [{ id: 'd', date: '2026-03-02', text: '입학식\n시업식' }, { id: 'd2', date: '2026-05-04', text: '재량휴업일', holiday: true }, { id: 'd3', date: '2026-11-05', text: '', csat: true }],
   days: [{ id: 'e', date: '2026-03-02', updatedAt: '2026-03-02T07:00:00.000Z' }],
   lessons: [{ id: 'f', date: '2026-03-02', period: 1, subject: '정보', cls: '1-2', room: '컴퓨터실', content: '받아쓰기\n# 제목처럼 보이는 줄\n- 목록' }, { id: 'g', date: '2026-03-02', period: 3, subject: '', cls: '', room: '', content: '' }, { id: 'g3', date: '2026-03-02', period: 4, subject: '', cls: '2-1', room: '', content: '' }, { id: 'g2', date: '2026-03-02', period: 11, subject: '자습', cls: '', room: '', content: '수학 질문 받음' }],
-  tasks: [{ id: 'h', text: '가정통신문 (2장)', created: '2026-03-02', doneDate: '2026-03-04', due: '2026-03-06' }, { id: 'i', text: '회의', created: '2026-03-03', doneDate: null }],
+  tasks: [{ id: 'h', text: '가정통신문 (2장)', created: '2026-03-02', doneDate: '2026-03-04', due: '2026-03-06', priority: 'A', order: 10 }, { id: 'i', text: '회의', created: '2026-03-03', doneDate: null }],
   attendance: [{ id: 'j', date: '2026-03-02', student: 'U2', type: '지각', reason: '질병', note: '병원 · 진료' },
     { id: 'j2', date: '2026-03-02', student: 'U1', type: '결석', reason: '질병', note: '독감A형', periods: [3, 4], subject: '인공지능 기초', cls: '1-2' }],
   counsel: [{ id: 'k', date: '2026-03-02', order: 0, text: '10201 이몽룡 울었다.\n달래줌', students: ['U1'] }, { id: 'l', date: '2026-03-02', order: 1, text: '## 성춘향 지각', students: [] }],
@@ -52,7 +52,7 @@ test('마크다운 왕복 변환이 손실 없이 동일', () => {
   assert.ok(files.get('/2026학년도/학사일정.md').includes('- 2026-11-05: [수능대비]\n'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('- 10202 성춘향 · 지각'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('- [3·4교시 인공지능 기초 1-2] 10201 이몽룡 · 결석 · 질병 · 독감A형'));
-  assert.ok(files.get('/2026학년도/업무일지.md').includes('(작성 2026-03-02, 마감 2026-03-06, 완료 2026-03-04)'));
+  assert.ok(files.get('/2026학년도/업무일지.md').includes('- [x] (A) 가정통신문 (2장) (작성 2026-03-02, 마감 2026-03-06, 완료 2026-03-04, 순서 10)'));
   assert.ok(files.get('/2026학년도/설정.md').includes('- 인공지능 기초 | AI'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('### 4교시 · - · 2-1'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('## 출장\n\n- 13:00~17:00 · 교육청 · 정보교육 연수 · 1일차'));

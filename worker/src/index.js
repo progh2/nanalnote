@@ -75,9 +75,13 @@ const SCHEMAS = {
   },
   tasks: {
     name: '업무일지',
-    props: { 내용: 'title', 작성일: 'date', 마감일: 'date', 완료일: 'date', 완료: 'checkbox' },
-    to: (x) => ({ 내용: T(x.text), 작성일: D(x.created), 마감일: D(x.due), 완료일: D(x.doneDate), 완료: CB(x.doneDate) }),
-    from: (p) => ({ text: gT(p, '내용'), created: gDay(p, '작성일'), doneDate: gDay(p, '완료일'), ...(gDay(p, '마감일') ? { due: gDay(p, '마감일') } : {}) }),
+    props: { 내용: 'title', 중요도: 'select', 작성일: 'date', 마감일: 'date', 완료일: 'date', 완료: 'checkbox', 순서: 'number' },
+    to: (x) => ({ 내용: T(x.text), 중요도: S({ A: 'A', B: 'B', C: 'C', Z: '언젠가' }[x.priority] || ''), 작성일: D(x.created), 마감일: D(x.due), 완료일: D(x.doneDate), 완료: CB(x.doneDate), 순서: N(x.order) }),
+    from: (p) => {
+      const pr = { A: 'A', B: 'B', C: 'C', 언젠가: 'Z' }[gS(p, '중요도')];
+      return { text: gT(p, '내용'), created: gDay(p, '작성일'), doneDate: gDay(p, '완료일'), ...(gDay(p, '마감일') ? { due: gDay(p, '마감일') } : {}),
+        ...(pr ? { priority: pr } : {}), ...(gN(p, '순서') != null ? { order: gN(p, '순서') } : {}) };
+    },
   },
   attendance: {
     name: '학생출결',

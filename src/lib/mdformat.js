@@ -153,9 +153,11 @@ export function serialize(year, input) {
 
   // 업무일지
   if (data.tasks.length) {
-    const tk = [...data.tasks].sort((a, b) => a.created.localeCompare(b.created));
+    const tk = [...data.tasks].sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || a.created.localeCompare(b.created));
+    const pl = { A: '(A) ', B: '(B) ', C: '(C) ', Z: '(언젠가) ' };
     files.set(`${dir}/${FILES.tasks}`, [header('업무일지'),
-      ...tk.map((t) => `- [${t.doneDate ? 'x' : ' '}] ${oneLine(t.text)} (작성 ${t.created}${t.due ? `, 마감 ${t.due}` : ''}${t.doneDate ? `, 완료 ${t.doneDate}` : ''})`), ''].join('\n'));
+      '> 앞의 (A)(B)(C)(언젠가)는 중요도입니다.', '',
+      ...tk.map((t) => `- [${t.doneDate ? 'x' : ' '}] ${t.priority ? pl[t.priority] || '' : ''}${oneLine(t.text)} (작성 ${t.created}${t.due ? `, 마감 ${t.due}` : ''}${t.doneDate ? `, 완료 ${t.doneDate}` : ''}${t.order != null ? `, 순서 ${t.order}` : ''})`), ''].join('\n'));
   }
 
   // 학급요록
@@ -360,14 +362,19 @@ export function parse(year, files, makeId) {
       if (!m) continue;
       let text = m[2], created = null, done = null;
       let due = null;
-      const meta = text.match(/\s*\(작성\s*(\d{4}-\d{2}-\d{2})(?:\s*,\s*마감\s*(\d{4}-\d{2}-\d{2}))?(?:\s*,\s*완료\s*(\d{4}-\d{2}-\d{2}))?\)\s*$/);
-      if (meta) { text = text.slice(0, meta.index); created = meta[1]; due = meta[2] || null; done = meta[3] || null; }
+      let order = null, priority = null;
+      const meta = text.match(/\s*\(작성\s*(\d{4}-\d{2}-\d{2})(?:\s*,\s*마감\s*(\d{4}-\d{2}-\d{2}))?(?:\s*,\s*완료\s*(\d{4}-\d{2}-\d{2}))?(?:\s*,\s*순서\s*(\d+))?\)\s*$/);
+      if (meta) { text = text.slice(0, meta.index); created = meta[1]; due = meta[2] || null; done = meta[3] || null; order = meta[4] ? +meta[4] : null; }
+      const pm = text.match(/^\((A|B|C|언젠가)\)\s*/i);
+      if (pm) { priority = { a: 'A', b: 'B', c: 'C' }[pm[1].toLowerCase()] || 'Z'; text = text.slice(pm[0].length); }
       created ||= `${year}-03-01`;
       if (m[1].toLowerCase() === 'x' && !done) done = created;
       if (m[1] === ' ') done = null;
       if (!text.trim()) continue;
       const t = { id: makeId(), text: fromOneLine(text.trim()), created, doneDate: done };
       if (due) t.due = due;
+      if (priority) t.priority = priority;
+      if (order != null) t.order = order;
       data.tasks.push(t);
     }
   }

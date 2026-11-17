@@ -56,7 +56,7 @@ function calendar(app) {
       sched ? h(`div.cal-sched${store.isSchoolHoliday(d) ? '.red' : ''}`, sched) : null,
       store.isCsat(d) ? h('div.csat-cal', '수능대비 시간표') : null,
       trips.length ? h('div.trip', `🚗 출장${trips[0].place ? ` ${trips[0].place}` : ''}${trips.length > 1 ? ` 외 ${trips.length - 1}` : ''}`) : null,
-      dues.map((x) => h(`div.due-cal${x.doneDate ? '.done' : ''}`, { title: `마감: ${x.text}` }, `📌 ${x.text}`)));
+      dues.map((x) => h(`div.due-cal${x.doneDate ? '.done' : ''}`, { title: `마감: ${x.text}` }, `📌${x.priority && x.priority !== 'Z' ? `[${x.priority}]` : ''} ${x.text}`)));
     cells.set(d, { cell, specials });
     grid.append(cell);
   }

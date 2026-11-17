@@ -10,6 +10,7 @@
 
 import { splitParagraphs, mentionedStudents } from './counsel.js';
 import { koDate } from './util.js';
+import { bellOf, periodLabel, parsePeriodLabel, fmtRange, EVENING_BASE } from './bell.js';
 
 export const yearDir = (year) => `/${year}학년도`;
 export const FILES = { settings: '설정.md', students: '학생명단.md', schedule: '학사일정.md', tasks: '업무일지.md', records: '학급요록.md' };
@@ -84,19 +85,31 @@ export function serialize(year, data) {
   const dir = yearDir(year);
   const header = (t) => `# ${t} (${year}학년도)\n\n> 쌔미노트 Web 이 관리하는 파일입니다. 형식을 지키면 직접 고쳐도 됩니다.\n`;
 
-  // 설정
+  // 설정 (+ 일과 시간 + 기본 시간표)
   const s = data.settings.find((x) => x.key === 'main');
   if (s) {
     const v = s.value || {};
     const tt = v.timetable || {};
-    const maxP = Math.max(v.schoolLevel === 'secondary' ? 8 : 6, ...[1, 2, 3, 4, 5].map((d) => (tt[d] || []).length));
-    const rows = Array.from({ length: maxP }, (_, i) => [String(i + 1), ...[1, 2, 3, 4, 5].map((d) => tt[d]?.[i] || '')]);
+    const b = bellOf(v);
+    const lastWithData = Math.max(0, ...[1, 2, 3, 4, 5].flatMap((d) => (tt[d] || []).slice(0, EVENING_BASE).map((x, i) => (x ? i + 1 : 0))));
+    const rows = [];
+    for (let p = 1; p <= Math.max(b.periodCount, lastWithData); p++) {
+      rows.push([`${p}교시`, fmtRange(b.times[p - 1] || {}), ...[1, 2, 3, 4, 5].map((d) => tt[d]?.[p - 1] || '')]);
+    }
+    b.evening.forEach((e, k) => rows.push([e.label, fmtRange(e), ...[1, 2, 3, 4, 5].map((d) => tt[d]?.[EVENING_BASE + k] || '')]));
     files.set(`${dir}/${FILES.settings}`, [
       header('설정'),
       `- 교원정보: ${oneLine(v.teacherInfo)}`,
       `- 학교급: ${v.schoolLevel === 'secondary' ? '중고' : '초등'}`,
       `- 최종수정일시 표시: ${v.showModified === false ? '아니오' : '예'}`,
-      '', '## 기본 시간표', '', table(['교시', '월', '화', '수', '목', '금'], rows), '',
+      '', '## 일과 시간', '',
+      `- 등교: ${b.arrival || '-'}`,
+      `- 정규 교시: ${b.periodCount}`,
+      `- 점심: ${b.lunch.after ? `${fmtRange(b.lunch) || '-'} (${b.lunch.after}교시 다음)` : '없음'}`,
+      `- 저녁: ${b.dinner.enabled ? fmtRange(b.dinner) || '-' : '없음'}`,
+      '', '## 기본 시간표', '',
+      '> 시간표의 "방과후" 줄은 저녁 방과후·자율학습입니다. 이름을 바꿔도 됩니다.', '',
+      table(['교시', '시간', '월', '화', '수', '목', '금'], rows), '',
     ].join('\n'));
   }
 
@@ -132,6 +145,7 @@ export function serialize(year, data) {
   }
 
   // 일지 (하루 한 파일)
+  const sv = s?.value || {};
   const dates = new Set();
   for (const c of DAY_COLS) for (const x of data[c]) dates.add(x.date);
   for (const date of [...dates].sort()) {
@@ -144,7 +158,7 @@ export function serialize(year, data) {
     out.push('---', `# ${koDate(date)} 교사수첩`, '');
     out.push('## 수업일지', '');
     for (const l of lessons) {
-      out.push(`### ${l.period}교시${l.subject ? ` · ${oneLine(l.subject)}` : ''}`);
+      out.push(`### ${periodLabel(sv, l.period)}${l.subject ? ` · ${oneLine(l.subject)}` : ''}`);
       if ((l.content || '').trim()) out.push(escBlock(l.content));
       out.push('');
     }
@@ -176,21 +190,40 @@ export function parse(year, files, makeId) {
   const st = get(FILES.settings);
   if (st != null) {
     const v = { teacherInfo: '', schoolLevel: 'elem', showModified: true, timetable: { 1: [], 2: [], 3: [], 4: [], 5: [] } };
+    const range = (t) => { const m = String(t || '').match(/(\d{1,2}:\d{2})?\s*[~\-–]?\s*(\d{1,2}:\d{2})?/); return { start: m?.[1] || '', end: m?.[2] || '' }; };
+    const bellRaw = {};
     for (const line of st.split('\n')) {
       let m;
       if ((m = line.match(/^-\s*교원정보\s*:\s*(.*)$/))) v.teacherInfo = fromOneLine(m[1].trim());
       else if ((m = line.match(/^-\s*학교급\s*:\s*(.*)$/))) v.schoolLevel = /중|고|second/i.test(m[1]) ? 'secondary' : 'elem';
       else if ((m = line.match(/^-\s*최종수정일시 표시\s*:\s*(.*)$/))) v.showModified = !/아니|no|false/i.test(m[1]);
+      else if ((m = line.match(/^-\s*등교\s*:\s*(.*)$/))) bellRaw.arrival = range(m[1]).start;
+      else if ((m = line.match(/^-\s*정규 교시\s*:\s*(\d+)/))) bellRaw.periodCount = +m[1];
+      else if ((m = line.match(/^-\s*점심\s*:\s*(.*)$/))) {
+        const after = m[1].match(/(\d+)\s*교시/);
+        bellRaw.lunch = /없음/.test(m[1]) ? { start: '', end: '', after: 0 } : { ...range(m[1]), after: after ? +after[1] : 4 };
+      } else if ((m = line.match(/^-\s*저녁\s*:\s*(.*)$/))) bellRaw.dinner = /없음/.test(m[1]) ? { enabled: false } : { enabled: true, ...range(m[1]) };
     }
     const tsec = sections(st).find((x) => x.title === '기본 시간표');
     if (tsec) {
+      const all = tsec.lines.filter((l) => /^\s*\|/.test(l)).map(splitRow);
+      const hasTime = (all[0] || []).some((c) => c === '시간');
+      const off = hasTime ? 2 : 1;
+      const times = [];
+      const evening = [];
       for (const r of parseTable(tsec.lines)) {
-        const p = parseInt(r[0], 10);
+        let p = /^\d+\s*(교시)?$/.test(r[0]) ? parseInt(r[0], 10) : null;
+        if (p == null && r[0]) { evening.push({ label: r[0], ...range(hasTime ? r[1] : '') }); p = EVENING_BASE + evening.length; }
         if (!p) continue;
-        for (let d = 1; d <= 5; d++) if (r[d]) v.timetable[d][p - 1] = r[d];
+        if (p <= EVENING_BASE && hasTime) times[p - 1] = range(r[1]);
+        for (let d = 1; d <= 5; d++) if (r[d + off - 1]) v.timetable[d][p - 1] = r[d + off - 1];
       }
       for (let d = 1; d <= 5; d++) v.timetable[d] = Array.from(v.timetable[d], (x) => x || '');
+      bellRaw.times = Array.from(times, (t) => t || { start: '', end: '' });
+      while (bellRaw.times.length && !bellRaw.times.at(-1).start && !bellRaw.times.at(-1).end) bellRaw.times.pop();
+      bellRaw.evening = evening;
     }
+    if (Object.keys(bellRaw).length) v.bell = bellOf({ schoolLevel: v.schoolLevel, bell: bellRaw });
     data.settings.push({ id: makeId(), key: 'main', value: v });
   }
 
@@ -242,6 +275,7 @@ export function parse(year, files, makeId) {
   }
 
   // 일지
+  const sv = data.settings[0]?.value || {};
   const dayRe = new RegExp(`^${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/일지/(\\d{4}-\\d{2}-\\d{2})\\.md$`, 'i');
   for (const [p, text] of files) {
     const dm = p.match(dayRe);
@@ -259,9 +293,10 @@ export function parse(year, files, makeId) {
       if (sec.title == null) continue;
       if (sec.title === '수업일지') {
         for (const ls of sections(sec.lines.join('\n'), 3).slice(1)) {
-          const m = ls.title.match(/^(\d+)\s*교시\s*(?:[·:\-]\s*(.*))?$/);
-          if (!m) continue;
-          data.lessons.push({ id: makeId(), date, period: +m[1], subject: fromOneLine((m[2] || '').trim()), content: unescBlock(trimBlank(ls.lines).join('\n')) });
+          const m = ls.title.match(/^(.+?)\s*(?:(?:[·:]|\s-\s)\s*(.*))?$/);
+          const period = m && parsePeriodLabel(sv, m[1]);
+          if (!period) continue;
+          data.lessons.push({ id: makeId(), date, period, subject: fromOneLine((m[2] || '').trim()), content: unescBlock(trimBlank(ls.lines).join('\n')) });
         }
       } else if (sec.title === '학생출결') {
         for (const line of sec.lines) {

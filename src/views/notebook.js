@@ -1,5 +1,8 @@
 // 교사수첩 탭: 학사일정·특일, 수업일지, 업무일지, 학생출결, 학생 상담 일지, 학급요록
-import { h, newId, weekdayOf, fmtDateTime, downloadBlob, toast, confirmDialog } from '../lib/util.js';
+import { h, newId, weekdayOf, fmtDateTime, downloadBlob, toast, confirmDialog, today, pad } from '../lib/util.js';
+import { dayRows, fmtRange, currentRow, EVENING_BASE } from '../lib/bell.js';
+
+const nowHM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 import { splitParagraphs, tokenize } from '../lib/counsel.js';
 import { ATT_TYPES, ATT_REASONS } from '../store.js';
 import { exportDay } from '../lib/export.js';
@@ -39,14 +42,39 @@ export function renderNotebook(app) {
   const subjects = [...new Set(Object.values(s.timetable).flat().filter(Boolean))];
   const dl = h('datalist#subject-list', subjects.map((x) => h('option', { value: x })));
   const lessons = store.lessonsFor(date, wd);
-  const lessonCard = card('수업일지', h('span.muted.small', wd === 0 || wd === 6 ? '주말' : ''),
+  const hasTimes = dayRows(s).some((r) => r.start || r.end);
+  const nowRow = date === today() ? currentRow(dayRows(s), nowHM()) : null;
+  const lessonTr = (l, r) => {
+    const label = store.periodLabel(l.period);
+    return h(`tr${nowRow && r && nowRow === r ? '.now' : ''}${l.period > EVENING_BASE ? '.evening' : ''}`,
+      h('td.center.plabel', label),
+      hasTimes ? h('td.center.time', r ? fmtRange(r) : '') : null,
+      h('td', h('input', { value: l.subject, list: 'subject-list', 'aria-label': `${label} ${subjLabel}`, oninput: (e) => store.setLesson(date, l.period, { subject: e.target.value }) })),
+      h('td', autoGrow(h('textarea', { rows: 1, value: l.content, 'aria-label': `${label} 내용`, oninput: (e) => store.setLesson(date, l.period, { content: e.target.value }) }))));
+  };
+  // 시정표 순서(등교 → 교시 → 점심 → … → 저녁 → 방과후)대로, 식사·등교는 안내 줄로 표시
+  const used = new Set();
+  const trs = [];
+  for (const r of dayRows(s)) {
+    if (r.p == null) {
+      trs.push(h(`tr.bell-row.${r.kind}${nowRow === r ? '.now' : ''}`,
+        h('td.center.plabel', { colspan: hasTimes ? 1 : 2 }, { arrival: '🏫 ', lunch: '🍚 ', dinner: '🍱 ' }[r.kind] + r.label),
+        hasTimes ? h('td.center.time', fmtRange(r)) : null,
+        h('td', { colspan: hasTimes ? 2 : 1 }, h('span.muted.small', { arrival: '등교 시각', lunch: '점심시간', dinner: '저녁 식사 시간' }[r.kind]))));
+      continue;
+    }
+    const l = lessons.find((x) => x.period === r.p);
+    used.add(r.p);
+    if (l) trs.push(lessonTr(l, r));
+  }
+  for (const l of lessons) if (!used.has(l.period)) trs.push(lessonTr(l, null));
+  const lessonCard = card('수업일지',
+    h('span.muted.small', nowRow ? `지금: ${nowRow.label} ${fmtRange(nowRow)}` : wd === 0 || wd === 6 ? '주말' : ''),
     dl,
     h('table.grid.lessons',
-      h('thead', h('tr', h('th', { style: { width: '3.5em' } }, '교시'), h('th', { style: { width: '9em' } }, subjLabel), h('th', '내용'))),
-      h('tbody', lessons.map((l) => h('tr',
-        h('td.center', `${l.period}`),
-        h('td', h('input', { value: l.subject, list: 'subject-list', 'aria-label': `${l.period}교시 ${subjLabel}`, oninput: (e) => store.setLesson(date, l.period, { subject: e.target.value }) })),
-        h('td', autoGrow(h('textarea', { rows: 1, value: l.content, 'aria-label': `${l.period}교시 내용`, oninput: (e) => store.setLesson(date, l.period, { content: e.target.value }) }))))))));
+      h('thead', h('tr', h('th', { style: { width: '4.8em' } }, '교시'), hasTimes ? h('th', { style: { width: '7.5em' } }, '시간') : null, h('th', { style: { width: '8em' } }, subjLabel), h('th', '내용'))),
+      h('tbody', trs)),
+    hasTimes ? null : h('p.muted.small', '설정 > 일과 시간에서 등교·교시별 시각, 점심·저녁 시간을 넣으면 여기에 함께 보입니다.'));
 
   // ----- 업무일지 -----
   const taskList = h('div.tasks');

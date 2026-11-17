@@ -16,11 +16,14 @@ let n = 0;
 const mk = () => `x${n++}`;
 
 const sample = {
-  settings: [{ id: 'a', key: 'main', value: { teacherInfo: '3학년 2반 | 담임', schoolLevel: 'elem', showModified: false, timetable: { 1: ['국어', '수학'], 2: ['', '사회'], 3: [], 4: [], 5: ['체육'] } } }],
+  settings: [{ id: 'a', key: 'main', value: { teacherInfo: '3학년 2반 | 담임', schoolLevel: 'secondary', showModified: false,
+    timetable: { 1: ['국어', '수학', '', '', '', '', '', '', '', '', '자습'], 2: ['', '사회'], 3: [], 4: [], 5: ['체육'] },
+    bell: { arrival: '08:20', periodCount: 7, times: [{ start: '08:40', end: '09:30' }, { start: '09:40', end: '10:30' }], lunch: { start: '12:20', end: '13:10', after: 4 },
+      dinner: { enabled: true, start: '17:20', end: '18:10' }, evening: [{ label: '야자1', start: '18:20', end: '19:40' }, { label: '방과후2', start: '', end: '' }] } } }],
   students: [{ id: 'b', no: 1, name: '이몽룡' }, { id: 'c', no: 2, name: '성춘향' }],
   schedule: [{ id: 'd', date: '2026-03-02', text: '입학식\n시업식' }],
   days: [{ id: 'e', date: '2026-03-02', updatedAt: '2026-03-02T07:00:00.000Z' }],
-  lessons: [{ id: 'f', date: '2026-03-02', period: 1, subject: '국어', content: '받아쓰기\n# 제목처럼 보이는 줄\n- 목록' }, { id: 'g', date: '2026-03-02', period: 3, subject: '', content: '' }],
+  lessons: [{ id: 'f', date: '2026-03-02', period: 1, subject: '국어', content: '받아쓰기\n# 제목처럼 보이는 줄\n- 목록' }, { id: 'g', date: '2026-03-02', period: 3, subject: '', content: '' }, { id: 'g2', date: '2026-03-02', period: 11, subject: '자습', content: '수학 질문 받음' }],
   tasks: [{ id: 'h', text: '가정통신문 (2장)', created: '2026-03-02', doneDate: '2026-03-04' }, { id: 'i', text: '회의', created: '2026-03-03', doneDate: null }],
   attendance: [{ id: 'j', date: '2026-03-02', student: '성춘향', type: '지각', reason: '질병', note: '병원 · 진료' }],
   counsel: [{ id: 'k', date: '2026-03-02', order: 0, text: '이몽룡 울었다.\n달래줌', students: ['이몽룡'] }, { id: 'l', date: '2026-03-02', order: 1, text: '## 성춘향 지각', students: [] }],
@@ -36,6 +39,8 @@ test('마크다운 왕복 변환이 손실 없이 동일', () => {
   got.counsel[1].students = [];
   assert.deepEqual(got, exp);
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('### 1교시 · 국어'));
+  assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('### 야자1 · 자습'));
+  assert.ok(files.get('/2026학년도/설정.md').includes('| 야자1 | 18:20~19:40 |'));
 });
 
 test('사람이 손으로 쓴 마크다운도 읽는다', () => {

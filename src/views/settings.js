@@ -5,6 +5,7 @@ import { LocalBackend } from '../backends/local.js';
 import { DropboxBackend, startLogin, logout as dropboxLogout } from '../backends/dropbox.js';
 import { COLLECTIONS } from '../store.js';
 import { THEMES } from '../themes.js';
+import { bellOf, autoTimes, EVENING_BASE } from '../lib/bell.js';
 
 const card = (title, ...body) => h('section.card', h('div.card-head', h('h2', title)), ...body);
 
@@ -122,7 +123,7 @@ function displayCard(app) {
   const { store } = app;
   const s = store.settings;
   const info = h('input', { value: s.teacherInfo, placeholder: '예: ○○초등학교 3학년 2반 담임 홍길동' });
-  const level = h('select', h('option', { value: 'elem', selected: s.schoolLevel === 'elem' }, '초등학교 (1~6교시, 과목)'), h('option', { value: 'secondary', selected: s.schoolLevel === 'secondary' }, '중/고등학교 (1~8교시, 학반/교실)'));
+  const level = h('select', h('option', { value: 'elem', selected: s.schoolLevel === 'elem' }, '초등학교 (시간표에 과목)'), h('option', { value: 'secondary', selected: s.schoolLevel === 'secondary' }, '중/고등학교 (시간표에 학반/교실)'));
   const showMod = h('input', { type: 'checkbox', checked: s.showModified });
   return card('화면 설정',
     h('div.form',
@@ -133,24 +134,85 @@ function displayCard(app) {
         'data-theme-preview': v, onclick: () => { app.setTheme(v); app.render(); },
       }, h('span.sw', { 'data-theme': v }, h('i'), h('i'), h('i')), l))))),
     h('div.row', h('button.primary', { onclick: async () => {
-      store.updateSettings({ teacherInfo: info.value, schoolLevel: level.value, showModified: showMod.checked });
+      const patch = { teacherInfo: info.value, schoolLevel: level.value, showModified: showMod.checked };
+      // 학교급을 바꿨고 아직 시정표를 손대지 않았다면 교시 수 기본값도 따라간다
+      if (level.value !== s.schoolLevel && !s.bell) patch.bell = { ...bellOf({ schoolLevel: level.value }) };
+      store.updateSettings(patch);
       await app.save();
     } }, '적용')));
 }
 
+/** 일과 시간(시정표) + 기본 시간표 */
 function timetableCard(app) {
   const { store } = app;
   const s = store.settings;
   const tt = JSON.parse(JSON.stringify(s.timetable));
-  const periods = store.periods;
-  const label = s.schoolLevel === 'secondary' ? '학반/교실 (예: 1~2)' : '과목';
-  return card('기본 시간표',
-    h('p.muted.small', `교사수첩의 수업일지에 기본으로 표시될 ${label}입니다. 교사수첩에서 바꾸면 그 날만 바뀌고, 다음 주에는 기본 시간표로 돌아갑니다.`),
-    h('div.records-wrap', h('table.grid.timetable',
-      h('thead', h('tr', h('th', '교시'), [1, 2, 3, 4, 5].map((d) => h('th', WEEKDAYS[d])))),
-      h('tbody', Array.from({ length: periods }, (_, i) => h('tr', h('th', `${i + 1}`),
-        [1, 2, 3, 4, 5].map((d) => h('td', h('input', { value: tt[d]?.[i] || '', 'aria-label': `${WEEKDAYS[d]} ${i + 1}교시`, oninput: (e) => { (tt[d] ||= [])[i] = e.target.value; } })))))))),
-    h('div.row', h('button.primary', { onclick: async () => { store.updateSettings({ timetable: tt }); await app.save(); } }, '시간표 저장')));
+  const bell = JSON.parse(JSON.stringify(bellOf(s)));
+  const subj = s.schoolLevel === 'secondary' ? '학반/교실 (예: 1~2)' : '과목';
+  const wrap = h('div');
+  const time = (val, on, label) => h('input', { type: 'time', value: val || '', 'aria-label': label, oninput: (e) => on(e.target.value) });
+  const ttInput = (d, i, label) => h('td', h('input', { value: tt[d]?.[i] || '', 'aria-label': `${WEEKDAYS[d]} ${label}`, oninput: (e) => { (tt[d] ||= [])[i] = e.target.value; } }));
+  const auto = { first: bell.times[0]?.start || (s.schoolLevel === 'secondary' ? '08:50' : '09:00'), lesson: s.schoolLevel === 'secondary' ? 50 : 40, rest: 10, lunchLen: 50 };
+
+  const draw = () => {
+    const count = bell.periodCount;
+    const rows = [];
+    for (let i = 0; i < count; i++) {
+      const t = (bell.times[i] ||= { start: '', end: '' });
+      rows.push(h('tr', h('th', `${i + 1}교시`),
+        h('td.time-cell', time(t.start, (v) => (t.start = v), `${i + 1}교시 시작`), ' ~ ', time(t.end, (v) => (t.end = v), `${i + 1}교시 끝`)),
+        [1, 2, 3, 4, 5].map((d) => ttInput(d, i, `${i + 1}교시`))));
+      if (bell.lunch.after === i + 1) rows.push(h('tr.bell-row', h('th', '🍚 점심'), h('td.time-cell', time(bell.lunch.start, (v) => (bell.lunch.start = v), '점심 시작'), ' ~ ', time(bell.lunch.end, (v) => (bell.lunch.end = v), '점심 끝')), h('td.muted.small', { colspan: 5 }, `${i + 1}교시 다음`)));
+    }
+    if (bell.dinner.enabled) rows.push(h('tr.bell-row', h('th', '🍱 저녁'), h('td.time-cell', time(bell.dinner.start, (v) => (bell.dinner.start = v), '저녁 시작'), ' ~ ', time(bell.dinner.end, (v) => (bell.dinner.end = v), '저녁 끝')), h('td.muted.small', { colspan: 5 }, '저녁 식사')));
+    bell.evening.forEach((ev, k) => {
+      const idx = EVENING_BASE + k; // 교시 번호 11+k -> timetable index 10+k
+      rows.push(h('tr.evening',
+        h('th', h('input', { value: ev.label, 'aria-label': `저녁 방과후 ${k + 1} 이름`, style: { width: '6.5em' }, oninput: (e) => (ev.label = e.target.value.trim() || `방과후${k + 1}`) })),
+        h('td.time-cell', time(ev.start, (v) => (ev.start = v), `${ev.label} 시작`), ' ~ ', time(ev.end, (v) => (ev.end = v), `${ev.label} 끝`)),
+        [1, 2, 3, 4, 5].map((d) => ttInput(d, idx, ev.label))));
+    });
+
+    const sel = (val, opts, on, label) => h('select', { 'aria-label': label, onchange: (e) => { on(+e.target.value); draw(); } }, opts.map(([v, l]) => h('option', { value: v, selected: v === val }, l)));
+    wrap.replaceChildren(
+      h('div.inline-form',
+        h('label', '🏫 등교', time(bell.arrival, (v) => (bell.arrival = v), '등교 시각')),
+        h('label', '정규 교시', sel(bell.periodCount, [4, 5, 6, 7, 8].map((n) => [n, `${n}교시까지`]), (v) => (bell.periodCount = v), '정규 교시 수')),
+        h('label', '점심', sel(bell.lunch.after, [[0, '없음'], ...Array.from({ length: bell.periodCount }, (_, i) => [i + 1, `${i + 1}교시 다음`])], (v) => (bell.lunch.after = v), '점심 위치')),
+        h('label', h('input', { type: 'checkbox', checked: bell.dinner.enabled, onchange: (e) => { bell.dinner.enabled = e.target.checked; draw(); } }), '저녁 식사'),
+        h('label', '저녁 방과후', sel(bell.evening.length, [0, 1, 2, 3, 4].map((n) => [n, n ? `${n}개` : '없음']), (v) => {
+          while (bell.evening.length < v) bell.evening.push({ label: `방과후${bell.evening.length + 1}`, start: '', end: '' });
+          bell.evening.length = v;
+        }, '저녁 방과후 수'))),
+      h('details', h('summary.small', '⏱ 시각 자동 채우기'),
+        h('div.inline-form', { style: { marginTop: '8px' } },
+          h('label', '1교시 시작', h('input', { type: 'time', value: auto.first, oninput: (e) => (auto.first = e.target.value) })),
+          h('label', '수업(분)', h('input', { type: 'number', min: 20, max: 120, value: auto.lesson, oninput: (e) => (auto.lesson = +e.target.value) })),
+          h('label', '쉬는 시간(분)', h('input', { type: 'number', min: 0, max: 60, value: auto.rest, oninput: (e) => (auto.rest = +e.target.value) })),
+          h('label', '점심(분)', h('input', { type: 'number', min: 0, max: 120, value: auto.lunchLen, oninput: (e) => (auto.lunchLen = +e.target.value) })),
+          h('button.small', { onclick: () => {
+            const r = autoTimes({ ...auto, count: bell.periodCount, lunchAfter: bell.lunch.after });
+            if (!r) return toast('1교시 시작 시각을 입력하세요.', 'error');
+            bell.times = r.times;
+            if (r.lunch) bell.lunch = { ...bell.lunch, ...r.lunch };
+            draw();
+          } }, '채우기')),
+        h('p.muted.small', '정규 교시만 채웁니다. 학교 시정표와 다르면 표에서 직접 고치세요.')),
+      h('div.records-wrap', h('table.grid.timetable.bell-table',
+        h('thead', h('tr', h('th', '교시'), h('th', '시간'), [1, 2, 3, 4, 5].map((d) => h('th', WEEKDAYS[d])))),
+        h('tbody', rows))));
+  };
+  draw();
+
+  return card('일과 시간 · 기본 시간표',
+    h('p.muted.small', `학교 시정표(등교, 교시별 시각, 점심·저녁)와 요일별 ${subj}을 넣으세요. 7·8교시가 없으면 정규 교시 수를 줄이면 됩니다. 고등학교 저녁 방과후·자율학습은 이름을 바꿔 쓸 수 있고, 수업일지에도 기록할 수 있습니다. 교사수첩에서 과목을 바꾸면 그 날만 바뀝니다.`),
+    wrap,
+    h('div.row', h('button.primary', { onclick: async () => {
+      bell.times = bell.times.slice(0, bell.periodCount);
+      if (bell.lunch.after > bell.periodCount) bell.lunch.after = bell.periodCount;
+      store.updateSettings({ timetable: tt, bell });
+      await app.save();
+    } }, '일과 시간·시간표 저장')));
 }
 
 // ---------- 정보 일괄 등록 (CSV) ----------
@@ -168,7 +230,19 @@ const TEMPLATES = {
     return out;
   } },
   students: { name: '학생정보', file: '학생정보_예제.csv', rows: () => [['번호', '이름'], ['1', '홍길동'], ['2', '성춘향'], ['3', '이몽룡']] },
-  timetable: { name: '시간표', file: '시간표_예제.csv', rows: () => [['교시', '월', '화', '수', '목', '금'], ['1', '국어', '수학', '사회', '과학', '체육'], ['2', '수학', '국어', '영어', '음악', '미술'], ['3', '', '', '', '', ''], ['4', '', '', '', '', ''], ['5', '', '', '', '', ''], ['6', '', '', '', '', ''], ['7', '', '', '', '', ''], ['8', '', '', '', '', '']] },
+  timetable: { name: '시간표(일과 시간)', file: '시간표_예제.csv', rows: () => [
+    ['교시', '시작', '끝', '월', '화', '수', '목', '금'],
+    ['등교', '08:30', '', '', '', '', '', ''],
+    ['1', '09:00', '09:40', '국어', '수학', '사회', '과학', '체육'],
+    ['2', '09:50', '10:30', '수학', '국어', '영어', '음악', '미술'],
+    ['3', '10:40', '11:20', '', '', '', '', ''],
+    ['4', '11:30', '12:10', '', '', '', '', ''],
+    ['점심', '12:10', '13:00', '', '', '', '', ''],
+    ['5', '13:00', '13:40', '', '', '', '', ''],
+    ['6', '13:50', '14:30', '', '', '', '', ''],
+    ['저녁', '', '', '', '', '', '', ''],
+    ['방과후1', '', '', '', '', '', '', ''],
+  ] },
 };
 
 async function importCSV(app, kind) {
@@ -200,21 +274,48 @@ async function importCSV(app, kind) {
     store.markDirty();
     toast(`학생 ${list.length}명 등록`, 'ok');
   } else if (kind === 'timetable') {
+    // 형식: 교시,시작,끝,월,화,수,목,금 (예전 형식 교시,월,…,금 도 지원)
+    // 교시 칸: 숫자(정규 교시) / 등교 / 점심 / 저녁 / 그 밖의 이름(저녁 방과후)
+    const head = rows[0] || [];
+    const hasTime = head.includes('시작');
+    const off = hasTime ? 3 : 1;
     const tt = { 1: [], 2: [], 3: [], 4: [], 5: [] };
-    for (const r of body) {
-      const p = +r[0];
-      if (!p || p > 8) continue;
-      for (let d = 1; d <= 5; d++) tt[d][p - 1] = (r[d] || '').replace(/^(\d+)-(\d+)$/, '$1~$2');
+    const bell = { ...bellOf(store.settings), times: [], evening: [] };
+    const lunchAfterRow = { seen: false };
+    let maxP = 0;
+    for (const r of /^\d/.test(head[0] || '') ? rows : rows.slice(1)) {
+      const label = (r[0] || '').trim();
+      if (!label) continue;
+      const t = { start: hasTime ? r[1] || '' : '', end: hasTime ? r[2] || '' : '' };
+      const cells = [1, 2, 3, 4, 5].map((d) => (r[d + off - 1] || '').replace(/^(\d+)-(\d+)$/, '$1~$2'));
+      if (/^\d+$/.test(label)) {
+        const p = +label;
+        if (p < 1 || p > 9) continue;
+        maxP = Math.max(maxP, p);
+        bell.times[p - 1] = t;
+        cells.forEach((c, i) => (tt[i + 1][p - 1] = c));
+      } else if (label === '등교') bell.arrival = t.start;
+      else if (label === '점심') { bell.lunch = { ...t, after: maxP }; lunchAfterRow.seen = true; }
+      else if (label === '저녁') bell.dinner = { enabled: !!(t.start || t.end), ...t };
+      else if (bell.evening.length < 4) {
+        const k = bell.evening.length;
+        bell.evening.push({ label, ...t });
+        cells.forEach((c, i) => (tt[i + 1][EVENING_BASE + k] = c));
+      }
     }
-    store.updateSettings({ timetable: tt });
-    toast('시간표를 등록했습니다.', 'ok');
+    if (maxP) bell.periodCount = maxP;
+    bell.times = Array.from(bell.times, (x) => x || { start: '', end: '' });
+    if (!lunchAfterRow.seen && hasTime) bell.lunch = { start: '', end: '', after: 0 };
+    for (let d = 1; d <= 5; d++) tt[d] = Array.from(tt[d], (x) => x || '');
+    store.updateSettings({ timetable: tt, bell: hasTime ? bell : { ...bellOf(store.settings), periodCount: maxP || bellOf(store.settings).periodCount } });
+    toast(`시간표를 등록했습니다 (정규 ${maxP}교시${bell.evening.length ? `, 저녁 방과후 ${bell.evening.length}개` : ''}).`, 'ok');
   }
   await app.save();
 }
 
 function bulkCard(app) {
   return card('정보 일괄 등록',
-    h('p.muted.small', '예제 파일(CSV)을 내려받아 엑셀이나 한셀에서 편집한 뒤 올리세요. 학사일정은 일정이 빈 날짜를 자동으로 건너뜁니다. 학생정보에는 번호와 이름만 넣습니다(민감정보 최소화). 중·고등학교 시간표에 학반을 적을 때는 엑셀이 날짜로 바꾸지 않도록 1-2 대신 1~2 처럼 적으세요.'),
+    h('p.muted.small', '예제 파일(CSV)을 내려받아 엑셀이나 한셀에서 편집한 뒤 올리세요. 학사일정은 일정이 빈 날짜를 자동으로 건너뜁니다. 학생정보에는 번호와 이름만 넣습니다(민감정보 최소화). 중·고등학교 시간표에 학반을 적을 때는 엑셀이 날짜로 바꾸지 않도록 1-2 대신 1~2 처럼 적으세요. 시간표 파일에는 등교·점심·저녁 시각과 저녁 방과후 줄도 넣을 수 있습니다.'),
     h('table.grid', h('tbody', Object.entries(TEMPLATES).map(([k, t]) => h('tr',
       h('th', t.name),
       h('td', h('button.small', { onclick: () => downloadBlob(new Blob([toCSV(t.rows(app.store.year))], { type: 'text/csv' }), t.file) }, '예제 파일 받기')),
@@ -250,6 +351,7 @@ export function renderSettings(app) {
     return h('div.settings', h('section.card.error-card', h('p', app.error)), storageCard(app));
   }
   return h('div.settings',
-    h('div.col', storageCard(app), yearCard(app), backupCard(app)),
-    h('div.col', displayCard(app), timetableCard(app), bulkCard(app)));
+    h('div.col', storageCard(app), yearCard(app)),
+    h('div.col', displayCard(app), bulkCard(app), backupCard(app)),
+    h('div.full', timetableCard(app)));
 }

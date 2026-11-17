@@ -3,6 +3,7 @@
 
 import { clone, newId, isTempId } from './lib/util.js';
 import { splitParagraphs, mentionedStudents } from './lib/counsel.js';
+import { bellOf, periodList, periodLabel } from './lib/bell.js';
 
 export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records'];
 
@@ -71,7 +72,10 @@ export class Store {
     this.markDirty();
   }
 
-  get periods() { return this.settings.schoolLevel === 'secondary' ? 8 : 6; }
+  /** 정규 교시 수 (설정 > 일과 시간) */
+  get periods() { return bellOf(this.settings).periodCount; }
+  get bell() { return bellOf(this.settings); }
+  periodLabel(p) { return periodLabel(this.settings, p); }
 
   studentNames() {
     return [...this.work.students].sort((a, b) => (a.no ?? 0) - (b.no ?? 0)).map((s) => s.name);
@@ -99,14 +103,17 @@ export class Store {
       .sort((a, b) => (a.created + a.id).localeCompare(b.created + b.id));
   }
 
-  /** 교시별 수업일지 (저장된 값 > 기본 시간표) */
+  /** 교시별 수업일지 (저장된 값 > 기본 시간표). 저녁 방과후는 교시 번호 11부터 */
   lessonsFor(date, weekday) {
     const tt = this.settings.timetable[weekday] || [];
     const out = [];
-    for (let p = 1; p <= this.periods; p++) {
+    for (const { p } of periodList(this.settings)) {
       const saved = this.work.lessons.find((l) => l.date === date && l.period === p);
       out.push(saved || { id: null, date, period: p, subject: tt[p - 1] || '', content: '' });
     }
+    // 교시 수를 줄였어도 이미 기록한 수업일지는 보이게 한다
+    for (const l of this.work.lessons) if (l.date === date && !out.some((o) => o.period === l.period)) out.push(l);
+    out.sort((a, b) => a.period - b.period);
     return out;
   }
 

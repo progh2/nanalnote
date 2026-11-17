@@ -4,6 +4,7 @@ import {
   Footer, AlignmentType, PageBreak, ShadingType,
 } from 'docx';
 import { koDate, fmtDateTime, weekdayOf } from './util.js';
+import { dayRows, fmtRange } from './bell.js';
 
 const FONT = '맑은 고딕';
 
@@ -51,7 +52,17 @@ function dayBlocks(store, date, specials, { mode = 'single', includeIncomplete =
 
   const lessons = store.lessonsFor(date, weekdayOf(date));
   out.push(heading('수업일지'));
-  out.push(table(['교시', s.schoolLevel === 'secondary' ? '학반/교실' : '과목', '내용'], lessons.map((l) => [`${l.period}`, l.subject, l.content]), [8, 17, 75]));
+  // 시정표 순서대로 (등교·점심·저녁 줄 포함), 시정표에 없는 기록은 뒤에
+  const rows = [];
+  const used = new Set();
+  for (const r of dayRows(s)) {
+    if (r.p == null) { rows.push([r.label, fmtRange(r), '', '']); continue; }
+    const l = lessons.find((x) => x.period === r.p);
+    used.add(r.p);
+    rows.push([r.label, fmtRange(r), l?.subject || '', l?.content || '']);
+  }
+  for (const l of lessons) if (!used.has(l.period)) rows.push([store.periodLabel(l.period), '', l.subject, l.content]);
+  out.push(table(['교시', '시간', s.schoolLevel === 'secondary' ? '학반/교실' : '과목', '내용'], rows, [10, 14, 16, 60]));
 
   let tasks = store.visibleTasks(date);
   if (mode === 'range') tasks = tasks.filter((t) => t.doneDate === date || (includeIncomplete && !t.doneDate) || (includeIncomplete && t.doneDate > date));
@@ -102,7 +113,7 @@ export async function exportRange(store, dates, specialsOf, { includeIncomplete 
 export async function exportLessons(store, subject, lessons) {
   return pack([
     heading(`수업일지 모아보기 - ${subject || '전체'}`, HeadingLevel.HEADING_1),
-    table(['날짜', '교시', '과목', '내용'], lessons.map((l) => [koDate(l.date), `${l.period}`, l.subject, l.content]), [22, 8, 15, 55]),
+    table(['날짜', '교시', '과목', '내용'], lessons.map((l) => [koDate(l.date), store.periodLabel(l.period), l.subject, l.content]), [22, 10, 15, 53]),
   ]);
 }
 

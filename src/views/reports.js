@@ -125,8 +125,8 @@ function lessons(app) {
   const draw = () => {
     const rows = list();
     wrap.replaceChildren(rows.length
-      ? h('table.grid', h('thead', h('tr', h('th', { style: { width: '11em' } }, '날짜'), h('th', { style: { width: '4em' } }, '교시'), h('th', { style: { width: '8em' } }, '과목'), h('th', '내용'))),
-        h('tbody', rows.map((l) => h('tr', h('td', h('button.link', { onclick: () => goto(app, l.date) }, koDate(l.date))), h('td.center', String(l.period)), h('td', l.subject), h('td.pre', l.content)))))
+      ? h('table.grid', h('thead', h('tr', h('th', { style: { width: '11em' } }, '날짜'), h('th', { style: { width: '5.5em' } }, '교시'), h('th', { style: { width: '8em' } }, '과목'), h('th', '내용'))),
+        h('tbody', rows.map((l) => h('tr', h('td', h('button.link', { onclick: () => goto(app, l.date) }, koDate(l.date))), h('td.center', store.periodLabel(l.period)), h('td', l.subject), h('td.pre', l.content)))))
       : h('p.muted', '해당 조건의 수업일지가 없습니다.'));
   };
   draw();

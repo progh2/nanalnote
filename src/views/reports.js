@@ -1,12 +1,14 @@
-// 보고서 탭: 캘린더, 학생출결 모아보기, 수업일지(과목별), 상담일지(학생별), 학급요록 모아보기, 기간지정 다운로드
+// 보고서 탭: 캘린더, 학생출결, 수업일지(수업·학반별), 상담일지(학생별), 학급요록, 출장, 기간지정 다운로드
 import { h, fmtDate, parseDate, today, yearRange, addDays, koDate, downloadBlob, toast, WEEKDAYS, pad } from '../lib/util.js';
 import { ATT_TYPES } from '../store.js';
-import { exportRange, exportLessons, exportCounsel, exportAttendance, exportRecord } from '../lib/export.js';
+import { exportRange, exportLessons, exportCounsel, exportAttendance, exportRecord, exportTrips } from '../lib/export.js';
+import { studentLabel, classKey } from '../lib/students.js';
+import { classSelect } from './ui.js';
 
-const TABS = [['calendar', '캘린더'], ['attendance', '학생출결'], ['lessons', '수업일지'], ['counsel', '상담일지'], ['records', '학급요록'], ['range', '기간지정 다운로드']];
+const TABS = [['calendar', '캘린더'], ['attendance', '학생출결'], ['lessons', '수업일지'], ['counsel', '상담일지'], ['records', '학급요록'], ['trips', '출장'], ['range', '기간지정 다운로드']];
 
 export function renderReports(app) {
-  const views = { calendar, attendance, lessons, counsel, records, range };
+  const views = { calendar, attendance, lessons, counsel, records, trips, range };
   return h('div.reports',
     h('nav.subtabs', TABS.map(([k, l]) => h(`button${app.reportTab === k ? '.active' : ''}`, { onclick: () => { app.reportTab = k; app.render(); } }, l))),
     views[app.reportTab](app));
@@ -43,12 +45,15 @@ function calendar(app) {
     if (store.work.lessons.some((l) => l.date === d && l.content)) marks.push(h('span.dot.lesson', { title: '수업일지' }));
     if (store.work.counsel.some((c) => c.date === d)) marks.push(h('span.dot.counsel', { title: '상담일지' }));
     if (store.work.attendance.some((a) => a.date === d)) marks.push(h('span.dot.att', { title: '출결' }));
+    if (store.isSchoolHoliday(d)) cls.push('school-holiday');
+    const trips = store.tripsOn(d);
     const sched = store.scheduleText(d);
     const specials = h('div.cal-specials');
     const cell = h(`div.${cls.join('.')}`, { title: '더블클릭하면 이 날짜의 교사수첩으로 이동', ondblclick: () => goto(app, d), tabindex: 0, onkeydown: (e) => e.key === 'Enter' && goto(app, d) },
       h('div.cal-num', String(dd.getDate()), h('span.marks', marks)),
       specials,
-      sched ? h('div.cal-sched', sched) : null);
+      sched ? h(`div.cal-sched${store.isSchoolHoliday(d) ? '.red' : ''}`, sched) : null,
+      trips.length ? h('div.trip', `🚗 출장${trips[0].place ? ` ${trips[0].place}` : ''}${trips.length > 1 ? ` 외 ${trips.length - 1}` : ''}`) : null);
     cells.set(d, { cell, specials });
     grid.append(cell);
   }
@@ -70,35 +75,38 @@ function calendar(app) {
     h('div.card-head',
       h('div.row', h('button.icon-btn', { onclick: () => shift(-1) }, '◀'), h('h2', `${y}년 ${m}월`), h('button.icon-btn', { onclick: () => shift(1) }, '▶'),
         h('button.ghost.small', { onclick: () => { app.calMonth = today().slice(0, 7); app.render(); } }, '이번 달')),
-      h('div.legend', h('span.dot.lesson'), '수업 ', h('span.dot.counsel'), '상담 ', h('span.dot.att'), '출결')),
+      h('div.legend', h('span.dot.lesson'), '수업 ', h('span.dot.counsel'), '상담 ', h('span.dot.att'), '출결 · 🚗 출장')),
     grid,
-    h('p.muted.small', '날짜를 더블클릭하면 그 날의 교사수첩으로 이동합니다. 공휴일은 빨간색, 오늘은 파란색으로 표시됩니다.'));
+    h('p.muted.small', '날짜를 더블클릭하면 그 날의 교사수첩으로 이동합니다. 공휴일과 학교 휴업일은 빨간색, 오늘은 파란색으로 표시됩니다.'));
 }
 
 // ---------- 학생출결 ----------
 function attendance(app) {
   const { store } = app;
   const yr = yearRange(store.year);
-  app.attRange ||= { start: yr.start, end: yr.end };
+  app.attRange ||= { start: yr.start, end: yr.end, cls: '' };
   const st = app.attRange;
   const wrap = h('div');
   const draw = () => {
-    const rows = store.work.attendance.filter((a) => a.date >= st.start && a.date <= st.end).sort((a, b) => (a.date + a.student).localeCompare(b.date + b.student));
-    const names = store.studentNames();
-    const count = (n, type) => rows.filter((a) => a.student === n && a.type === type);
-    const cellFor = (n, type) => {
-      const list = count(n, type);
+    const studs = store.studentsOf(st.cls);
+    const inCls = new Set(studs.map((x) => x.uid));
+    const rows = store.work.attendance.filter((a) => a.date >= st.start && a.date <= st.end && (!st.cls || inCls.has(a.student)))
+      .sort((a, b) => (a.date + store.label(a.student)).localeCompare(b.date + store.label(b.student)));
+    const cellFor = (uid, type) => {
+      const list = rows.filter((a) => a.student === uid && a.type === type);
       if (!list.length) return h('td.center.muted', '·');
       const by = {};
       for (const a of list) by[a.reason || '-'] = (by[a.reason || '-'] || 0) + 1;
-      return h('td.center', { title: Object.entries(by).map(([k, v]) => `${k} ${v}`).join(', ') }, String(list.length), h('div.small.muted', Object.entries(by).map(([k, v]) => `${k}${v}`).join(' ')));
+      return h('td.center', String(list.length), h('div.small.muted', Object.entries(by).map(([k, v]) => `${k}${v}`).join(' ')));
     };
+    const withRec = studs.filter((x) => rows.some((a) => a.student === x.uid));
     wrap.replaceChildren(
+      h('label.check.small', h('input', { type: 'checkbox', checked: !!st.onlyRec, onchange: (e) => { st.onlyRec = e.target.checked; draw(); } }), ' 기록 있는 학생만'),
       h('table.grid', h('thead', h('tr', h('th', '학생'), ATT_TYPES.map((t) => h('th', t)), h('th', '합계'))),
-        h('tbody', names.map((n) => h('tr', h('th', n), ATT_TYPES.map((t) => cellFor(n, t)), h('td.center', String(rows.filter((a) => a.student === n).length)))))),
+        h('tbody', (st.onlyRec ? withRec : studs).map((x) => h('tr', h('th', studentLabel(x)), ATT_TYPES.map((t) => cellFor(x.uid, t)), h('td.center', String(rows.filter((a) => a.student === x.uid).length)))))),
       h('h3', `상세 내역 (${rows.length}건)`),
       rows.length ? h('table.grid', h('thead', h('tr', h('th', '날짜'), h('th', '학생'), h('th', '구분'), h('th', '사유'), h('th', '비고'))),
-        h('tbody', rows.map((a) => h('tr', h('td', h('button.link', { onclick: () => goto(app, a.date) }, a.date)), h('td', a.student), h('td', a.type), h('td', a.reason), h('td', a.note)))))
+        h('tbody', rows.map((a) => h('tr', h('td', h('button.link', { onclick: () => goto(app, a.date) }, a.date)), h('td', store.label(a.student)), h('td', a.type), h('td', a.reason), h('td', a.note)))))
         : h('p.muted', '해당 기간의 출결 기록이 없습니다.'),
     );
     wrap.rows = rows;
@@ -106,36 +114,41 @@ function attendance(app) {
   draw();
   return h('section.card',
     h('div.card-head', h('h2', '학생출결 모아보기'),
-      h('button.small', { onclick: async () => downloadBlob(await exportAttendance(wrap.rows, st), `학생출결_${st.start}_${st.end}.docx`) }, '⬇ Word')),
-    dateRangeInputs(st, draw), wrap);
+      h('button.small', { onclick: async () => downloadBlob(await exportAttendance(wrap.rows.map((a) => ({ ...a, student: store.label(a.student) })), st), `학생출결_${st.cls || '전체'}_${st.start}_${st.end}.docx`) }, '⬇ Word')),
+    h('div.row', store.classList().length ? classSelect(store, st.cls, (v) => { st.cls = v; draw(); }) : null, dateRangeInputs(st, draw)), wrap);
 }
 
-// ---------- 수업일지 (과목별) ----------
+// ---------- 수업일지 (수업명·학반별) ----------
 function lessons(app) {
   const { store } = app;
+  const sec = store.settings.schoolLevel === 'secondary';
   const subjects = [...new Set(store.work.lessons.map((l) => l.subject).filter(Boolean))].sort();
-  app.lessonSubject ??= subjects[0] || '';
+  const classes = [...new Set(store.work.lessons.map((l) => l.cls).filter(Boolean))].sort();
   const yr = yearRange(store.year);
-  app.lessonRange ||= { start: yr.start, end: yr.end };
+  app.lessonRange ||= { start: yr.start, end: yr.end, subject: subjects[0] || '', cls: '' };
   const st = app.lessonRange;
   const list = () => store.work.lessons
-    .filter((l) => (!app.lessonSubject || l.subject === app.lessonSubject) && (l.content || '').trim() && l.date >= st.start && l.date <= st.end)
+    .filter((l) => (!st.subject || l.subject === st.subject) && (!st.cls || l.cls === st.cls) && (l.content || '').trim() && l.date >= st.start && l.date <= st.end)
     .sort((a, b) => (a.date + pad(a.period)).localeCompare(b.date + pad(b.period)));
   const wrap = h('div');
   const draw = () => {
     const rows = list();
     wrap.replaceChildren(rows.length
-      ? h('table.grid', h('thead', h('tr', h('th', { style: { width: '11em' } }, '날짜'), h('th', { style: { width: '5.5em' } }, '교시'), h('th', { style: { width: '8em' } }, '과목'), h('th', '내용'))),
-        h('tbody', rows.map((l) => h('tr', h('td', h('button.link', { onclick: () => goto(app, l.date) }, koDate(l.date))), h('td.center', store.periodLabel(l.period)), h('td', l.subject), h('td.pre', l.content)))))
+      ? h('table.grid', h('thead', h('tr', h('th', { style: { width: '11em' } }, '날짜'), h('th', { style: { width: '5.5em' } }, '교시'), h('th', { style: { width: '8em' } }, sec ? '수업명' : '과목'),
+        sec ? h('th', { style: { width: '4.5em' } }, '학반') : null, sec ? h('th', { style: { width: '6em' } }, '교실') : null, h('th', '내용'))),
+        h('tbody', rows.map((l) => h('tr', h('td', h('button.link', { onclick: () => goto(app, l.date) }, koDate(l.date))), h('td.center', store.periodLabel(l.period)), h('td', l.subject),
+          sec ? h('td.center', l.cls || '') : null, sec ? h('td', l.room || '') : null, h('td.pre', l.content)))))
       : h('p.muted', '해당 조건의 수업일지가 없습니다.'));
   };
   draw();
+  const sel = (label, val, opts, on) => h('label', `${label} `, h('select', { onchange: (e) => { on(e.target.value); draw(); } }, h('option', { value: '' }, '전체'), opts.map((x) => h('option', { value: x, selected: x === val }, x))));
+  const title = [st.subject, st.cls].filter(Boolean).join('_') || '전체';
   return h('section.card',
     h('div.card-head', h('h2', '수업일지 모아보기'),
-      h('button.small', { onclick: async () => downloadBlob(await exportLessons(store, app.lessonSubject, list()), `수업일지_${app.lessonSubject || '전체'}.docx`) }, '⬇ Word')),
+      h('button.small', { onclick: async () => downloadBlob(await exportLessons(store, [st.subject, st.cls].filter(Boolean).join(' ') || '전체', list()), `수업일지_${title}.docx`) }, '⬇ Word')),
     h('div.row',
-      h('label', '과목 ', h('select', { onchange: (e) => { app.lessonSubject = e.target.value; draw(); } },
-        h('option', { value: '' }, '전체'), subjects.map((s) => h('option', { value: s, selected: s === app.lessonSubject }, s)))),
+      sel(sec ? '수업명' : '과목', st.subject, subjects, (v) => (st.subject = v)),
+      sec ? sel('학반', st.cls, classes, (v) => (st.cls = v)) : null,
       dateRangeInputs(st, draw)),
     wrap);
 }
@@ -143,38 +156,62 @@ function lessons(app) {
 // ---------- 상담일지 (학생별) ----------
 function counsel(app) {
   const { store } = app;
-  const names = store.studentNames();
-  app.counselStudent ||= names[0] || '';
-  const wrap = h('div');
-  const draw = () => {
-    const items = app.counselStudent ? store.counselFor(app.counselStudent) : [];
-    wrap.replaceChildren(items.length
-      ? h('div.counsel-list', items.map((c) => h('div.counsel-item', h('button.link', { onclick: () => goto(app, c.date) }, koDate(c.date)), h('p', c.text))))
-      : h('p.muted', '기록된 상담 일지가 없습니다.'));
-  };
-  draw();
-  const counts = Object.fromEntries(names.map((n) => [n, store.counselFor(n).length]));
+  app.counselView ||= { cls: '', uid: '' };
+  const cv = app.counselView;
+  const studs = store.studentsOf(cv.cls);
+  const counts = Object.fromEntries(studs.map((x) => [x.uid, store.counselFor(x.uid).length]));
+  if (!studs.some((x) => x.uid === cv.uid)) cv.uid = (studs.find((x) => counts[x.uid]) || studs[0])?.uid || '';
+  const items = cv.uid ? store.counselFor(cv.uid) : [];
+  const label = store.label(cv.uid);
   return h('section.card.private-report',
     h('div.card-head', h('h2', '학생별 상담 일지'),
-      h('button.small', { onclick: async () => downloadBlob(await exportCounsel(app.counselStudent, store.counselFor(app.counselStudent)), `상담일지_${app.counselStudent}.docx`) }, '⬇ Word')),
-    h('div.chips', names.map((n) => h(`button.chip-btn${n === app.counselStudent ? '.active' : ''}`, { onclick: () => { app.counselStudent = n; app.render(); } }, `${n} `, h('small', String(counts[n]))))),
-    wrap);
+      h('button.small', { onclick: async () => downloadBlob(await exportCounsel(label, items), `상담일지_${label}.docx`) }, '⬇ Word')),
+    store.classList().length ? h('div.row', classSelect(store, cv.cls, (v) => { cv.cls = v; app.render(); })) : null,
+    h('div.chips', studs.map((x) => h(`button.chip-btn${x.uid === cv.uid ? '.active' : ''}${counts[x.uid] ? '' : '.dim'}`, { onclick: () => { cv.uid = x.uid; app.render(); } }, `${studentLabel(x)} `, h('small', String(counts[x.uid]))))),
+    items.length
+      ? h('div.counsel-list', items.map((c) => h('div.counsel-item', h('button.link', { onclick: () => goto(app, c.date) }, koDate(c.date)), h('p', c.text))))
+      : h('p.muted', '기록된 상담 일지가 없습니다.'));
 }
 
 // ---------- 학급요록 모아보기 ----------
 function records(app) {
   const { store } = app;
-  const titles = [...new Set(store.work.records.map((r) => r.title).filter(Boolean))];
-  app.recordTitle ||= titles[0] || '';
-  const recs = store.work.records.filter((r) => r.title === app.recordTitle).sort((a, b) => a.created.localeCompare(b.created));
-  const names = store.studentNames();
+  const key = (r) => `${r.title}\u0000${r.cls || ''}`;
+  const groups = [...new Map(store.work.records.filter((r) => r.title).map((r) => [key(r), { title: r.title, cls: r.cls || '' }])).values()];
+  if (!groups.some((g) => `${g.title}\u0000${g.cls}` === app.recordKey)) app.recordKey = groups[0] ? `${groups[0].title}\u0000${groups[0].cls}` : '';
+  const recs = store.work.records.filter((r) => key(r) === app.recordKey).sort((a, b) => a.created.localeCompare(b.created));
+  const cls = recs[0]?.cls || '';
   return h('section.card',
     h('div.card-head', h('h2', '학급요록 모아보기')),
-    h('p.muted.small', '이름이 같은 요록끼리 모아 봅니다. (예: 매주 "독서록" 이라는 같은 이름으로 만들기)'),
-    titles.length ? h('div.chips', titles.map((t) => h(`button.chip-btn${t === app.recordTitle ? '.active' : ''}`, { onclick: () => { app.recordTitle = t; app.render(); } }, t))) : h('p.muted', '작성된 학급요록이 없습니다.'),
+    h('p.muted.small', '이름(과 대상 학반)이 같은 요록끼리 모아 봅니다. (예: 매주 "독서록" 이라는 같은 이름으로 만들기)'),
+    groups.length ? h('div.chips', groups.map((g) => h(`button.chip-btn${`${g.title}\u0000${g.cls}` === app.recordKey ? '.active' : ''}`, { onclick: () => { app.recordKey = `${g.title}\u0000${g.cls}`; app.render(); } }, g.title, g.cls ? h('small', ` ${g.cls}`) : null))) : h('p.muted', '작성된 학급요록이 없습니다.'),
     recs.length ? h('div.records-wrap', h('table.grid.records',
       h('thead', h('tr', h('th.sticky', '학생'), recs.map((r) => h('th', `${r.created}${r.doneDate ? ' ✓' : ''}`, h('button.icon-btn', { title: 'Word 다운로드', onclick: async () => downloadBlob(await exportRecord(store, r), `학급요록_${r.title}_${r.created}.docx`) }, '⬇'))))),
-      h('tbody', names.map((n) => h('tr', h('th.sticky', n), recs.map((r) => h('td', r.entries?.[n] || ''))))))) : null);
+      h('tbody', store.studentsOf(cls).map((x) => h('tr', h('th.sticky', studentLabel(x)), recs.map((r) => h('td', r.entries?.[x.uid] || ''))))))) : null);
+}
+
+// ---------- 출장 ----------
+function trips(app) {
+  const { store } = app;
+  const yr = yearRange(store.year);
+  app.tripRange ||= { start: yr.start, end: yr.end };
+  const st = app.tripRange;
+  const wrap = h('div');
+  const list = () => store.work.trips.filter((t) => t.date >= st.start && t.date <= st.end).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+  const draw = () => {
+    const rows = list();
+    const days = new Set(rows.map((t) => t.date)).size;
+    wrap.replaceChildren(
+      h('p', h('strong', `출장 ${rows.length}건 · ${days}일`)),
+      rows.length ? h('table.grid', h('thead', h('tr', h('th', { style: { width: '11em' } }, '날짜'), h('th', { style: { width: '9em' } }, '시간'), h('th', '출장지'), h('th', '목적·내용'))),
+        h('tbody', rows.map((t) => h('tr', h('td', h('button.link', { onclick: () => goto(app, t.date) }, koDate(t.date))), h('td', t.time || ''), h('td', t.place || ''), h('td', t.purpose || '')))))
+        : h('p.muted', '해당 기간의 출장 기록이 없습니다. 교사수첩의 [출장] 칸에서 기록하세요.'));
+  };
+  draw();
+  return h('section.card',
+    h('div.card-head', h('h2', '출장 모아보기'),
+      h('button.small', { onclick: async () => downloadBlob(await exportTrips(list(), st), `출장_${st.start}_${st.end}.docx`) }, '⬇ Word')),
+    dateRangeInputs(st, draw), wrap);
 }
 
 // ---------- 기간지정 다운로드 ----------
@@ -190,7 +227,7 @@ function range(app) {
   const st = app.dlRange;
   const datesWithContent = () => {
     const set = new Set();
-    for (const col of ['days', 'lessons', 'counsel', 'attendance', 'schedule']) for (const x of store.work[col]) if (x.date) set.add(x.date);
+    for (const col of ['days', 'lessons', 'counsel', 'attendance', 'schedule', 'trips']) for (const x of store.work[col]) if (x.date) set.add(x.date);
     for (const t of store.work.tasks) { if (t.doneDate) set.add(t.doneDate); }
     return [...set].filter((d) => d >= st.start && d <= st.end).sort();
   };

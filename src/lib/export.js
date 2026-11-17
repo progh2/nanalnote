@@ -48,21 +48,25 @@ function dayBlocks(store, date, specials, { mode = 'single', includeIncomplete =
   const sched = store.scheduleText(date);
   const sp = specials.map((x) => x.name + (x.holiday ? '(휴일)' : '')).join(', ');
   out.push(heading('학사일정'));
-  out.push(multiline([sched, sp && `특일: ${sp}`].filter(Boolean).join('\n') || '-'));
+  out.push(multiline([store.isSchoolHoliday(date) ? '[학교 휴업일]' : '', sched, sp && `특일: ${sp}`].filter(Boolean).join('\n') || '-'));
 
   const lessons = store.lessonsFor(date, weekdayOf(date));
   out.push(heading('수업일지'));
   // 시정표 순서대로 (등교·점심·저녁 줄 포함), 시정표에 없는 기록은 뒤에
+  const sec = s.schoolLevel === 'secondary';
+  const cols = (l) => (sec ? [l?.subject || '', l?.cls || '', l?.room || ''] : [l?.subject || '']);
   const rows = [];
   const used = new Set();
   for (const r of dayRows(s)) {
-    if (r.p == null) { rows.push([r.label, fmtRange(r), '', '']); continue; }
+    if (r.p == null) { rows.push([r.label, fmtRange(r), ...cols(null), '']); continue; }
     const l = lessons.find((x) => x.period === r.p);
     used.add(r.p);
-    rows.push([r.label, fmtRange(r), l?.subject || '', l?.content || '']);
+    rows.push([r.label, fmtRange(r), ...cols(l), l?.content || '']);
   }
-  for (const l of lessons) if (!used.has(l.period)) rows.push([store.periodLabel(l.period), '', l.subject, l.content]);
-  out.push(table(['교시', '시간', s.schoolLevel === 'secondary' ? '학반/교실' : '과목', '내용'], rows, [10, 14, 16, 60]));
+  for (const l of lessons) if (!used.has(l.period)) rows.push([store.periodLabel(l.period), '', ...cols(l), l.content]);
+  out.push(sec
+    ? table(['교시', '시간', '수업명', '학반', '교실', '내용'], rows, [9, 12, 13, 7, 11, 48])
+    : table(['교시', '시간', '과목', '내용'], rows, [10, 14, 16, 60]));
 
   let tasks = store.visibleTasks(date);
   if (mode === 'range') tasks = tasks.filter((t) => t.doneDate === date || (includeIncomplete && !t.doneDate) || (includeIncomplete && t.doneDate > date));
@@ -72,7 +76,13 @@ function dayBlocks(store, date, specials, { mode = 'single', includeIncomplete =
 
   const att = store.work.attendance.filter((a) => a.date === date);
   out.push(heading('학생출결상황'));
-  out.push(att.length ? table(['학생', '구분', '사유', '비고'], att.map((a) => [a.student, a.type, a.reason, a.note]), [20, 15, 15, 50]) : p('-'));
+  out.push(att.length ? table(['학생', '구분', '사유', '비고'], att.map((a) => [store.label(a.student), a.type, a.reason, a.note]), [24, 13, 13, 50]) : p('-'));
+
+  const trips = store.tripsOn(date);
+  if (trips.length) {
+    out.push(heading('출장'));
+    out.push(table(['시간', '출장지', '목적·내용'], trips.map((t) => [t.time, t.place, t.purpose]), [20, 30, 50]));
+  }
 
   const counsel = store.counselText(date);
   out.push(heading('학생 상담 일지 및 특이사항'));
@@ -109,11 +119,24 @@ export async function exportRange(store, dates, specialsOf, { includeIncomplete 
   return pack(children);
 }
 
-/** 과목별 수업일지 모음 */
-export async function exportLessons(store, subject, lessons) {
+/** 수업일지 모음 (수업명·학반별) */
+export async function exportLessons(store, title, lessons) {
+  const sec = store.settings.schoolLevel === 'secondary';
   return pack([
-    heading(`수업일지 모아보기 - ${subject || '전체'}`, HeadingLevel.HEADING_1),
-    table(['날짜', '교시', '과목', '내용'], lessons.map((l) => [koDate(l.date), store.periodLabel(l.period), l.subject, l.content]), [22, 10, 15, 53]),
+    heading(`수업일지 모아보기 - ${title || '전체'}`, HeadingLevel.HEADING_1),
+    sec
+      ? table(['날짜', '교시', '수업명', '학반', '교실', '내용'], lessons.map((l) => [koDate(l.date), store.periodLabel(l.period), l.subject, l.cls || '', l.room || '', l.content]), [20, 9, 12, 7, 10, 42])
+      : table(['날짜', '교시', '과목', '내용'], lessons.map((l) => [koDate(l.date), store.periodLabel(l.period), l.subject, l.content]), [22, 10, 15, 53]),
+  ]);
+}
+
+/** 출장 목록 */
+export async function exportTrips(list, range) {
+  const days = new Set(list.map((t) => t.date)).size;
+  return pack([
+    heading(`출장 (${range.start} ~ ${range.end})`, HeadingLevel.HEADING_1),
+    p(`총 ${list.length}건 · ${days}일`),
+    table(['날짜', '시간', '출장지', '목적·내용'], list.map((t) => [koDate(t.date), t.time, t.place, t.purpose]), [22, 16, 24, 38]),
   ]);
 }
 
@@ -135,10 +158,10 @@ export async function exportAttendance(rows, range) {
 
 /** 학급요록 (제목 단위) */
 export async function exportRecord(store, record) {
-  const names = store.studentNames();
+  const studs = store.studentsOf(record.cls || '');
   return pack([
-    heading(`학급요록 - ${record.title}`, HeadingLevel.HEADING_1),
+    heading(`학급요록 - ${record.title}${record.cls ? ` (${record.cls})` : ''}`, HeadingLevel.HEADING_1),
     p(`등록일 ${record.created}${record.doneDate ? ` · 완료 ${record.doneDate}` : ''}`),
-    table(['학생', '내용'], names.map((n) => [n, record.entries?.[n] || '']), [25, 75]),
+    table(['학생', '내용'], studs.map((x) => [store.label(x.uid), record.entries?.[x.uid] || '']), [25, 75]),
   ]);
 }

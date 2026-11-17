@@ -23,6 +23,8 @@ function mockNotion() {
       dbs.set(id, { title: body.title[0].text.content, props: body.properties, pages: new Map() });
       return ok({ id });
     }
+    if ((m = u.pathname.match(/^\/v1\/databases\/([^/]+)$/)) && init.method === 'GET') return ok({ id: m[1], properties: dbs.get(m[1]).props });
+    if ((m = u.pathname.match(/^\/v1\/databases\/([^/]+)$/)) && init.method === 'PATCH') { Object.assign(dbs.get(m[1]).props, body.properties); return ok({ id: m[1] }); }
     if ((m = u.pathname.match(/^\/v1\/databases\/(.+)\/query$/))) {
       const db = dbs.get(m[1]);
       const y = body.filter.number.equals;
@@ -60,13 +62,19 @@ test('Worker: 인증, setup, batch, 조회 왕복', async () => {
   assert.equal(pre.headers.get('Access-Control-Allow-Origin'), 'https://me.github.io');
 
   let r = await (await call('/api/setup', { method: 'POST' })).json();
-  assert.equal(r.created.length, 9);
-  assert.equal(dbs.size, 9);
+  assert.equal(r.created.length, 10);
+  assert.equal(dbs.size, 10);
+  // 예전 버전 DB 에 없던 속성은 setup 이 덧붙인다
+  const stuDb = [...dbs.values()].find((d) => d.title === '쌔미노트_학생');
+  delete stuDb.props.학번;
   r = await (await call('/api/setup', { method: 'POST' })).json();
   assert.equal(r.created.length, 0);
+  assert.deepEqual(r.updated, ['학생(학번)']);
 
   const ops = [
-    { op: 'upsert', col: 'students', item: { id: 'n_1', no: 1, name: '이몽룡' } },
+    { op: 'upsert', col: 'students', item: { id: 'n_1', uid: 'U1', studentNo: '10201', grade: 1, cls: 2, no: 1, name: '이몽룡' } },
+    { op: 'upsert', col: 'trips', item: { id: 'n_6', date: '2026-03-03', place: '교육청', time: '14:00', purpose: '회의' } },
+    { op: 'upsert', col: 'attendance', item: { id: 'n_7', date: '2026-03-03', student: 'U1', _label: '10201 이몽룡', type: '지각', reason: '', note: '' } },
     { op: 'upsert', col: 'counsel', item: { id: 'n_2', date: '2026-03-02', order: 0, text: '이몽룡 울었다'.repeat(300), students: ['이몽룡'] } },
     { op: 'upsert', col: 'records', item: { id: 'n_3', title: '독서록', created: '2026-03-02', doneDate: null, entries: { 이몽룡: 'O' } } },
     { op: 'upsert', col: 'settings', item: { id: 'n_4', key: 'main', value: { teacherInfo: '3-2', timetable: { 1: ['국어'] } } } },
@@ -83,7 +91,10 @@ test('Worker: 인증, setup, batch, 조회 왕복', async () => {
   assert.equal((await get('settings'))[0].value.teacherInfo, '3-2');
   assert.equal((await get('tasks'))[0].doneDate, '2026-03-03');
   assert.equal((await get('students')).length, 1);
-  assert.equal((await get('students')).length, 1);
+  assert.equal((await get('students'))[0].studentNo, '10201');
+  assert.equal((await get('students'))[0].uid, 'U1');
+  assert.equal((await get('trips'))[0].place, '교육청');
+  assert.equal((await get('attendance'))[0].student, '10201 이몽룡');
   assert.equal((await (await call('/api/year/2025/students')).json()).items.length, 0);
 
   const sid = (await get('students'))[0].id;

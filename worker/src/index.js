@@ -51,15 +51,15 @@ const SCHEMAS = {
   },
   students: {
     name: '학생',
-    props: { 이름: 'title', 번호: 'number' },
-    to: (x) => ({ 이름: T(x.name), 번호: N(x.no) }),
-    from: (p) => ({ name: gT(p, '이름'), no: gN(p, '번호') }),
+    props: { 이름: 'title', 학번: 'rich_text', 학년: 'number', 반: 'number', 번호: 'number', 사진: 'rich_text', ID: 'rich_text' },
+    to: (x) => ({ 이름: T(x.name), 학번: R(x.studentNo), 학년: N(x.grade), 반: N(x.cls), 번호: N(x.no), 사진: R(x.photo), ID: R(x.uid) }),
+    from: (p) => ({ name: gT(p, '이름'), studentNo: gR(p, '학번'), grade: gN(p, '학년'), cls: gN(p, '반'), no: gN(p, '번호'), photo: gR(p, '사진'), uid: gR(p, 'ID') || undefined }),
   },
   schedule: {
     name: '학사일정',
-    props: { 일정: 'title', 날짜: 'date' },
-    to: (x) => ({ 일정: T(x.text), 날짜: D(x.date) }),
-    from: (p) => ({ text: gT(p, '일정'), date: gDay(p, '날짜') }),
+    props: { 일정: 'title', 날짜: 'date', 휴업: 'checkbox' },
+    to: (x) => ({ 일정: T(x.text), 날짜: D(x.date), 휴업: CB(x.holiday) }),
+    from: (p) => ({ text: gT(p, '일정'), date: gDay(p, '날짜'), ...(p.properties.휴업?.checkbox ? { holiday: true } : {}) }),
   },
   days: {
     name: '교사수첩',
@@ -69,9 +69,9 @@ const SCHEMAS = {
   },
   lessons: {
     name: '수업일지',
-    props: { 수업: 'title', 날짜: 'date', 교시: 'number', 과목: 'rich_text', 내용: 'rich_text' },
-    to: (x) => ({ 수업: T(`${x.date} ${x.period}교시 ${x.subject || ''}`.trim()), 날짜: D(x.date), 교시: N(x.period), 과목: R(x.subject), 내용: R(x.content) }),
-    from: (p) => ({ date: gDay(p, '날짜'), period: gN(p, '교시'), subject: gR(p, '과목'), content: gR(p, '내용') }),
+    props: { 수업: 'title', 날짜: 'date', 교시: 'number', 과목: 'rich_text', 학반: 'rich_text', 교실: 'rich_text', 내용: 'rich_text' },
+    to: (x) => ({ 수업: T([x.date, x._period || `${x.period}교시`, x.subject, x.cls].filter(Boolean).join(' ')), 날짜: D(x.date), 교시: N(x.period), 과목: R(x.subject), 학반: R(x.cls), 교실: R(x.room), 내용: R(x.content) }),
+    from: (p) => ({ date: gDay(p, '날짜'), period: gN(p, '교시'), subject: gR(p, '과목'), cls: gR(p, '학반'), room: gR(p, '교실'), content: gR(p, '내용') }),
   },
   tasks: {
     name: '업무일지',
@@ -82,20 +82,26 @@ const SCHEMAS = {
   attendance: {
     name: '학생출결',
     props: { 학생: 'title', 날짜: 'date', 구분: 'select', 사유: 'select', 비고: 'rich_text' },
-    to: (x) => ({ 학생: T(x.student), 날짜: D(x.date), 구분: S(x.type), 사유: S(x.reason), 비고: R(x.note) }),
+    to: (x) => ({ 학생: T(x._label || x.student), 날짜: D(x.date), 구분: S(x.type), 사유: S(x.reason), 비고: R(x.note) }),
     from: (p) => ({ student: gT(p, '학생'), date: gDay(p, '날짜'), type: gS(p, '구분'), reason: gS(p, '사유'), note: gR(p, '비고') }),
   },
   counsel: {
     name: '상담일지',
     props: { 요약: 'title', 날짜: 'date', 순서: 'number', 학생: 'multi_select', 내용: 'rich_text' },
-    to: (x) => ({ 요약: T(Array.from(x.text || '').slice(0, 60).join('').replace(/\n/g, ' ')), 날짜: D(x.date), 순서: N(x.order), 학생: M(x.students), 내용: R(x.text) }),
+    to: (x) => ({ 요약: T(Array.from(x.text || '').slice(0, 60).join('').replace(/\n/g, ' ')), 날짜: D(x.date), 순서: N(x.order), 학생: M(x._labels || x.students), 내용: R(x.text) }),
     from: (p) => ({ date: gDay(p, '날짜'), order: gN(p, '순서') ?? 0, students: gM(p, '학생'), text: gR(p, '내용') }),
   },
   records: {
     name: '학급요록',
-    props: { 제목: 'title', 등록일: 'date', 완료일: 'date', 학생별: 'rich_text' },
-    to: (x) => ({ 제목: T(x.title), 등록일: D(x.created), 완료일: D(x.doneDate), 학생별: R(JSON.stringify(x.entries || {})) }),
-    from: (p) => ({ title: gT(p, '제목'), created: gDay(p, '등록일'), doneDate: gDay(p, '완료일'), entries: parseJSON(gR(p, '학생별'), {}) }),
+    props: { 제목: 'title', 등록일: 'date', 완료일: 'date', 대상: 'rich_text', 학생별: 'rich_text' },
+    to: (x) => ({ 제목: T(x.title), 등록일: D(x.created), 완료일: D(x.doneDate), 대상: R(x.cls), 학생별: R(JSON.stringify(x._entries || x.entries || {})) }),
+    from: (p) => ({ title: gT(p, '제목'), created: gDay(p, '등록일'), doneDate: gDay(p, '완료일'), ...(gR(p, '대상') ? { cls: gR(p, '대상') } : {}), entries: parseJSON(gR(p, '학생별'), {}) }),
+  },
+  trips: {
+    name: '출장',
+    props: { 출장지: 'title', 날짜: 'date', 시간: 'rich_text', 목적: 'rich_text' },
+    to: (x) => ({ 출장지: T(x.place), 날짜: D(x.date), 시간: R(x.time), 목적: R(x.purpose) }),
+    from: (p) => ({ place: gT(p, '출장지'), date: gDay(p, '날짜'), time: gR(p, '시간'), purpose: gR(p, '목적') }),
   },
 };
 
@@ -144,8 +150,19 @@ async function findDatabases(env, force = false) {
 async function setup(env) {
   const ids = await findDatabases(env, true);
   const created = [];
+  const updated = [];
   for (const [col, s] of Object.entries(SCHEMAS)) {
-    if (ids[col]) continue;
+    if (ids[col]) {
+      // 새 버전에서 추가된 속성이 있으면 기존 DB 에 덧붙인다
+      const db = await notion(env, 'GET', `/databases/${ids[col]}`);
+      const missing = {};
+      for (const [k, type] of Object.entries(s.props)) if (type !== 'title' && !db.properties?.[k]) missing[k] = { [type]: {} };
+      if (Object.keys(missing).length) {
+        await notion(env, 'PATCH', `/databases/${ids[col]}`, { properties: missing });
+        updated.push(`${s.name}(${Object.keys(missing).join(', ')})`);
+      }
+      continue;
+    }
     const properties = { 학년도: { number: { format: 'number' } } };
     for (const [k, type] of Object.entries(s.props)) properties[k] = { [type]: {} };
     if (col === 'attendance') {
@@ -161,7 +178,7 @@ async function setup(env) {
     created.push(s.name);
   }
   dbCache = { at: Date.now(), ids };
-  return { created, databases: Object.keys(ids).length };
+  return { created, updated, databases: Object.keys(ids).length };
 }
 
 /** 한 컬렉션의 한 페이지(최대 100건) 조회. 무료 플랜 하위요청 제한 때문에 클라이언트가 페이지 단위로 반복 호출한다. */

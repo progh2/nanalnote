@@ -2,17 +2,28 @@
 // 원본 쌔미노트처럼 "저장" 버튼(Ctrl+S)을 눌렀을 때만 변경 내용이 반영된다.
 
 import { clone, newId, isTempId } from './lib/util.js';
-import { splitParagraphs, mentionedStudents } from './lib/counsel.js';
+import { splitParagraphs } from './lib/counsel.js';
+import { normStudent, sortStudents, buildIndex, toUid, labelOf, mentionedUids, classKeys, newUid } from './lib/students.js';
 import { bellOf, periodList, periodLabel } from './lib/bell.js';
 
-export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records'];
+export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records', 'trips'];
 
 export const DEFAULT_SETTINGS = {
   teacherInfo: '',
   schoolLevel: 'elem', // elem | secondary
   showModified: true,
-  timetable: { 1: [], 2: [], 3: [], 4: [], 5: [] }, // 요일(1=월) -> 교시별 과목/교실
+  timetable: { 1: [], 2: [], 3: [], 4: [], 5: [] }, // 요일(1=월) -> 교시별 칸 (문자열=과목, 또는 { subject, cls, room })
+  courses: [], // 내 수업명 목록
+  rooms: [], // 교실·실습실 목록
+  classes: [], // 담당 학반 목록 (예: 1-2)
 };
+
+/** 시간표 칸 → { subject, cls, room } */
+export function ttCell(v) {
+  if (v && typeof v === 'object') return { subject: v.subject || '', cls: v.cls || '', room: v.room || '' };
+  return { subject: String(v || ''), cls: '', room: '' };
+}
+export const ttIsEmpty = (v) => { const c = ttCell(v); return !c.subject && !c.cls && !c.room; };
 
 export const ATT_TYPES = ['결석', '지각', '조퇴', '결과'];
 export const ATT_REASONS = ['질병', '미인정', '기타', '출석인정'];
@@ -40,6 +51,7 @@ export class Store {
     const data = await this.backend.loadYear(year);
     const full = emptyData();
     for (const c of COLLECTIONS) full[c] = Array.isArray(data?.[c]) ? data[c] : [];
+    migrateRefs(full);
     this.year = year;
     this.base = full;
     this.work = clone(full);
@@ -77,8 +89,31 @@ export class Store {
   get bell() { return bellOf(this.settings); }
   periodLabel(p) { return periodLabel(this.settings, p); }
 
-  studentNames() {
-    return [...this.work.students].sort((a, b) => (a.no ?? 0) - (b.no ?? 0)).map((s) => s.name);
+  /** 정렬된 학생 목록 (학년-반-번호 순) */
+  students() { return sortStudents(this.work.students); }
+  studentIndex() { return buildIndex(this.work.students); }
+  /** uid(또는 옛 이름 참조) → "학번 이름" */
+  label(ref) { return labelOf(ref, this.studentIndex()); }
+  /** 학반 목록: 설정의 담당 학반 + 학생 명단의 학반 */
+  classList() {
+    return [...new Set([...(this.settings.classes || []), ...classKeys(this.work.students)])].sort((a, b) => {
+      const [ag, ac] = a.split('-').map(Number), [bg, bc] = b.split('-').map(Number);
+      return (ag - bg) || (ac - bc) || a.localeCompare(b);
+    });
+  }
+  /** 학반(예: '1-2')의 학생들. 빈 값이면 전체 */
+  studentsOf(cls) { return this.students().filter((s) => !cls || `${s.grade}-${s.cls}` === cls); }
+
+  // ----- 휴업일 -----
+  scheduleItem(date) { return this.work.schedule.find((x) => x.date === date); }
+  isSchoolHoliday(date) { return !!this.scheduleItem(date)?.holiday; }
+  setSchoolHoliday(date, on) {
+    let s = this.scheduleItem(date);
+    if (!s) { s = { id: newId(), date, text: '' }; this.work.schedule.push(s); }
+    s.holiday = !!on;
+    if (on && !s.text.trim()) s.text = '휴업일';
+    if (!on) delete s.holiday;
+    this.markDirty();
   }
 
   scheduleText(date) { return this.work.schedule.find((x) => x.date === date)?.text || ''; }
@@ -109,7 +144,7 @@ export class Store {
     const out = [];
     for (const { p } of periodList(this.settings)) {
       const saved = this.work.lessons.find((l) => l.date === date && l.period === p);
-      out.push(saved || { id: null, date, period: p, subject: tt[p - 1] || '', content: '' });
+      out.push(saved || { id: null, date, period: p, ...ttCell(tt[p - 1]), content: '' });
     }
     // 교시 수를 줄였어도 이미 기록한 수업일지는 보이게 한다
     for (const l of this.work.lessons) if (l.date === date && !out.some((o) => o.period === l.period)) out.push(l);
@@ -121,7 +156,7 @@ export class Store {
     let l = this.work.lessons.find((x) => x.date === date && x.period === period);
     if (!l) {
       const weekday = new Date(date + 'T00:00').getDay();
-      l = { id: newId(), date, period, subject: this.settings.timetable[weekday]?.[period - 1] || '', content: '' };
+      l = { id: newId(), date, period, ...ttCell(this.settings.timetable[weekday]?.[period - 1]), content: '' };
       this.work.lessons.push(l);
     }
     Object.assign(l, patch);
@@ -135,31 +170,33 @@ export class Store {
 
   setCounselText(date, text) { this.counselDraft[date] = text; this.markDirty(); }
 
-  /** 학생 한 명에 대한 상담 일지 모음 (저장되지 않은 초안 포함) */
-  counselFor(name) {
-    const names = this.studentNames();
+  /** 학생 한 명(uid)에 대한 상담 일지 모음 (저장되지 않은 초안 포함) */
+  counselFor(uid) {
+    const students = this.work.students;
     const out = [];
     const draftDates = new Set(Object.keys(this.counselDraft));
-    for (const c of this.work.counsel) if (!draftDates.has(c.date) && (c.students || []).includes(name)) out.push(c);
+    for (const c of this.work.counsel) if (!draftDates.has(c.date) && (c.students || []).includes(uid)) out.push(c);
     for (const d of draftDates) {
       splitParagraphs(this.counselDraft[d]).forEach((text, i) => {
-        if (mentionedStudents(text, names).includes(name)) out.push({ date: d, order: i, text });
+        if (mentionedUids(text, students).includes(uid)) out.push({ date: d, order: i, text });
       });
     }
     return out.sort((a, b) => (a.date + a.order).localeCompare(b.date + b.order));
   }
 
+  tripsOn(date) { return this.work.trips.filter((t) => t.date === date); }
+
   // ---------- 저장 ----------
   /** 상담일지 초안을 단락 단위 레코드로 변환 */
   applyCounselDrafts() {
-    const names = this.studentNames();
+    const students = this.work.students;
     for (const [date, text] of Object.entries(this.counselDraft)) {
       const paras = splitParagraphs(text);
       const existing = this.work.counsel.filter((c) => c.date === date).sort((a, b) => a.order - b.order);
       paras.forEach((p, i) => {
-        const students = mentionedStudents(p, names);
-        if (existing[i]) Object.assign(existing[i], { order: i, text: p, students });
-        else this.work.counsel.push({ id: newId(), date, order: i, text: p, students });
+        const uids = mentionedUids(p, students);
+        if (existing[i]) Object.assign(existing[i], { order: i, text: p, students: uids });
+        else this.work.counsel.push({ id: newId(), date, order: i, text: p, students: uids });
       });
       const remove = new Set(existing.slice(paras.length).map((c) => c.id));
       this.work.counsel = this.work.counsel.filter((c) => !remove.has(c.id));
@@ -172,6 +209,7 @@ export class Store {
     const w = this.work;
     const tt = this.settings.timetable;
     w.tasks = w.tasks.filter((t) => (t.text || '').trim());
+    w.students = w.students.filter((x) => (x.name || '').trim()).map((x) => ({ ...normStudent(x), uid: x.uid || newUid() }));
     w.attendance = w.attendance.filter((a) => a.student);
     // 제목도 내용도 없는 요록은 삭제, 내용만 있으면 날짜+순번으로 제목 채번
     w.records = w.records.filter((r) => (r.title || '').trim() || Object.values(r.entries || {}).some((v) => String(v).trim()));
@@ -184,10 +222,10 @@ export class Store {
       }
     }
     // 내용이 비어 있는 학사일정/수업일지는 저장하지 않음(기존 항목은 삭제)
-    w.schedule = w.schedule.filter((s) => (s.text || '').trim());
+    w.schedule = w.schedule.filter((s) => (s.text || '').trim() || s.holiday);
     w.lessons = w.lessons.filter((l) => {
-      const def = tt[new Date(l.date + 'T00:00').getDay()]?.[l.period - 1] || '';
-      return (l.content || '').trim() || (l.subject || '') !== def;
+      const def = ttCell(tt[new Date(l.date + 'T00:00').getDay()]?.[l.period - 1]);
+      return (l.content || '').trim() || (l.subject || '') !== def.subject || (l.cls || '') !== def.cls || (l.room || '') !== def.room;
     });
   }
 
@@ -225,7 +263,8 @@ export class Store {
       }
       ops = this.diff();
 
-      const results = await this.backend.applyOps(this.year, ops);
+      const idx = this.studentIndex();
+      const results = await this.backend.applyOps(this.year, ops, { label: (ref) => labelOf(ref, idx), students: this.work.students });
       let failed = 0;
       results.forEach((r, i) => {
         const op = ops[i];
@@ -254,5 +293,22 @@ export class Store {
       this.saving = false;
       this.emit('idle');
     }
+  }
+}
+
+/**
+ * 불러온 데이터의 학생 참조를 uid 로 맞춘다.
+ * - 학생에 uid 가 없으면 레코드 id 를 uid 로 사용 (예전 데이터)
+ * - 출결/상담/요록의 이름·"학번 이름" 참조를 uid 로 변환 (노션·마크다운은 사람이 읽는 이름으로 저장되어 있음)
+ */
+export function migrateRefs(data) {
+  data.students = data.students.map((s) => ({ ...normStudent(s), uid: s.uid || s.id }));
+  const idx = buildIndex(data.students);
+  for (const a of data.attendance) a.student = toUid(a.student, idx);
+  for (const c of data.counsel) c.students = [...new Set((c.students || []).map((r) => toUid(r, idx)))];
+  for (const r of data.records) {
+    const e = {};
+    for (const [k, v] of Object.entries(r.entries || {})) e[toUid(k, idx)] = v;
+    r.entries = e;
   }
 }

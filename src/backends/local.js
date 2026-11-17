@@ -1,4 +1,7 @@
-// 로컬 저장소 백엔드: 브라우저 localStorage 에 학년도별로 저장 (노션 연결 전/오프라인용)
+// 로컬 저장소 백엔드: 브라우저 localStorage 에 학년도별로 저장, 학생 사진은 IndexedDB
+import { idbPut, idbGet, idbDel } from '../lib/photos.js';
+
+const urls = new Map();
 const KEY = (y) => `sn:data:${y}`;
 
 export class LocalBackend {
@@ -39,4 +42,28 @@ export class LocalBackend {
   }
 
   holidayFetcher() { return null; }
+
+  async savePhoto(year, student, blob) {
+    const key = `${year}/${student.uid}`;
+    await idbPut(key, blob);
+    if (urls.has(key)) URL.revokeObjectURL(urls.get(key));
+    urls.set(key, URL.createObjectURL(blob));
+    return 'idb';
+  }
+
+  async photoUrl(year, student) {
+    if (!student?.photo) return null;
+    const key = `${year}/${student.uid}`;
+    if (urls.has(key)) return urls.get(key);
+    const blob = await idbGet(key).catch(() => null);
+    if (!blob) return null;
+    urls.set(key, URL.createObjectURL(blob));
+    return urls.get(key);
+  }
+
+  async deletePhoto(year, student) {
+    const key = `${year}/${student.uid}`;
+    await idbDel(key).catch(() => {});
+    urls.delete(key);
+  }
 }

@@ -4,6 +4,7 @@
 //   같은 파일을 한 번 더 저장하면 이 기기 내용으로 덮어쓴다.
 
 import { serialize, parse, pathOf, yearDir, FILES } from '../lib/mdformat.js';
+import { safeName } from '../lib/photos.js';
 
 export const DROPBOX_APP_KEY = import.meta.env?.VITE_DROPBOX_APP_KEY || 'r774qv1d7hq5fl6';
 const AUTH_URL = 'https://www.dropbox.com/oauth2/authorize';
@@ -287,4 +288,42 @@ export class DropboxBackend {
   }
 
   holidayFetcher() { return null; }
+
+  // ---------- 학생 사진: {학년도}학년도/사진/학번_이름.jpg ----------
+  photoPath(year, student) { return `${yearDir(year)}/사진/${student.photo}`; }
+
+  async savePhoto(year, student, blob) {
+    const name = `${safeName(student.studentNo ? `${student.studentNo}_${student.name}` : student.name)}.jpg`;
+    const path = `${yearDir(year)}/사진/${name}`;
+    const res = await fetch(`${CONTENT}/files/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${await this.token()}`, 'Content-Type': 'application/octet-stream', 'Dropbox-API-Arg': asciiHeader(JSON.stringify({ path, mode: { '.tag': 'overwrite' }, mute: true })) },
+      body: blob,
+    });
+    if (!res.ok) throw new Error(`사진 업로드 실패 (${res.status})`);
+    if (student.photo && student.photo !== name) await this.deletePhoto(year, student);
+    this.photoUrls ||= new Map();
+    this.photoUrls.set(path.toLowerCase(), URL.createObjectURL(blob));
+    return name;
+  }
+
+  async photoUrl(year, student) {
+    if (!student?.photo) return null;
+    const path = this.photoPath(year, student);
+    this.photoUrls ||= new Map();
+    const k = path.toLowerCase();
+    if (this.photoUrls.has(k)) return this.photoUrls.get(k);
+    const res = await fetch(`${CONTENT}/files/download`, { method: 'POST', headers: { Authorization: `Bearer ${await this.token()}`, 'Dropbox-API-Arg': asciiHeader(JSON.stringify({ path })) } });
+    if (!res.ok) return null;
+    const url = URL.createObjectURL(await res.blob());
+    this.photoUrls.set(k, url);
+    return url;
+  }
+
+  async deletePhoto(year, student) {
+    if (!student?.photo) return;
+    const path = this.photoPath(year, student);
+    await this.rpc('files/delete_v2', { path }).catch(() => {});
+    this.photoUrls?.delete(path.toLowerCase());
+  }
 }

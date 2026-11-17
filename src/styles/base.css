@@ -232,3 +232,35 @@ ol.small { font-size: 13px; color: var(--muted); padding-left: 1.3em; }
 .inline-form label { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .inline-form input[type=time], .inline-form input[type=number], .inline-form select { width: auto !important; }
 .inline-form input[type=number] { width: 4.5em !important; }
+
+/* 출장, 학생 넣기, 사진 */
+.trips { display: flex; flex-direction: column; gap: 6px; }
+.trip-row { display: grid; grid-template-columns: 9.5em 1fr 1.4fr auto; gap: 6px; align-items: center; }
+.counsel-pick { margin: 0 0 8px; }
+.counsel-pick select { width: auto; max-width: 16em; }
+.avatar { display: inline-grid; place-items: center; flex: none; border-radius: 8px; overflow: hidden; background: var(--chip-bg); color: var(--chip-text); font-weight: 700; font-size: 13px; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.cal-cell .trip { color: var(--primary); font-weight: 600; }
+.cal-cell.school-holiday .cal-num { color: var(--holiday); }
+
+/* 학생관리 */
+.stu-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; max-height: 62vh; overflow: auto; padding: 2px; }
+.stu-card { display: flex; align-items: center; gap: 8px; text-align: left; padding: 4px 8px; font-weight: 500; background: var(--surface-2); }
+.stu-card.active { outline: 2px solid var(--primary); background: var(--highlight); }
+.stu-no { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12.5px; }
+.stu-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stu-head { display: flex; gap: 16px; align-items: flex-start; }
+.stu-detail .inline-form input[type=number] { width: 4.2em !important; }
+
+.lists-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.lists-grid label { display: grid; gap: 4px; font-weight: 600; font-size: 13px; }
+.bell-table td.tt-cell { min-width: 8.5em; }
+.bell-table td.tt-cell input { display: block; padding: 2px 6px; font-size: 13px; }
+.bell-table td.tt-cell input + input { margin-top: 2px; }
+@media (max-width: 900px) { .lists-grid { grid-template-columns: 1fr; } .trip-row { grid-template-columns: 1fr 1fr; } }
+
+.chip-btn.dim { opacity: .55; }
+.cal-sched.red { color: var(--holiday); font-weight: 600; }
+
+.card-head > .row { flex-wrap: nowrap; }
+.card-head select { width: auto; }

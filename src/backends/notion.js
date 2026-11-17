@@ -47,7 +47,17 @@ export class NotionBackend {
     return data;
   }
 
-  async applyOps(year, ops) {
+  /** ctx.label(uid) 로 사람이 읽는 학생 이름("학번 이름")을 붙여 보낸다 */
+  async applyOps(year, ops, ctx = {}) {
+    const label = ctx.label || ((x) => x);
+    ops = ops.map((op) => {
+      if (op.op !== 'upsert') return op;
+      const item = { ...op.item };
+      if (op.col === 'attendance') item._label = label(item.student);
+      if (op.col === 'counsel') item._labels = (item.students || []).map(label);
+      if (op.col === 'records') item._entries = Object.fromEntries(Object.entries(item.entries || {}).map(([k, v]) => [label(k), v]));
+      return { ...op, item };
+    });
     const results = [];
     for (let i = 0; i < ops.length; i += BATCH) {
       const chunk = ops.slice(i, i + BATCH);
@@ -68,3 +78,7 @@ export class NotionBackend {
     };
   }
 }
+
+NotionBackend.prototype.savePhoto = async function () { throw new Error('노션 저장소는 학생 사진을 지원하지 않습니다. 드롭박스나 로컬 저장소를 사용하세요.'); };
+NotionBackend.prototype.photoUrl = async function () { return null; };
+NotionBackend.prototype.deletePhoto = async function () {};

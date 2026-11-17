@@ -46,7 +46,7 @@ test('내장 특일정보', () => {
 test('Store: 저장/diff/업무일지 노출 규칙/상담 단락 변환', async () => {
   const s = new Store(new LocalBackend());
   await s.load(2026);
-  s.work.students.push({ id: 'n_a', no: 1, name: '이몽룡' }, { id: 'n_b', no: 2, name: '성춘향' });
+  s.work.students.push({ id: 'n_a', uid: 'u1', no: 1, name: '이몽룡' }, { id: 'n_b', uid: 'u2', no: 2, name: '성춘향' });
   s.updateSettings({ timetable: { 1: ['국어', '수학'] } });
   s.setLesson('2026-03-02', 1, { content: '자기소개' }); // 월요일
   s.work.tasks.push({ id: 'n_t', text: '가정통신문', created: '2026-03-02', doneDate: null });
@@ -56,7 +56,7 @@ test('Store: 저장/diff/업무일지 노출 규칙/상담 단락 변환', async
   assert.equal(s.dirty, false);
   assert.ok(s.work.students.every((x) => x.id.startsWith('l_')));
   assert.equal(s.work.counsel.length, 2);
-  assert.deepEqual(s.counselFor('이몽룡').map((c) => c.text), ['이몽룡 울었다']);
+  assert.deepEqual(s.counselFor('u1').map((c) => c.text), ['이몽룡 울었다']);
   assert.equal(s.lessonsFor('2026-03-02', 1)[0].subject, '국어');
   assert.equal(s.lessonsFor('2026-03-09', 1)[1].subject, '수학');
   assert.ok(s.day('2026-03-02').updatedAt);
@@ -87,10 +87,60 @@ test('Store: 저장/diff/업무일지 노출 규칙/상담 단락 변환', async
 test('Store: 요록 제목 자동 채번, 빈 요록 제거', async () => {
   const s = new Store(new LocalBackend());
   await s.load(2027);
-  s.work.records.push({ id: 'n_r1', title: '', created: '2027-03-05', doneDate: null, entries: { 홍길동: 'O' } });
+  s.work.records.push({ id: 'n_r1', title: '', created: '2027-03-05', doneDate: null, entries: { u9: 'O' } });
   s.work.records.push({ id: 'n_r2', title: '', created: '2027-03-05', doneDate: null, entries: {} });
   s.markDirty();
   await s.save();
   assert.equal(s.work.records.length, 1);
   assert.equal(s.work.records[0].title, '20270305-1');
+});
+
+const { normStudent, mentionedUids, resolveRef, buildIndex, matchPhotoFile, tokenizeStudents } = await import('../src/lib/students.js');
+const { migrateRefs } = await import('../src/store.js');
+
+test('학생: 학번 ↔ 학년/반/번호, 동명이인은 학번으로 구분', () => {
+  assert.deepEqual(normStudent({ studentNo: '10203', name: ' 이몽룡 ' }), { studentNo: '10203', grade: 1, cls: 2, no: 3, name: '이몽룡' });
+  assert.equal(normStudent({ grade: 2, cls: 11, no: 7, name: 'a' }).studentNo, '21107');
+  const st = [
+    { uid: 'a', studentNo: '10203', name: '김민준' }, { uid: 'b', studentNo: '20511', name: '김민준' }, { uid: 'c', studentNo: '10204', name: '이서연' },
+  ];
+  // 동명이인은 이름만으로는 인식하지 않고, 학번을 붙이면 인식
+  assert.deepEqual(mentionedUids('김민준 결석', st), []);
+  assert.deepEqual(mentionedUids('20511 김민준 결석, 이서연 지각', st), ['b', 'c']);
+  assert.deepEqual(mentionedUids('김민준(10203) 상담', st), ['a']);
+  assert.deepEqual(tokenizeStudents('오늘 10203 김민준 칭찬', st).map((t) => t.uid || ''), ['', 'a', ' 칭찬'.length ? '' : '']);
+  const idx = buildIndex(st);
+  assert.equal(resolveRef('20511 김민준', idx).uid, 'b');
+  assert.equal(resolveRef('이서연', idx).uid, 'c');
+  assert.equal(resolveRef('김민준', idx), null);
+  assert.equal(matchPhotoFile('IMG_20511_김민준.jpg', st).uid, 'b');
+  assert.equal(matchPhotoFile('이서연.png', st).uid, 'c');
+});
+
+test('예전 데이터(이름 참조)를 uid 로 변환', () => {
+  const d = { students: [{ id: 'x1', no: 1, name: '이몽룡' }], attendance: [{ student: '이몽룡' }], counsel: [{ students: ['이몽룡'] }], records: [{ entries: { 이몽룡: 'O' } }] };
+  migrateRefs(d);
+  assert.equal(d.students[0].uid, 'x1');
+  assert.equal(d.attendance[0].student, 'x1');
+  assert.deepEqual(d.counsel[0].students, ['x1']);
+  assert.deepEqual(d.records[0].entries, { x1: 'O' });
+});
+
+test('휴업일·출장·중고 수업일지(수업명/학반/교실) 저장', async () => {
+  const s = new Store(new LocalBackend());
+  await s.load(2028);
+  s.updateSettings({ schoolLevel: 'secondary', timetable: { 2: [{ subject: '정보', cls: '1-2', room: '컴퓨터실' }] } });
+  s.setSchoolHoliday('2028-05-04', true);
+  s.work.trips.push({ id: 'n_tr', date: '2028-05-02', time: '13:00~17:00', place: '교육청', purpose: '연수' });
+  const l = s.lessonsFor('2028-05-02', 2)[0]; // 화요일
+  assert.deepEqual([l.subject, l.cls, l.room], ['정보', '1-2', '컴퓨터실']);
+  s.setLesson('2028-05-02', 1, { content: '조건문' });
+  const r = await s.save(['2028-05-02']);
+  assert.ok(r.ok);
+  const s2 = new Store(new LocalBackend());
+  await s2.load(2028);
+  assert.equal(s2.isSchoolHoliday('2028-05-04'), true);
+  assert.equal(s2.scheduleText('2028-05-04'), '휴업일');
+  assert.equal(s2.tripsOn('2028-05-02')[0].place, '교육청');
+  assert.equal(s2.work.lessons[0].room, '컴퓨터실');
 });

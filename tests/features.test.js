@@ -131,11 +131,15 @@ test('업무 중요도 자동 정렬과 직접 순서', async () => {
   s.markDirty(); await s.save();
   const auto = s.visibleTasks('2032-03-03').map((t) => t.id);
   assert.equal(auto[0], 'a');
-  // 끌어서 'later' 를 맨 위로 → 직접 정하기로 전환
-  s.reorderTasks(['later', ...auto.filter((x) => x !== 'later')]);
+  assert.deepEqual(auto, ['a', 'b-soon', 'b-late', 'none', 'c', 'later']);
+  // 같은 중요도(B) 안에서 'none' 을 맨 앞으로 → 직접 정하기로 전환
+  s.reorderTasks(['a', 'none', 'b-soon', 'b-late', 'c', 'later']);
   assert.equal(s.settings.taskSort, 'manual');
   await s.save();
   const s2 = new Store(new LocalBackend());
   await s2.load(2032);
-  assert.deepEqual(s2.visibleTasks('2032-03-03').map((t) => t.id), ['later', ...auto.filter((x) => x !== 'later')]);
+  assert.deepEqual(s2.visibleTasks('2032-03-03').map((t) => t.id), ['a', 'none', 'b-soon', 'b-late', 'c', 'later']);
+  // 중요도 묶음은 항상 유지: 순서값이 앞서도 언젠가는 A 보다 앞에 오지 않음
+  s2.work.tasks.find((t) => t.id === 'later').order = -100;
+  assert.equal(s2.visibleTasks('2032-03-03').at(-1).id, 'later');
 });

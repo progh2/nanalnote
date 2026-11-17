@@ -138,6 +138,10 @@ function displayCard(app) {
       h('label', '교원정보 (상단 표시 문구)', info),
       h('label', '학교급', level),
       h('label.check', showMod, ' 최종수정일시를 교사수첩 하단과 인쇄물에 표시'),
+      h('label', '글자 크기 (이 기기)', h('div.row', { style: { margin: 0 } },
+        [[1, '보통'], [1.12, '크게'], [1.25, '아주 크게'], [1.4, '가장 크게']].map(([v, l]) => h(`button.small${app.prefs.fontScale === v ? '.active-size' : ''}`, {
+          onclick: () => { app.prefs.fontScale = v; app.render(); },
+        }, l)))),
       h('label', '테마', h('div.theme-swatches', THEMES.map(([v, l]) => h(`button.swatch${app.theme === v ? '.active' : ''}`, {
         'data-theme-preview': v, onclick: () => { app.setTheme(v); app.render(); },
       }, h('span.sw', { 'data-theme': v }, h('i'), h('i'), h('i')), l))))),

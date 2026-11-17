@@ -31,6 +31,8 @@ export const prefs = {
   get autosave() { return localStorage.getItem('sn:autosave') !== '0'; },
   set autosave(v) { localStorage.setItem('sn:autosave', v ? '1' : '0'); },
   get autolock() { return +(localStorage.getItem('sn:autolock') ?? 10); }, // 분, 0 = 끔
+  get fontScale() { return +(localStorage.getItem('sn:font') || 1.12); }, // 1 보통, 1.12 크게, 1.25 아주 크게
+  set fontScale(v) { localStorage.setItem('sn:font', String(v)); document.documentElement.style.setProperty('--fs', String(v)); },
   set autolock(v) { localStorage.setItem('sn:autolock', String(v)); },
 };
 
@@ -219,6 +221,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 async function start() {
   app.setTheme(app.theme);
+  document.documentElement.style.setProperty('--fs', String(prefs.fontScale));
   // 잠금이 켜져 있으면 먼저 PIN/패스키로 열기
   if (vaultEnabled()) {
     await showLockScreen(document.getElementById('app'));

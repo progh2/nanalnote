@@ -11,6 +11,7 @@ import { bellOf, rawBell, cascadeFrom, addMin, csatTimes, EVENING_BASE } from '.
 import { timeSelect } from './ui.js';
 import { vaultEnabled, setupPin, changePin, removeVault, validPin, registerPasskey, removePasskey, hasPasskey, passkeyAvailable } from '../lib/vault.js';
 import { loadAll, decryptAllToPlain } from '../lib/securestore.js';
+import { PROVIDERS, loadAI, saveAI, listModels, testAI } from '../lib/ai.js';
 
 const card = (title, ...body) => h('section.card', h('div.card-head', h('h2', title)), ...body);
 
@@ -130,7 +131,7 @@ function displayCard(app) {
   const { store } = app;
   const s = store.settings;
   const info = h('input', { value: s.teacherInfo, placeholder: '예: ○○초등학교 3학년 2반 담임 홍길동' });
-  const level = h('select', h('option', { value: 'elem', selected: s.schoolLevel === 'elem' }, '초등학교 (시간표에 과목)'), h('option', { value: 'secondary', selected: s.schoolLevel === 'secondary' }, '중/고등학교 (시간표에 학반/교실)'));
+  const level = h('select', { 'aria-label': '학교급' }, h('option', { value: 'elem', selected: s.schoolLevel === 'elem' }, '초등학교 (시간표에 과목)'), h('option', { value: 'secondary', selected: s.schoolLevel === 'secondary' }, '중/고등학교 (시간표에 학반/교실)'));
   const showMod = h('input', { type: 'checkbox', checked: s.showModified });
   return card('화면 설정',
     h('div.form',
@@ -175,29 +176,34 @@ function timetableCard(app) {
       h('input', { value: c.room, list: 'set-room-list', placeholder: '교실', 'aria-label': `${WEEKDAYS[d]} ${label} 교실`, oninput: set('room') }));
   };
   const range = (obj, label, { onStart } = {}) => h('span.range',
-    timeSelect(obj.start, (v) => { obj.start = v; if (onStart) { onStart(v); draw(); } }, `${label} 시작`), ' ~ ',
+    timeSelect(obj.start, (v) => { obj.start = v; if (onStart) { onStart(v); draw(); } }, `${label} 시작`), h('span.tilde', ' ~ '),
     timeSelect(obj.end, (v) => { obj.end = v; }, `${label} 끝`));
 
+  // 좁은 화면(폴드 커버 화면, 휴대폰)에서는 요일을 하나씩 골라 편집
+  const narrow = () => window.matchMedia('(max-width: 760px)').matches;
+  app.ttDay ||= Math.min(5, Math.max(1, new Date().getDay() || 1));
+  const days = () => (narrow() ? [app.ttDay] : [1, 2, 3, 4, 5]);
+  if (!window.__ttMq) { window.__ttMq = true; window.matchMedia('(max-width: 760px)').addEventListener('change', () => { if (app.tab === 'settings') app.render(); }); }
   const draw = () => {
     const count = bell.periodCount;
     const rows = [];
-    const lunchRow = () => h('tr.bell-row', h('th', '🍚 점심'), h('td.time-cell', range(bell.lunch, '점심')), h('td.muted.small', { colspan: 5 }, `${bell.lunch.after}교시 다음`));
+    const lunchRow = () => h('tr.bell-row', h('th', '🍚 점심'), h('td.time-cell', range(bell.lunch, '점심')), h('td.muted.small', { colspan: days().length }, `${bell.lunch.after}교시 다음`));
     if (bell.lunch.after === 0) rows.push(lunchRow());
     for (let i = 0; i < count; i++) {
       const t = (bell.times[i] ||= { start: '', end: '' });
       rows.push(h('tr', h('th', `${i + 1}교시`),
         // 시작을 고르면 끝(수업 길이)과 다음 교시들이 점심 전까지/끝까지 자동으로 채워진다
         h('td.time-cell', range(t, `${i + 1}교시`, { onStart: () => cascadeFrom(bell, i + 1) })),
-        [1, 2, 3, 4, 5].map((d) => ttInput(d, i, `${i + 1}교시`))));
+        days().map((d) => ttInput(d, i, `${i + 1}교시`))));
       if (bell.lunch.after === i + 1) rows.push(lunchRow());
     }
-    if (bell.dinner.enabled) rows.push(h('tr.bell-row', h('th', '🍱 저녁'), h('td.time-cell', range(bell.dinner, '저녁')), h('td.muted.small', { colspan: 5 }, '저녁 식사')));
+    if (bell.dinner.enabled) rows.push(h('tr.bell-row', h('th', '🍱 저녁'), h('td.time-cell', range(bell.dinner, '저녁')), h('td.muted.small', { colspan: days().length }, '저녁 식사')));
     bell.evening.forEach((ev, k) => {
       const idx = EVENING_BASE + k;
       rows.push(h('tr.evening',
         h('th', h('input', { value: ev.label, 'aria-label': `저녁 방과후 ${k + 1} 이름`, style: { width: '6.5em' }, oninput: (e) => (ev.label = e.target.value.trim() || `방과후${k + 1}`) })),
         h('td.time-cell', range(ev, ev.label, { onStart: (v) => { ev.end = addMin(v, bell.lessonLen); } })),
-        [1, 2, 3, 4, 5].map((d) => ttInput(d, idx, ev.label))));
+        days().map((d) => ttInput(d, idx, ev.label))));
     });
 
     const sel = (val, opts, on, label) => h('select', { 'aria-label': label, onchange: (e) => { on(+e.target.value); draw(); } }, opts.map(([v, l]) => h('option', { value: v, selected: v === val }, l)));
@@ -216,8 +222,9 @@ function timetableCard(app) {
           bell.evening.length = v;
         }, '저녁 방과후 수'))),
       h('p.muted.small', '1교시 시작을 고르면 수업 시간에 맞춰 점심 전 교시까지, 점심 뒤 첫 교시 시작을 고르면 마지막 교시까지 자동으로 채워집니다. 끝 시각은 따로 고칠 수 있습니다.'),
+      narrow() ? h('div.day-pick', h('span.small.muted', '요일'), [1, 2, 3, 4, 5].map((d) => h(`button.small${app.ttDay === d ? '.active' : ''}`, { onclick: () => { app.ttDay = d; draw(); } }, WEEKDAYS[d]))) : null,
       h('div.records-wrap', h('table.grid.timetable.bell-table',
-        h('thead', h('tr', h('th', '교시'), h('th', '시간'), [1, 2, 3, 4, 5].map((d) => h('th', WEEKDAYS[d])))),
+        h('thead', h('tr', h('th', '교시'), h('th', '시간'), days().map((d) => h('th', WEEKDAYS[d])))),
         h('tbody', rows))),
       h('div.csat-box',
         h('div', h('strong', '수능대비 시간표 시각'), h('span.muted.small', ' — 교사수첩에서 날짜별로 "수능대비 시간표"를 체크한 날에만 점심이 3교시 다음으로 옮겨집니다. 비워 두면 3교시 끝 기준으로 자동 계산합니다.')),
@@ -273,6 +280,52 @@ function listsCard(app) {
       store.updateSettings({ courses, rooms: lines(r), classes: lines(k), homerooms: hrs });
       await app.save(); app.render();
     } }, '목록 저장')));
+}
+
+/** AI 연결: Anthropic · OpenAI · Ollama 키/주소, 모델 불러오기, 테스트 */
+function aiCard(app) {
+  const cfg = loadAI();
+  const out = h('div.result');
+  const say = (m, k = 'muted') => out.replaceChildren(h(`p.${k}`, m));
+  const wrap = h('div');
+  const draw = () => {
+    const p = cfg.provider;
+    const modelSel = h('select', { 'aria-label': '모델', onchange: (e) => { cfg.models[p] = e.target.value; } },
+      h('option', { value: '' }, '- 모델 선택 -'),
+      [...new Set([cfg.models[p], ...(cfg.list?.[p] || [])].filter(Boolean))].map((id) => h('option', { value: id, selected: id === cfg.models[p] }, id)));
+    const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); } catch (e) { say(e.message, 'err'); } finally { btn.disabled = false; } };
+    const loadBtn = h('button.small', { onclick: () => busy(loadBtn, async () => {
+      say('모델 목록을 불러오는 중…');
+      const list = await listModels(p, cfg);
+      (cfg.list ||= {})[p] = list.map((m) => m.id);
+      if (!cfg.models[p] && list.length) cfg.models[p] = list[0].id;
+      draw();
+      say(`모델 ${list.length}개를 불러왔습니다.`, 'ok');
+    }) }, '모델 불러오기');
+    const testBtn = h('button.small', { onclick: () => busy(testBtn, async () => {
+      if (!cfg.models[p]) throw new Error('먼저 모델을 고르세요.');
+      say('테스트 중…');
+      const reply = await testAI(cfg);
+      say(`연결 성공 (${cfg.models[p]}): "${reply}"`, 'ok');
+    }) }, '테스트');
+    wrap.replaceChildren(
+      h('div.form',
+        h('label', '사용할 AI', h('select', { 'aria-label': '사용할 AI', onchange: (e) => { cfg.provider = e.target.value; draw(); out.replaceChildren(); } },
+          PROVIDERS.map(([v, l]) => h('option', { value: v, selected: v === p }, l)))),
+        p === 'ollama'
+          ? h('label', 'Ollama 주소', h('input', { value: cfg.ollamaUrl, placeholder: 'http://localhost:11434', oninput: (e) => (cfg.ollamaUrl = e.target.value.trim()) }))
+          : h('label', `${p === 'anthropic' ? 'Anthropic' : 'OpenAI'} API 키`, h('input', { type: 'password', autocomplete: 'off', value: cfg.keys[p] || '', placeholder: p === 'anthropic' ? 'sk-ant-…' : 'sk-…', oninput: (e) => (cfg.keys[p] = e.target.value.trim()) })),
+        h('label', '모델', h('div.row', { style: { margin: 0 } }, modelSel, loadBtn, testBtn))),
+      p === 'ollama' ? h('p.muted.small', 'Ollama 를 이 컴퓨터에서 실행하고, 이 사이트에서 접근할 수 있도록 환경변수 OLLAMA_ORIGINS=https://progh2.github.io 를 설정한 뒤 다시 시작하세요. 이미지를 읽으려면 비전 모델(예: qwen2.5vl, gemma3, llava)이 필요합니다.') : null,
+      p === 'anthropic' ? h('p.muted.small', '기본 추천 모델은 claude-opus-5-5 입니다. 키는 console.anthropic.com 에서 만듭니다.') : null,
+      p === 'openai' ? h('p.muted.small', '이미지를 읽을 수 있는 모델(비전 지원)을 고르세요. 키는 platform.openai.com 에서 만듭니다.') : null);
+  };
+  draw();
+  return card('AI (학사일정 자동 추출)',
+    h('p.muted.small', '학사일정·주간업무계획 이미지/PDF/HWPX 를 올리면 AI 가 날짜별 일정을 뽑아 학사일정에 넣어 줍니다(반영 전 확인). 키는 이 브라우저에만 저장되며, PIN 잠금을 쓰면 암호화됩니다. 문서 내용은 고른 AI 회사로 전송되니 학생 개인정보가 담긴 문서는 올리지 마세요.'),
+    wrap,
+    h('div.row', h('button.primary', { onclick: () => { const { list, ...rest } = cfg; saveAI({ ...rest, list }); toast('AI 설정을 저장했습니다.', 'ok'); } }, 'AI 설정 저장')),
+    out);
 }
 
 /** 이 기기 보안: PIN 잠금·암호화, 패스키, 자동 잠금, 자동 저장 */
@@ -467,7 +520,7 @@ export function renderSettings(app) {
     return h('div.settings', h('section.card.error-card', h('p', app.error)), storageCard(app));
   }
   return h('div.settings',
-    h('div.col', storageCard(app), securityCard(app), yearCard(app)),
+    h('div.col', storageCard(app), securityCard(app), aiCard(app), yearCard(app)),
     h('div.col', displayCard(app), listsCard(app), bulkCard(app), backupCard(app)),
     h('div.full', timetableCard(app)));
 }

@@ -34,7 +34,10 @@ const sample = {
   counsel: [{ id: 'k', date: '2026-03-02', order: 0, text: '10201 이몽룡 울었다.\n달래줌', students: ['U1'] }, { id: 'l', date: '2026-03-02', order: 1, text: '## 성춘향 지각', students: [] }],
   records: [{ id: 'm', title: '독서록', created: '2026-03-05', doneDate: null, cls: '1-2', entries: { U1: 'O', U2: '미제출 | 다음주' } }],
   notes: [{ id: 'n1', text: '수행평가 채점\n# 마감 금요일', color: 'pink', x: 1210, y: 140, w: 220, h: 160 }, { id: 'n2', text: '', color: 'yellow', x: 5, y: 6, w: 200, h: 150, min: true }],
-  docs: [{ id: 'dc2', kind: 'annual', period: '', title: '', file: '연간.png' }, { id: 'dc1', kind: 'monthly', period: '2026-03', title: '3월 월중일정', file: '2026-03_월중일정.pdf' }],
+  docs: [{ id: 'dc2', kind: 'annual', period: '', title: '', file: '연간.png', rev: 1 },
+    { id: 'dc4', kind: 'contacts', period: '', title: '교직원 비상연락망', file: '연락망.hwpx', rev: 1, src: 'hwpx', uploaded: '2026-03-02', pages: ['연락망_미리보기.png'], textFile: '연락망_본문.txt' },
+    { id: 'dc1', kind: 'monthly', period: '2026-03', title: '3월 월중일정', file: '2026-03_월중일정.pdf', rev: 1, src: 'pdf', uploaded: '2026-03-01', pages: ['a_p1.jpg', 'a_p2.jpg'] },
+    { id: 'dc3', kind: 'monthly', period: '2026-03', title: '3월 월중일정', file: '2026-03_월중일정_개정.pdf', rev: 2, src: 'pdf', uploaded: '2026-03-10', pages: ['b_p1.jpg'] }],
   trips: [{ id: 't', date: '2026-03-02', time: '13:00~17:00', place: '교육청', purpose: '정보교육 연수 · 1일차' }, { id: 't2', date: '2026-03-02', time: '', place: '', purpose: '' }],
 };
 
@@ -54,6 +57,7 @@ test('마크다운 왕복 변환이 손실 없이 동일', () => {
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('- [3·4교시 인공지능 기초 1-2] 10201 이몽룡 · 결석 · 질병 · 독감A형'));
   assert.ok(files.get('/2026학년도/업무일지.md').includes('- [x] (A) 가정통신문 (2장) (작성 2026-03-02, 마감 2026-03-06, 완료 2026-03-04, 순서 10)'));
   assert.ok(files.get('/2026학년도/설정.md').includes('- 인공지능 기초 | AI'));
+  assert.ok(files.get('/2026학년도/학사일정자료.md').includes('- [월중] 2026-03 · 3월 월중일정 · 2판 · 2026-03_월중일정_개정.pdf · 올림 2026-03-10 · 형식 pdf · 쪽 b_p1.jpg'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('### 4교시 · - · 2-1'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('## 출장\n\n- 13:00~17:00 · 교육청 · 정보교육 연수 · 1일차'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('### 1교시 · 정보 · 1-2 · 컴퓨터실'));

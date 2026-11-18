@@ -64,7 +64,7 @@ export function showLockScreen(root) {
           h('span'), h('button', { onclick: () => press('0') }, '0'), h('button', { onclick: () => press('del'), 'aria-label': '지우기' }, '⌫')),
         pk,
         h('button.link.small', { onclick: async () => {
-          if (!(await confirmDialog('PIN 을 잊었어요', '이 기기에 저장된 로그인 정보·캐시·로컬 데이터·사진을 지우고 잠금을 해제합니다. 드롭박스·노션에 저장된 일지는 그대로 남으며, 다시 연결하면 됩니다. "이 브라우저(로컬)" 저장소만 썼다면 그 자료는 되살릴 수 없습니다. 계속할까요?', '지우고 초기화'))) return;
+          if (!(await confirmDialog('PIN 을 잊었어요', '이 기기에 저장된 로그인 정보·캐시·로컬 데이터·사진을 지우고 잠금을 해제합니다. 드롭박스·컴퓨터 폴더에 저장된 일지는 그대로 남으며, 다시 연결하면 됩니다. "이 브라우저(로컬)" 저장소만 썼다면 그 자료는 되살릴 수 없습니다. 계속할까요?', '지우고 초기화'))) return;
           for (const k of sensitiveKeys()) localStorage.removeItem(k);
           localStorage.removeItem(FAIL_KEY);
           indexedDB.deleteDatabase('sammynote');

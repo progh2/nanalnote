@@ -383,7 +383,7 @@ export class Store {
 /**
  * 불러온 데이터의 학생 참조를 uid 로 맞춘다.
  * - 학생에 uid 가 없으면 레코드 id 를 uid 로 사용 (예전 데이터)
- * - 출결/상담/요록의 이름·"학번 이름" 참조를 uid 로 변환 (노션·마크다운은 사람이 읽는 이름으로 저장되어 있음)
+ * - 출결/상담/요록의 이름·"학번 이름" 참조를 uid 로 변환 (마크다운 파일은 사람이 읽는 이름으로 저장되어 있음)
  */
 export function migrateRefs(data) {
   data.students = data.students.map((s) => ({ ...normStudent(s), uid: s.uid || s.id }));

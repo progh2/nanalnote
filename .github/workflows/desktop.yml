@@ -105,3 +105,17 @@ jobs:
           printf '%s\n' "이 파일이 있으면 나날노트가 포터블 모드로 실행됩니다. 자료는 같은 폴더의 '나날노트자료'에 저장됩니다." > "portable/나날노트/portable.txt"
           (cd portable && ditto -c -k --sequesterRsrc --keepParent "나날노트" "../나날노트-포터블-macos-universal-$v.zip")
           gh release upload "v$v" "나날노트-포터블-macos-universal-$v.zip" --clobber
+
+  # 세 운영체제 빌드가 모두 끝나면, 버전 없는 고정 이름으로 한 벌 더 올린다 (웹판 "내려받기" 버튼이 쓰는 주소)
+  latest-links:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: 고정 이름 내려받기 파일
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          bash .github/scripts/release-aliases.sh "v$v" "$GITHUB_REPOSITORY"

@@ -1,6 +1,7 @@
 // 소개 탭: 이 앱이 영감을 받은 원 쌔미노트 안내, 기능 비교, 만든 사람·문의
 import { h } from '../lib/util.js';
 import { APP_NAME, APP_SUB, ORIGINAL, REPO } from '../brand.js';
+import { isDesktop } from '../lib/desktop.js';
 
 const TITLE = [APP_NAME, APP_SUB].filter(Boolean).join(' ');
 
@@ -9,7 +10,7 @@ const ext = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, 
 // [항목, 원 쌔미노트, 이 웹 버전]
 const ROWS = [
   ['실행 환경', 'Windows 프로그램 (설치 또는 포터블 실행파일)', '웹 브라우저 (PC·휴대폰·태블릿), 홈 화면에 설치 가능'],
-  ['자료 저장', '내 PC 에만 저장 (USB·클라우드 폴더로 들고 다니기)', '이 브라우저 / 드롭박스(마크다운 파일) / 노션 중 선택'],
+  ['자료 저장', '내 PC 에만 저장 (USB·클라우드 폴더로 들고 다니기)', '이 브라우저 / 드롭박스(마크다운 파일) / 이 컴퓨터 폴더(데스크톱 앱) 중 선택'],
   ['학사일정 · 일괄 등록', '○ (CSV)', '○ (CSV, 휴업일·수능대비 표시) + 문서에서 AI 로 뽑아 넣기'],
   ['수업일지', '○ 기본 시간표, 그날만 바꾸기', '○ + 중·고 수업명·학반·교실, 일과 시간(시정표), 수능대비 시간표'],
   ['업무일지', '○ 완료 처리, 일괄 완료', '○ + 중요도, 마감일·D-day, 순서 바꾸기'],
@@ -29,6 +30,48 @@ const WEB_ONLY = [
   '출장 기록, 자동 저장, 여러 기기에서 같은 자료 보기',
 ];
 
+const DL = `${REPO}/releases/latest/download/`;
+
+/** 접속한 기기의 운영체제 */
+function detectOS() {
+  const ua = navigator.userAgent || '';
+  const pf = navigator.userAgentData?.platform || navigator.platform || '';
+  if (/Android|iPhone|iPad|iPod/i.test(ua) || (/Mac/i.test(pf) && navigator.maxTouchPoints > 1)) return 'mobile';
+  if (/Win/i.test(pf) || /Windows/i.test(ua)) return 'windows';
+  if (/Mac/i.test(pf) || /Mac OS X/i.test(ua)) return 'mac';
+  if (/Linux/i.test(pf) || /Linux/i.test(ua)) return 'linux';
+  return '';
+}
+
+function downloadCard() {
+  const os = detectOS();
+  const big = (key, label, sub, file) => h(`a.dl-btn${os === key ? '.recommended' : ''}`, { href: DL + file },
+    h('span.dl-os', label), h('span.dl-sub', sub), os === key ? h('span.dl-tag', '이 컴퓨터용') : null);
+  return h('section.card.download-card',
+    h('div.card-head', h('h2', '설치용 프로그램 내려받기')),
+    isDesktop()
+      ? h('p', '지금 데스크톱 앱을 쓰고 계십니다. 새 버전은 ', h('a', { href: `${REPO}/releases/latest`, target: '_blank' }, '최신 릴리스'), '에서 받을 수 있어요.')
+      : [
+        h('p.muted.small', '인터넷 창 없이 쓰는 데스크톱 앱입니다. 받은 파일을 실행하면 설치됩니다. 웹판과 같은 기능이며, 자료는 이 컴퓨터 폴더(또는 드롭박스 동기화 폴더)에 저장됩니다.'),
+        os === 'mobile' ? h('p.warn', '휴대폰·태블릿은 이 웹 주소를 그대로 쓰세요. 브라우저 메뉴의 "홈 화면에 추가"로 앱처럼 설치할 수 있습니다.') : null,
+        h('div.dl-row',
+          big('windows', 'Windows 용 받기', 'Windows 10/11 · 설치 파일(.exe)', 'nanalnote-windows-setup.exe'),
+          big('mac', 'macOS 용 받기', '인텔·애플 칩 공용 · 디스크 이미지(.dmg)', 'nanalnote-macos.dmg')),
+        h('p.small', 'USB 에 넣고 다니는 포터블판: ',
+          h('a', { href: DL + 'nanalnote-windows-portable.zip' }, 'Windows 포터블(.zip)'), ' · ',
+          h('a', { href: DL + 'nanalnote-macos-portable.zip' }, 'macOS 포터블(.zip)'), ' — 압축을 풀고 실행하면 자료가 USB 안에 저장됩니다.'),
+        h('p.small', 'Linux: ',
+          h('a', { href: DL + 'nanalnote-linux.AppImage' }, 'AppImage'), ' · ',
+          h('a', { href: DL + 'nanalnote-linux.deb' }, '.deb'), ' · ',
+          h('a', { href: `${REPO}/releases/latest`, target: '_blank', rel: 'noopener' }, '모든 파일 보기')),
+        h('details.small',
+          h('summary', '처음 실행할 때 경고가 나오면'),
+          h('ul',
+            h('li', 'Windows: "Windows의 PC 보호" 창에서 ', h('strong', '추가 정보 → 실행'), '을 누르세요. 개인이 만든 무료 프로그램이라 코드 서명이 없어서 나오는 경고입니다.'),
+            h('li', 'macOS: dmg 를 열어 나날노트를 응용 프로그램 폴더로 끌어 놓은 뒤, 처음 한 번은 ', h('strong', 'Control(⌃)+클릭 → 열기'), '로 실행하세요. 또는 시스템 설정 → 개인정보 보호 및 보안 → "확인 없이 열기".'))),
+      ]);
+}
+
 export function renderAbout() {
   return h('div.about',
     h('section.card.about-hero',
@@ -36,6 +79,8 @@ export function renderAbout() {
       h('div',
         h('h2', TITLE),
         h('p', '나날이 쓰는 교사수첩 웹앱입니다. 수업일지, 업무일지, 학생 상담·출결, 학사일정을 한곳에서 관리합니다.'))),
+
+    downloadCard(),
 
     h('section.card.about-origin',
       h('div.card-head', h('h2', '원 쌔미노트에 대한 감사')),

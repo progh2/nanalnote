@@ -2,7 +2,6 @@ import './styles/base.css';
 import './styles/themes.css';
 import { Store } from './store.js';
 import { LocalBackend } from './backends/local.js';
-import { NotionBackend } from './backends/notion.js';
 import { DropboxBackend, completeLogin } from './backends/dropbox.js';
 import { FolderBackend } from './backends/folder.js';
 import { isDesktop, appPaths, installDesktopHooks, PORTABLE_FOLDER } from './lib/desktop.js';
@@ -26,7 +25,6 @@ const CONFIG_KEY = 'sn:config';
 const loadConfig = () => { try { return JSON.parse(sget(CONFIG_KEY) || '{}'); } catch { return {}; } };
 
 function makeBackend(cfg) {
-  if (cfg.backend === 'notion') return new NotionBackend({ url: cfg.url, key: cfg.key });
   if (cfg.backend === 'dropbox') return new DropboxBackend();
   if (cfg.backend === 'folder') return new FolderBackend({ folder: cfg.folder });
   return new LocalBackend();
@@ -167,7 +165,7 @@ const app = {
         h('button.ghost', { onclick: () => this.setDate(today()) }, '오늘'),
         h('span.badge', s.year ? `${s.year}학년도` : '')),
       h('div.head-right',
-        h('span.badge.backend', { title: s.backend.label }, { notion: 'Notion', dropbox: 'Dropbox' }[s.backend.name] || '로컬'),
+        h('span.badge.backend', { title: s.backend.label }, { dropbox: 'Dropbox', folder: '폴더' }[s.backend.name] || '로컬'),
         h(`span.status${s.dirty ? '.dirty' : ''}`, status),
         h('button.icon-btn', { title: '포스트잇 추가', onclick: () => addNote(this) }, '🗒'),
         vaultEnabled() ? h('button.icon-btn', { title: '지금 잠그기', onclick: () => this.lock() }, '🔒') : null,
@@ -235,6 +233,8 @@ async function start() {
     lastActive = Date.now();
   }
   app.config = loadConfig();
+  // 노션 저장소는 더 이상 지원하지 않는다 → 이 브라우저(로컬)로
+  if (app.config.backend === 'notion') { const { url, key, ...rest } = app.config; app.config = rest; app.saveConfig({ backend: 'local' }); app.notionRemoved = true; }
   // 데스크톱 앱: 처음에는 "이 컴퓨터 폴더" 저장소 (포터블은 USB 안 나날노트자료 폴더)
   if (isDesktop()) {
     installDesktopHooks();
@@ -256,6 +256,7 @@ async function start() {
   });
   await app.loadYear(schoolYearOf(app.date));
   if (loginMsg) toast(...loginMsg);
+  if (app.notionRemoved) toast('노션 저장소 기능이 없어져 "이 브라우저(로컬)" 저장소로 바꿨습니다. 설정 > 저장소에서 드롭박스를 고를 수 있어요.', 'error');
   // 원본처럼 실행할 때마다 이번 달 특일정보를 새로 받아온다 (API 사용 시)
   const f = app.holidayFetcher();
   if (f) {

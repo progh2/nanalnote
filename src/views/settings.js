@@ -1,6 +1,5 @@
-// 설정 탭: 저장소(로컬/드롭박스/노션), 학년도 전환, 화면 설정, 정보 일괄 등록, 백업/복원
+// 설정 탭: 저장소(로컬/드롭박스/이 컴퓨터 폴더), 학년도 전환, 화면 설정, 정보 일괄 등록, 백업/복원
 import { h, newId, toCSV, parseCSV, readTextFile, pickFile, downloadBlob, toast, confirmDialog, modal, normalizeDate, schoolYearOf, today, yearRange, WEEKDAYS, fill } from '../lib/util.js';
-import { NotionBackend } from '../backends/notion.js';
 import { LocalBackend } from '../backends/local.js';
 import { DropboxBackend, startLogin, logout as dropboxLogout, isPublicMode } from '../backends/dropbox.js';
 import { isDesktop, pickFolder, PORTABLE_FOLDER } from '../lib/desktop.js';
@@ -87,40 +86,11 @@ function storageCard(app) {
     ),
   );
 
-  // ----- 노션 (고급) -----
-  const url = h('input', { value: cfg.url, placeholder: 'https://nanalnote-worker.아이디.workers.dev' });
-  const key = h('input', { type: 'password', value: cfg.key, placeholder: 'Worker 에 설정한 APP_PASSWORD' });
-  const nb = () => new NotionBackend({ url: url.value.trim(), key: key.value });
-  const testBtn = h('button', { onclick: () => busy(testBtn, async () => {
-    const r = await nb().ping();
-    say(`연결 성공 · 노션 DB ${r.databases}/${r.total}개 확인${r.databases < r.total ? ' → [노션 DB 만들기]를 눌러 주세요' : ''} · 특일정보 API ${r.holidays ? '사용' : '미설정(내장 데이터 사용)'}`, 'ok');
-  }) }, '연결 테스트');
-  const setupBtn = h('button', { onclick: () => busy(setupBtn, async () => {
-    const r = await nb().setup();
-    say([r.created.length ? `노션 DB를 만들었습니다: ${r.created.join(', ')}` : '필요한 노션 DB가 모두 있습니다.', r.updated?.length ? `새 속성 추가: ${r.updated.join(', ')}` : ''].filter(Boolean).join(' · '), 'ok');
-  }) }, '노션 DB 만들기');
-  const useBtn = h('button', { onclick: () => busy(useBtn, async () => {
-    await nb().ping();
-    await app.switchBackend({ backend: 'notion', url: url.value.trim(), key: key.value });
-    toast('노션 저장소로 전환했습니다.', 'ok');
-  }) }, '노션 사용하기');
-  const nMigrate = h('button', { onclick: () => busy(nMigrate, () => migrateLocal(nb(), '노션', say)) }, '로컬 데이터를 노션으로 옮기기');
-  const notionSection = h('details.storage-opt', { open: cfg.backend === 'notion' },
-    h('summary', '노션 (고급 · Cloudflare Worker 필요)'),
-    h('div.form', h('label', 'Worker 주소', url), h('label', '접속 비밀번호', key)),
-    h('div.row', testBtn, setupBtn, useBtn, nMigrate),
-    h('ol.small',
-      h('li', 'notion.so/my-integrations 에서 내부 통합(Integration)을 만들고 시크릿을 복사합니다.'),
-      h('li', '데이터를 둘 노션 페이지를 만들고, 페이지 메뉴 ⋯ > 연결(Connections)에서 방금 만든 통합을 추가합니다.'),
-      h('li', 'worker 폴더를 Cloudflare 에 배포하고 NOTION_TOKEN, NOTION_PARENT(페이지 ID), APP_PASSWORD 를 등록합니다. (README 참고)'),
-      h('li', '[연결 테스트] → [노션 DB 만들기] → [노션 사용하기] 순서로 누릅니다.')));
-
   return card('저장소',
     h('p', '현재: ', h('strong', app.store.backend.label),
       cfg.backend !== 'local' ? h('button.small', { style: { marginLeft: '8px' }, onclick: () => app.switchBackend({ backend: 'local' }) }, '이 브라우저(로컬)로 전환') : null),
     folderSection,
     isDesktop() ? h('p.muted.small', '드롭박스 로그인 연결은 웹판(브라우저)에서만 됩니다. 데스크톱 앱에서는 드롭박스 프로그램이 동기화하는 폴더를 "이 컴퓨터 폴더"로 고르세요.') : dropboxSection,
-    notionSection,
     out,
     h('p.muted.small', '상담 일지 등 민감정보가 클라우드에 저장됩니다. 공유 범위를 본인으로 한정하고, 학교 정보보호 지침을 확인하세요. 공용 PC에서는 사용 후 연결을 끊으세요.'));
 }

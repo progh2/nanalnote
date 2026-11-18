@@ -1,4 +1,4 @@
-// 쌔미노트 웹 - Cloudflare Worker (노션 중계 서버)
+// 나날노트 - Cloudflare Worker (노션 중계 서버)
 //
 // 역할
 //  1) 노션 토큰을 안전하게 보관하고 브라우저 대신 노션 API 를 호출한다. (노션 API 는 브라우저 직접 호출(CORS) 불가)
@@ -13,7 +13,8 @@
 //  DATA_GO_KR_KEY   (선택) 공공데이터포털 한국천문연구원 특일정보 서비스키
 
 const NOTION_VERSION = '2022-06-28';
-const PREFIX = '쌔미노트_';
+const PREFIX = '나날노트_';
+const LEGACY_PREFIXES = ['쌔미노트_']; // 예전 이름으로 만든 DB 도 계속 쓴다
 
 // ---------- 노션 속성 헬퍼 ----------
 function chunks(text, size = 1800) {
@@ -148,7 +149,7 @@ async function notion(env, method, path, body, attempt = 0) {
 
 let dbCache = { at: 0, ids: null };
 
-/** 부모 페이지 아래의 쌔미노트 데이터베이스 ID 찾기 (10분 캐시) */
+/** 부모 페이지 아래의 나날노트(예전 이름 포함) 데이터베이스 ID 찾기 (10분 캐시) */
 async function findDatabases(env, force = false) {
   if (!force && dbCache.ids && Date.now() - dbCache.at < 600000) return dbCache.ids;
   const ids = {};
@@ -159,7 +160,7 @@ async function findDatabases(env, force = false) {
     for (const b of r.results) {
       if (b.type !== 'child_database' || b.archived || b.in_trash) continue;
       const title = b.child_database?.title || '';
-      for (const [col, s] of Object.entries(SCHEMAS)) if (title === PREFIX + s.name) ids[col] = b.id;
+      for (const [col, s] of Object.entries(SCHEMAS)) if ([PREFIX, ...LEGACY_PREFIXES].some((p) => title === p + s.name) && !ids[col]) ids[col] = b.id;
     }
     cursor = r.has_more ? r.next_cursor : null;
   } while (cursor);
@@ -304,7 +305,7 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(req.url);
-    if (!url.pathname.startsWith('/api/')) return json({ name: 'sammynote-worker', ok: true });
+    if (!url.pathname.startsWith('/api/')) return json({ name: 'nanalnote-worker', ok: true });
 
     if (!env.APP_PASSWORD || !safeEqual(req.headers.get('X-App-Key') || '', env.APP_PASSWORD)) {
       return json({ error: '접속 비밀번호가 올바르지 않습니다.' }, 401);

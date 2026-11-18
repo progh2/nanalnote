@@ -101,7 +101,7 @@ export function serialize(year, input) {
   const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], ...input };
   const files = new Map();
   const dir = yearDir(year);
-  const header = (t) => `# ${t} (${year}학년도)\n\n> 쌔미노트 Web 이 관리하는 파일입니다. 형식을 지키면 직접 고쳐도 됩니다.\n`;
+  const header = (t) => `# ${t} (${year}학년도)\n\n> 나날노트가 관리하는 파일입니다. 형식을 지키면 직접 고쳐도 됩니다.\n`;
 
   // 설정 (+ 일과 시간 + 기본 시간표)
   const s = data.settings.find((x) => x.key === 'main');

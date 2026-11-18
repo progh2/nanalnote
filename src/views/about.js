@@ -2,6 +2,8 @@
 import { h } from '../lib/util.js';
 import { APP_NAME, APP_SUB, ORIGINAL, REPO } from '../brand.js';
 
+const TITLE = [APP_NAME, APP_SUB].filter(Boolean).join(' ');
+
 const ext = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
 
 // [항목, 원 쌔미노트, 이 웹 버전]
@@ -32,32 +34,32 @@ export function renderAbout() {
     h('section.card.about-hero',
       h('div.about-logo', '✎'),
       h('div',
-        h('h2', `${APP_NAME} ${APP_SUB}`),
-        h('p', '교사가 하루를 기록하는 교사수첩 웹앱입니다. 수업일지, 업무일지, 학생 상담·출결, 학사일정을 한곳에서 관리합니다.'))),
+        h('h2', TITLE),
+        h('p', '나날이 쓰는 교사수첩 웹앱입니다. 수업일지, 업무일지, 학생 상담·출결, 학사일정을 한곳에서 관리합니다.'))),
 
     h('section.card.about-origin',
       h('div.card-head', h('h2', '원 쌔미노트에 대한 감사')),
-      h('p', '이 웹앱은 한 선생님께서 직접 만들어 동료 교사들에게 무료로 나눠 주신 Windows 교사수첩 프로그램 ',
+      h('p', `${APP_NAME}는 한 선생님께서 직접 만들어 동료 교사들에게 무료로 나눠 주신 Windows 교사수첩 프로그램 `,
         h('strong', `'${ORIGINAL.name}'`), '에서 영감을 받아 만들었습니다.'),
       h('p', '손으로 쓰던 교사수첩을 컴퓨터로 옮기고, 상담 일지 속 학생 이름을 알아보아 학생별로 모아 보는 생각, 학급요록과 기간지정 다운로드 같은 기능들은 모두 원 쌔미노트에서 출발했습니다. ',
-        '그 아이디어를 웹과 휴대폰에서도 쓸 수 있도록 다시 만들고, 중·고등학교 교과 교사에게 필요한 기능을 더했습니다.'),
+        '그 아이디어를 웹과 휴대폰에서도 쓸 수 있도록 다시 만들고, 중·고등학교 교과 교사에게 필요한 기능을 더했습니다. 원작과 헷갈리지 않도록 이름은 따로 지었습니다.'),
       h('p', '좋은 프로그램을 만들어 나눠 주신 원작자 선생님께 깊이 감사드립니다.'),
       h('div.row',
         ext(ORIGINAL.blog, h('span.btn-like', '원 쌔미노트 블로그 바로가기 →')),
         ext(ORIGINAL.intro, h('span.btn-like.ghost-like', '원 쌔미노트 소개 글'))),
-      h('p.muted.small', `이 웹앱은 원작자와 별개로 만든 것이며 공식 버전이 아닙니다. 원 쌔미노트의 다운로드·업데이트·문의는 위 블로그에서 확인해 주세요.`)),
+      h('p.muted.small', `${APP_NAME}는 원작자와 별개로 만든 것이며 원 쌔미노트의 공식 버전이 아닙니다. 원 쌔미노트의 다운로드·업데이트·문의는 위 블로그에서 확인해 주세요.`)),
 
     h('section.card',
       h('div.card-head', h('h2', '기능 비교')),
       h('div.records-wrap', h('table.grid.compare',
-        h('thead', h('tr', h('th', '항목'), h('th', '원 쌔미노트 (Windows)'), h('th', `${APP_NAME} ${APP_SUB}`))),
+        h('thead', h('tr', h('th', '항목'), h('th', '원 쌔미노트 (Windows)'), h('th', TITLE))),
         h('tbody', ROWS.map(([k, a, b]) => h('tr', h('th', k), h('td', a), h('td', b)))))),
-      h('h3', '웹 버전에 더한 것'),
+      h('h3', `${APP_NAME}에 더한 것`),
       h('ul', WEB_ONLY.map((x) => h('li', x))),
-      h('p.muted.small', '원 쌔미노트는 모든 자료를 교사의 PC 에만 두는 것을 원칙으로 했습니다. 상담 기록처럼 민감한 정보를 다루므로, 웹 버전에서 클라우드 저장소를 쓸 때는 학교의 개인정보 보호 지침을 꼭 확인해 주세요.')),
+      h('p.muted.small', `원 쌔미노트는 모든 자료를 교사의 PC 에만 두는 것을 원칙으로 했습니다. 상담 기록처럼 민감한 정보를 다루므로, ${APP_NAME}에서 클라우드 저장소를 쓸 때는 학교의 개인정보 보호 지침을 꼭 확인해 주세요.`)),
 
     h('section.card',
       h('div.card-head', h('h2', '만든 사람 · 문의')),
-      h('p', '이 웹 버전은 중·고등학교 교사가 자신의 수업과 업무에 맞게 만들어 쓰고 있는 프로그램입니다.'),
+      h('p', `${APP_NAME}는 중·고등학교 교사가 자신의 수업과 업무에 맞게 만들어 쓰고 있는 프로그램입니다.`),
       h('p', '오류 제보와 기능 제안: ', ext(`${REPO}/issues`, 'GitHub 이슈'), ' · 소스 코드: ', ext(REPO, REPO.replace('https://', '')))));
 }

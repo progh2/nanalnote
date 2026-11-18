@@ -37,7 +37,7 @@ const makeVerifier = () => base64url(crypto.getRandomValues(new Uint8Array(64)))
 async function challengeFor(v) {
   return base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v))));
 }
-/** 리디렉트 주소: 앱이 열린 주소 (예: https://progh2.github.io/sammynote/) — App Console 에 등록되어 있어야 함 */
+/** 리디렉트 주소: 앱이 열린 주소 (예: https://progh2.github.io/nanalnote/) — App Console 에 등록되어 있어야 함 */
 export function redirectUri(loc = location) {
   return loc.origin + loc.pathname.replace(/index\.html$/, '');
 }

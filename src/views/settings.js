@@ -47,7 +47,7 @@ function storageCard(app) {
   const dbxMigrate = h('button', { onclick: () => busy(dbxMigrate, () => migrateLocal(new DropboxBackend(), '드롭박스', say)) }, '로컬 데이터를 드롭박스로 옮기기');
   const dropboxSection = h('div.storage-opt',
     h('h3', '드롭박스 (추천)'),
-    h('p.muted.small', '드롭박스의 Apps 폴더 안 쌔미노트 앱 폴더에 학년도별 마크다운(.md) 파일로 저장합니다. PC·휴대폰 어디서나 이 주소로 접속해 쓰고, 파일은 메모장·Obsidian 으로 열거나 Claude(드롭박스 커넥터)가 읽을 수 있습니다. 서버가 없고 로그인 정보는 이 브라우저에만 남습니다.'),
+    h('p.muted.small', '드롭박스의 Apps 폴더 안 이 앱의 폴더에 학년도별 마크다운(.md) 파일로 저장합니다. PC·휴대폰 어디서나 이 주소로 접속해 쓰고, 파일은 메모장·Obsidian 으로 열거나 Claude(드롭박스 커넥터)가 읽을 수 있습니다. 서버가 없고 로그인 정보는 이 브라우저에만 남습니다.'),
     h('p', '상태: ', dbxInfo),
     h('div.row',
       dbx.connected
@@ -66,7 +66,7 @@ function storageCard(app) {
   );
 
   // ----- 노션 (고급) -----
-  const url = h('input', { value: cfg.url, placeholder: 'https://sammynote-worker.아이디.workers.dev' });
+  const url = h('input', { value: cfg.url, placeholder: 'https://nanalnote-worker.아이디.workers.dev' });
   const key = h('input', { type: 'password', value: cfg.key, placeholder: 'Worker 에 설정한 APP_PASSWORD' });
   const nb = () => new NotionBackend({ url: url.value.trim(), key: key.value });
   const testBtn = h('button', { onclick: () => busy(testBtn, async () => {
@@ -500,15 +500,15 @@ function backupCard(app) {
     h('p.muted.small', `현재 ${app.store.year}학년도 자료를 JSON 파일로 백업하거나, 백업 파일을 현재 저장소에 복원합니다.`),
     h('div.row',
       h('button', { onclick: () => {
-        const data = { app: 'sammynote-web', version: 1, year: app.store.year, exportedAt: new Date().toISOString(), data: app.store.base };
-        downloadBlob(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }), `쌔미노트_백업_${app.store.year}.json`);
+        const data = { app: 'nanalnote', version: 1, year: app.store.year, exportedAt: new Date().toISOString(), data: app.store.base };
+        downloadBlob(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }), `나날노트_백업_${app.store.year}.json`);
       } }, 'JSON 백업 받기'),
       h('button', { onclick: async () => {
         const f = await pickFile('.json,application/json');
         if (!f) return;
         try {
           const j = JSON.parse(await readTextFile(f));
-          if (j.app !== 'sammynote-web' || !j.data) throw new Error('쌔미노트 백업 파일이 아닙니다.');
+          if (!['nanalnote', 'sammynote-web'].includes(j.app) || !j.data) throw new Error('나날노트 백업 파일이 아닙니다.');
           if (!(await confirmDialog('복원', `${j.year}학년도 백업을 현재 저장소(${app.store.backend.label})에 덮어쓸까요? 현재 학년도의 기존 항목은 백업 내용으로 대체됩니다.`, '복원'))) return;
           if (j.year !== app.store.year) await app.setDate(yearRange(j.year).start, { force: true });
           const s = app.store;

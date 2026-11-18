@@ -61,11 +61,15 @@ test('Worker: 인증, setup, batch, 조회 왕복', async () => {
   const pre = await call('/api/ping', { method: 'OPTIONS' });
   assert.equal(pre.headers.get('Access-Control-Allow-Origin'), 'https://me.github.io');
 
+  // 예전 이름(쌔미노트_)으로 만든 학생 DB 가 이미 있으면 새로 만들지 않고 그대로 쓴다
+  dbs.set('legacy-students', { title: '쌔미노트_학생', props: { 이름: { title: {} }, 학년도: { number: {} } }, pages: new Map() });
   let r = await (await call('/api/setup', { method: 'POST' })).json();
-  assert.equal(r.created.length, 12);
+  assert.equal(r.created.length, 11);
+  assert.ok(!r.created.includes('학생'));
   assert.equal(dbs.size, 12);
+  assert.ok(r.updated.some((u) => u.startsWith('학생(')), '예전 DB 에 새 속성 추가');
   // 예전 버전 DB 에 없던 속성은 setup 이 덧붙인다
-  const stuDb = [...dbs.values()].find((d) => d.title === '쌔미노트_학생');
+  const stuDb = dbs.get('legacy-students');
   delete stuDb.props.학번;
   r = await (await call('/api/setup', { method: 'POST' })).json();
   assert.equal(r.created.length, 0);

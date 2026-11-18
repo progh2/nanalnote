@@ -11,6 +11,7 @@ import { exportDay } from '../lib/export.js';
 import { showStudentCounsel } from './students.js';
 import { extractTags, tagNodes } from '../lib/tags.js';
 import { openTag } from './tags.js';
+import { attachStudentSuggest } from './suggest.js';
 
 /** textarea 높이 자동 조절 */
 export function autoGrow(el) {
@@ -90,7 +91,11 @@ export function renderNotebook(app) {
       h('td', subjectCell(l, label)),
       sec ? h('td', h('input', { value: l.cls || '', list: 'class-list', placeholder: '학반', 'aria-label': `${label} 학반`, oninput: (e) => store.setLesson(date, l.period, { cls: e.target.value }) })) : null,
       sec ? h('td', h('input', { value: l.room || '', list: 'room-list', placeholder: '교실', 'aria-label': `${label} 교실`, oninput: (e) => store.setLesson(date, l.period, { room: e.target.value }) })) : null,
-      h('td', autoGrow(h('textarea', { rows: 1, value: l.content, 'aria-label': `${label} 내용`, oninput: (e) => store.setLesson(date, l.period, { content: e.target.value }) }))));
+      h('td', (() => {
+        const ta = autoGrow(h('textarea', { rows: 1, value: l.content, 'aria-label': `${label} 내용`, oninput: (e) => store.setLesson(date, l.period, { content: e.target.value }) }));
+        attachStudentSuggest(ta, () => store.studentsOf(l.cls || '').length ? store.studentsOf(l.cls || '') : store.work.students);
+        return ta;
+      })()));
   };
   // 시정표 순서(등교 → 교시 → 점심 → … → 저녁 → 방과후)대로, 식사·등교는 안내 줄로 표시
   const used = new Set();
@@ -343,6 +348,7 @@ export function renderNotebook(app) {
     oninput: (e) => { store.setDayNote(date, e.target.value); clearTimeout(noteT); noteT = setTimeout(() => drawNoteTags(e.target.value), 300); },
   }));
   drawNoteTags(noteTa.value);
+  attachStudentSuggest(noteTa, () => store.work.students);
   const noteCard = card('오늘의 노트', h('button.small', { onclick: () => { app.tab = 'tags'; app.render(); } }, '# 태그 모아보기'), noteTa, noteTags);
 
   // ----- 학생 상담 일지 (가리기 기능) -----
@@ -357,12 +363,13 @@ export function renderNotebook(app) {
   };
   const counselTa = autoGrow(h('textarea.counsel', {
     rows: 6,
-    placeholder: '오늘 있었던 특이사항을 자유롭게 기록하세요.\n· "학번 이름" 또는 (동명이인이 없으면) "이름" 뒤에 한 칸 띄우면 학생으로 인식합니다. 예: "10203 홍길동 학생이 …"\n· 위의 [학생 넣기]로 골라 넣을 수 있어요. 빈 줄로 단락을 나누면 각각 별개의 상담 일지가 됩니다.',
+    placeholder: '오늘 있었던 특이사항을 자유롭게 기록하세요.\n· "학번 이름" 또는 (동명이인이 없으면) "이름" 뒤에 한 칸 띄우면 학생으로 인식합니다. 예: "10203 홍길동 학생이 …"\n· 이름 두 글자를 쓰면 학생을 추천하고, "...오" 처럼 ... 뒤에 이름 일부나 학번을 쓰면 찾아 줘요. 빈 줄로 단락을 나누면 각각 별개의 상담 일지가 됩니다.',
     value: store.counselText(date),
     oninput: (e) => { store.setCounselText(date, e.target.value); livePreview(e.target.value); },
     onblur: (e) => drawCounselView(e.target.value),
   }));
   drawCounselView(counselTa.value);
+  attachStudentSuggest(counselTa, () => store.work.students);
   // 학생 넣기: 학반 → 학생 고르면 커서 위치에 "학번 이름 " 삽입
   let pickCls = '';
   const pickWrap = h('span');

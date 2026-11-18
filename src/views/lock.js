@@ -2,6 +2,7 @@
 import { h, confirmDialog, fill } from '../lib/util.js';
 import { unlockPin, unlockPasskey, hasPasskey, removeVault } from '../lib/vault.js';
 import { sensitiveKeys } from '../lib/securestore.js';
+import { APP_NAME } from '../brand.js';
 
 const FAIL_KEY = 'sn:vault:fails';
 
@@ -56,7 +57,7 @@ export function showLockScreen(root) {
     fill(root, h('div.lock-screen',
       h('div.lock-box',
         h('div.lock-logo', '✎'),
-        h('h2', '쌔미노트 잠금'),
+        h('h2', `${APP_NAME} 잠금`),
         h('p.muted', 'PIN 6자리를 입력하세요'),
         dots, msg,
         h('div.pinpad', [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => h('button', { onclick: () => press(String(n)) }, String(n))),

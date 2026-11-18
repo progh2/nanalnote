@@ -453,3 +453,18 @@ input.due-input { position: absolute; inset: 0; width: 100% !important; height: 
 .suggest-item { padding: 7px 10px; border-radius: 6px; cursor: pointer; }
 .suggest-item.active, .suggest-item:hover { background: var(--highlight); }
 @media (pointer: coarse) { .suggest-foot { display: none; } .suggest-item { padding: 10px 12px; } }
+
+/* 소개 */
+.about { display: flex; flex-direction: column; gap: 16px; max-width: 980px; margin: 0 auto; }
+.about-hero { display: flex; gap: 16px; align-items: center; }
+.about-hero h2 { margin: 0 0 4px; font-size: calc(22px * var(--fs, 1)); }
+.about-hero p { margin: 0; }
+.about-logo { flex: none; width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; font-size: 34px; background: var(--primary); color: var(--primary-text); }
+.about-origin { border-left: 4px solid var(--accent); }
+.about-origin p { line-height: 1.75; }
+.btn-like { display: inline-block; padding: 8px 14px; border-radius: var(--radius); background: var(--primary); color: var(--primary-text); font-weight: 700; text-decoration: none; }
+.btn-like.ghost-like { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+.about a { text-decoration: none; }
+table.compare th { width: 9em; white-space: nowrap; }
+table.compare td { vertical-align: top; }
+@media (max-width: 720px) { table.compare th { white-space: normal; width: 5.5em; } }

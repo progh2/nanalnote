@@ -154,7 +154,7 @@ const app = {
     fill(el, 
       h('div.brand',
         h('span.logo', '✎'),
-        h('div', h('strong', APP_NAME), h('small', ` ${APP_SUB}`)),
+        h('div', h('strong', APP_NAME), APP_SUB ? h('small', ` ${APP_SUB}`) : null),
         h('span.teacher-info', s.year ? (s.settings.teacherInfo || '') : '')),
       h('div.date-nav',
         h('button.icon-btn', { title: '이전 날 (Alt+←)', onclick: () => this.setDate(addDays(this.date, -1)) }, '◀'),

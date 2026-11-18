@@ -1,6 +1,6 @@
 {
-  "name": "쌔미노트 Web",
-  "short_name": "쌔미노트",
+  "name": "나날노트",
+  "short_name": "나날노트",
   "description": "교사수첩 - 수업일지, 업무일지, 상담일지, 학생출결, 학급요록",
   "start_url": "./",
   "scope": "./",

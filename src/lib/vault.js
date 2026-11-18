@@ -114,8 +114,8 @@ export async function registerPasskey() {
   const cred = await navigator.credentials.create({
     publicKey: {
       challenge: rand(32),
-      rp: { name: '쌔미노트' },
-      user: { id: rand(16), name: 'sammynote', displayName: '쌔미노트 (이 기기)' },
+      rp: { name: '나날노트' },
+      user: { id: rand(16), name: 'nanalnote', displayName: '나날노트 (이 기기)' },
       pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
       authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' },
       extensions: { prf: { eval: { first: prfSalt } } },

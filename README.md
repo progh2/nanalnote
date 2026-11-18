@@ -1,9 +1,10 @@
-# 쌔미노트 Web
+# 나날노트 (nanalnote)
 
-교사수첩 프로그램 **[쌔미노트](https://blog.naver.com/powertruth)**(Windows용)의 기능을 웹으로 옮긴 버전입니다.
+나날이 쓰는 교사수첩 웹앱입니다.
+교사수첩 프로그램 **[쌔미노트](https://blog.naver.com/powertruth)**(Windows용, 원작자와 무관한 별도 프로젝트)에서 영감을 받아, 그 기능을 웹으로 옮기고 중·고등학교 교과 교사용 기능을 더했습니다.
 여러 디자인 테마를 고를 수 있고, 데이터는 **드롭박스에 마크다운(.md) 파일**로 저장합니다.
 
-**앱 주소: <https://progh2.github.io/sammynote/>**
+**앱 주소: <https://progh2.github.io/nanalnote/>**
 PC와 휴대폰 모두 쓸 수 있고, 휴대폰은 "홈 화면에 추가"로 앱처럼 설치할 수 있습니다.
 
 ```
@@ -46,7 +47,7 @@ Apps/<앱 폴더>/2026학년도/
 [Dropbox App Console](https://www.dropbox.com/developers/apps) 에서 앱을 다음과 같이 설정합니다.
 - 종류: Scoped access, **App folder**
 - Permissions: `files.metadata.read`, `files.content.read`, `files.content.write`
-- Redirect URIs: `https://progh2.github.io/sammynote/`, `http://localhost:5173/`
+- Redirect URIs: `https://progh2.github.io/nanalnote/`, `http://localhost:5173/`
 - Allow public clients (PKCE): **Allow**
 
 App key는 공개값이라 `src/backends/dropbox.js` 에 기본값으로 들어 있습니다.
@@ -123,7 +124,7 @@ npx wrangler secret put NOTION_TOKEN      # 노션 통합 시크릿
 npx wrangler secret put NOTION_PARENT     # 노션 페이지 ID
 npx wrangler secret put APP_PASSWORD      # 웹앱 접속 비밀번호 (길게!)
 npx wrangler secret put DATA_GO_KR_KEY    # (선택) 공공데이터포털 '한국천문연구원_특일 정보' 서비스키
-npx wrangler deploy                       # → https://sammynote-worker.<계정>.workers.dev
+npx wrangler deploy                       # → https://nanalnote-worker.<계정>.workers.dev
 ```
 
 로컬 테스트용 설정은 `worker/.dev.vars.example` 을 `.dev.vars` 로 복사해 채운 뒤 `npx wrangler dev` 로 실행합니다.

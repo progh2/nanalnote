@@ -1,5 +1,5 @@
 // 여러 화면에서 쓰는 작은 UI 조각
-import { h } from '../lib/util.js';
+import { h, fill } from '../lib/util.js';
 import { studentLabel, classKey } from '../lib/students.js';
 
 /** 학반별로 묶인 학생 선택 상자 (값 = uid) */
@@ -31,7 +31,7 @@ export function avatar(app, s, size = 44) {
   const el = h('span.avatar', { style: { width: `${size}px`, height: `${Math.round(size * 1.25)}px` } }, (s?.name || '?').slice(-2));
   if (s?.photo && app.store.backend.photoUrl) {
     app.store.backend.photoUrl(app.store.year, s).then((url) => {
-      if (url) el.replaceChildren(h('img', { src: url, alt: s.name }));
+      if (url) fill(el, h('img', { src: url, alt: s.name }));
     }).catch(() => {});
   }
   return el;

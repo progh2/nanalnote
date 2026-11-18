@@ -1,5 +1,5 @@
 // 포스트잇: 화면 어디에나(바깥 여백 포함) 띄워 두는 메모. 어느 탭에 가도 보인다. 위치·크기·색이 저장된다.
-import { h, newId, confirmDialog } from '../lib/util.js';
+import { h, newId, confirmDialog, fill } from '../lib/util.js';
 
 const COLORS = { yellow: '#fff3a3', pink: '#ffd6e2', green: '#d4f5c9', blue: '#d3e9ff', purple: '#e6dcff' };
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -18,7 +18,7 @@ export function renderNotes(app) {
   const layer = document.getElementById('notes');
   if (!layer || !app.store?.year) return;
   const store = app.store;
-  layer.replaceChildren(...store.work.notes.map((n) => {
+  fill(layer, ...store.work.notes.map((n) => {
     const el = h(`div.postit${n.min ? '.min' : ''}`, { 'data-id': n.id, style: {
       left: `${clamp(n.x || 0, 0, window.innerWidth - 60)}px`, top: `${clamp(n.y || 0, 0, window.innerHeight - 30)}px`,
       width: `${n.w || 220}px`, height: n.min ? 'auto' : `${n.h || 170}px`, background: COLORS[n.color] || COLORS.yellow,

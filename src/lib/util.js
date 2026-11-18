@@ -99,6 +99,11 @@ function appendChildren(el, children) {
   }
 }
 
+/** el 의 내용을 바꾼다. null·false·undefined 는 건너뛴다(그대로 넣으면 "null" 글자가 보임) */
+export function fill(el, ...kids) {
+  el.replaceChildren(...kids.flat(Infinity).filter((k) => k != null && k !== false));
+}
+
 /** CSV 파싱 (따옴표, 줄바꿈 포함 셀 지원) */
 export function parseCSV(text) {
   text = text.replace(/^﻿/, '');

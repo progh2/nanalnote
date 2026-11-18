@@ -1,5 +1,5 @@
 // 학생관리 탭: 학반별 명단(학번·사진) 편집 + 학생별 상담/출결/요록 + 지난 학년도 기록
-import { h, koDate, downloadBlob, confirmDialog, modal, toast, pickFile, newId } from '../lib/util.js';
+import { h, koDate, downloadBlob, confirmDialog, modal, toast, pickFile, newId, fill } from '../lib/util.js';
 import { exportCounsel } from '../lib/export.js';
 import { studentLabel, classKey, newUid, normStudent, matchPhotoFile, buildIndex, searchStudents } from '../lib/students.js';
 import { resizeImage } from '../lib/photos.js';
@@ -121,7 +121,7 @@ export function renderStudents(app) {
     // 연락처: 평소에는 가려 두고 눌렀을 때만 보이기 (교실 화면 노출 방지)
     const contactBox = () => {
       const box = h('div.contact');
-      const draw = (open) => box.replaceChildren(open
+      const draw = (open) => fill(box, open
         ? h('div.inline-form',
           h('label', '이메일', h('input', { type: 'email', value: st.email || '', 'aria-label': '이메일', style: { width: '15em' }, oninput: (e) => { st.email = e.target.value; store.markDirty(); } })),
           st.email ? h('a.small', { href: `mailto:${st.email}` }, '메일 쓰기') : null,
@@ -173,9 +173,9 @@ export function renderStudents(app) {
         h('div.card-head', h('h2', '지난 학년도 기록'),
           h('button.small', { onclick: async (e) => {
             e.target.disabled = true;
-            pastBox.replaceChildren(h('p.muted', '불러오는 중…'));
+            fill(pastBox, h('p.muted', '불러오는 중…'));
             const past = await pastRecords(app, st.uid);
-            pastBox.replaceChildren(...(past.length ? past.map((p) => h('div',
+            fill(pastBox, ...(past.length ? past.map((p) => h('div',
               h('h3', `${p.year}학년도 · ${studentLabel(p.student)}${classKey(p.student) ? ` (${classKey(p.student)}반)` : ''}`),
               counselList(p.counsel, null),
               p.attendance.length ? h('p.small', `출결: ${p.attendance.map((a) => `${a.date} ${a.type}${a.reason ? `(${a.reason})` : ''}`).join(', ')}`) : null))

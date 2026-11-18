@@ -1,5 +1,5 @@
 // 설정 탭: 저장소(로컬/드롭박스/노션), 학년도 전환, 화면 설정, 정보 일괄 등록, 백업/복원
-import { h, newId, toCSV, parseCSV, readTextFile, pickFile, downloadBlob, toast, confirmDialog, modal, normalizeDate, schoolYearOf, today, yearRange, WEEKDAYS } from '../lib/util.js';
+import { h, newId, toCSV, parseCSV, readTextFile, pickFile, downloadBlob, toast, confirmDialog, modal, normalizeDate, schoolYearOf, today, yearRange, WEEKDAYS, fill } from '../lib/util.js';
 import { NotionBackend } from '../backends/notion.js';
 import { LocalBackend } from '../backends/local.js';
 import { DropboxBackend, startLogin, logout as dropboxLogout, isPublicMode } from '../backends/dropbox.js';
@@ -36,7 +36,7 @@ async function migrateLocal(target, label, say) {
 function storageCard(app) {
   const cfg = { backend: 'local', url: '', key: '', ...app.config };
   const out = h('div.result');
-  const say = (msg, kind = '') => out.replaceChildren(h(`p.${kind || 'muted'}`, msg));
+  const say = (msg, kind = '') => fill(out, h(`p.${kind || 'muted'}`, msg));
   const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); } catch (e) { say(e.message, 'err'); } finally { btn.disabled = false; } };
 
   // ----- 드롭박스 -----
@@ -213,7 +213,7 @@ function timetableCard(app) {
     const sel = (val, opts, on, label) => h('select', { 'aria-label': label, onchange: (e) => { on(+e.target.value); draw(); } }, opts.map(([v, l]) => h('option', { value: v, selected: v === val }, l)));
     const num = (val, on, label, min, max) => h('input', { type: 'number', min, max, step: 5, value: val, 'aria-label': label, onchange: (e) => { on(+e.target.value); } });
     const c = bell.csat;
-    wrap.replaceChildren(
+    fill(wrap, 
       h('div.inline-form',
         h('label', '🏫 등교', timeSelect(bell.arrival, (v) => (bell.arrival = v), '등교')),
         h('label', '정규 교시', sel(bell.periodCount, [4, 5, 6, 7, 8].map((n) => [n, `${n}교시까지`]), (v) => (bell.periodCount = v), '정규 교시 수')),
@@ -290,7 +290,7 @@ function listsCard(app) {
 function aiCard(app) {
   const cfg = loadAI();
   const out = h('div.result');
-  const say = (m, k = 'muted') => out.replaceChildren(h(`p.${k}`, m));
+  const say = (m, k = 'muted') => fill(out, h(`p.${k}`, m));
   const wrap = h('div');
   const draw = () => {
     const p = cfg.provider;
@@ -312,9 +312,9 @@ function aiCard(app) {
       const reply = await testAI(cfg);
       say(`연결 성공 (${cfg.models[p]}): "${reply}"`, 'ok');
     }) }, '테스트');
-    wrap.replaceChildren(
+    fill(wrap, 
       h('div.form',
-        h('label', '사용할 AI', h('select', { 'aria-label': '사용할 AI', onchange: (e) => { cfg.provider = e.target.value; draw(); out.replaceChildren(); } },
+        h('label', '사용할 AI', h('select', { 'aria-label': '사용할 AI', onchange: (e) => { cfg.provider = e.target.value; draw(); fill(out); } },
           PROVIDERS.map(([v, l]) => h('option', { value: v, selected: v === p }, l)))),
         p === 'ollama'
           ? h('label', 'Ollama 주소', h('input', { value: cfg.ollamaUrl, placeholder: 'http://localhost:11434', oninput: (e) => (cfg.ollamaUrl = e.target.value.trim()) }))
@@ -336,7 +336,7 @@ function aiCard(app) {
 function securityCard(app) {
   const enabled = vaultEnabled();
   const out = h('div.result');
-  const say = (m, k = 'muted') => out.replaceChildren(h(`p.${k}`, m));
+  const say = (m, k = 'muted') => fill(out, h(`p.${k}`, m));
   const askPin = async (title) => {
     const a = h('input', { type: 'password', inputmode: 'numeric', maxlength: 6, autocomplete: 'new-password', placeholder: '숫자 6자리', 'aria-label': '새 PIN' });
     const b = h('input', { type: 'password', inputmode: 'numeric', maxlength: 6, autocomplete: 'new-password', placeholder: '한 번 더', 'aria-label': 'PIN 확인' });

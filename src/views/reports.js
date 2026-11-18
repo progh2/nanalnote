@@ -1,5 +1,5 @@
 // 보고서 탭: 캘린더, 학생출결, 수업일지(수업·학반별), 상담일지(학생별), 학급요록, 출장, 기간지정 다운로드
-import { h, fmtDate, parseDate, today, yearRange, addDays, koDate, downloadBlob, toast, WEEKDAYS, pad } from '../lib/util.js';
+import { h, fmtDate, parseDate, today, yearRange, addDays, koDate, downloadBlob, toast, WEEKDAYS, pad, fill } from '../lib/util.js';
 import { ATT_TYPES } from '../store.js';
 import { exportRange, exportLessons, exportCounsel, exportAttendance, exportRecord, exportTrips } from '../lib/export.js';
 import { studentLabel, classKey } from '../lib/students.js';
@@ -106,7 +106,7 @@ function attendance(app) {
       return h('td.center', String(list.reduce((n, a) => n + hours(a), 0)), h('div.small.muted', Object.entries(by).map(([k, v]) => `${k}${v}`).join(' ')));
     };
     const withRec = studs.filter((x) => rows.some((a) => a.student === x.uid));
-    wrap.replaceChildren(
+    fill(wrap, 
       h('label.check.small', h('input', { type: 'checkbox', checked: !!st.onlyRec, onchange: (e) => { st.onlyRec = e.target.checked; draw(); } }), ' 기록 있는 학생만'),
       h('p.muted.small', '숫자는 시수(빠진 교시 수)입니다. 수업을 정하지 않은 "종일" 기록은 1로 셉니다.'),
       h('table.grid', h('thead', h('tr', h('th', '학생'), ATT_TYPES.map((t) => h('th', t)), h('th', '합계(시수)'))),
@@ -146,7 +146,7 @@ function lessons(app) {
   const wrap = h('div');
   const draw = () => {
     const rows = list();
-    wrap.replaceChildren(rows.length
+    fill(wrap, rows.length
       ? h('table.grid', h('thead', h('tr', h('th', { style: { width: '11em' } }, '날짜'), h('th', { style: { width: '5.5em' } }, '교시'), h('th', { style: { width: '8em' } }, sec ? '수업명' : '과목'),
         sec ? h('th', { style: { width: '4.5em' } }, '학반') : null, sec ? h('th', { style: { width: '6em' } }, '교실') : null, h('th', '내용'))),
         h('tbody', rows.map((l) => h('tr', h('td', h('button.link', { onclick: () => goto(app, l.date) }, koDate(l.date))), h('td.center', store.periodLabel(l.period)), h('td', l.subject),
@@ -214,7 +214,7 @@ function trips(app) {
   const draw = () => {
     const rows = list();
     const days = new Set(rows.map((t) => t.date)).size;
-    wrap.replaceChildren(
+    fill(wrap, 
       h('p', h('strong', `출장 ${rows.length}건 · ${days}일`)),
       rows.length ? h('table.grid', h('thead', h('tr', h('th', { style: { width: '11em' } }, '날짜'), h('th', { style: { width: '9em' } }, '시간'), h('th', '출장지'), h('th', '목적·내용'))),
         h('tbody', rows.map((t) => h('tr', h('td', h('button.link', { onclick: () => goto(app, t.date) }, koDate(t.date))), h('td', t.time || ''), h('td', t.place || ''), h('td', t.purpose || '')))))

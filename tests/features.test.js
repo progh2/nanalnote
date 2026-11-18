@@ -25,7 +25,10 @@ test('PIN 잠금: 평문 → 암호화 이전, 틀린 PIN 거부, 맞는 PIN 으
   assert.equal(localStorage.getItem('sn:theme'), 'dark'); // 민감하지 않은 값은 그대로
   ss.sset('sn:dropbox', '{"refreshToken":"RT"}');
   await ss.flush();
-  assert.ok(!localStorage.getItem('sn:dropbox').includes('RT'));
+  // 암호문(base64)에 짧은 글자가 우연히 섞일 수 있으므로 평문 전체가 보이지 않는지와 암호 표시만 확인
+  const stored = localStorage.getItem('sn:dropbox');
+  assert.ok(stored.startsWith('enc1:'));
+  assert.ok(!stored.includes('refreshToken'));
   assert.equal(ss.sget('sn:dropbox'), '{"refreshToken":"RT"}');
 
   vault.lockNow(); ss.memClear();

@@ -54,7 +54,8 @@ function context(ta, students) {
  */
 export function attachStudentSuggest(ta, getStudents) {
   let menu = null, items = [], idx = 0, ctx = null;
-  const close = () => { menu?.remove(); menu = null; ctx = null; };
+  const close = () => { menu?.remove(); menu = null; ctx = null; openMenus.delete(replace); };
+  const replace = () => { if (menu) requestAnimationFrame(place); };
   const pick = (s) => {
     if (!ctx) return;
     ta.focus();
@@ -72,7 +73,7 @@ export function attachStudentSuggest(ta, getStudents) {
     if (!ctx || !ctx.list.length) { close(); return; }
     items = ctx.list.slice(0, MAX);
     idx = Math.min(idx, items.length - 1);
-    if (!menu) { menu = h('div.suggest', { role: 'listbox' }); document.body.append(menu); }
+    if (!menu) { menu = h('div.suggest', { role: 'listbox' }); document.body.append(menu); openMenus.add(replace); }
     fill(menu, 
       h('div.suggest-head', ctx.mode === 'search' ? (ctx.q ? `"${ctx.q}" 찾기` : '학생 찾기 — 이름 일부나 학번을 쓰세요') : '학생 추천'),
       ...items.map((s, i) => h(`div.suggest-item${i === idx ? '.active' : ''}`, {
@@ -81,14 +82,37 @@ export function attachStudentSuggest(ta, getStudents) {
       }, h('strong', studentLabel(s)), classKey(s) ? h('span.muted.small', ` ${classKey(s)}반`) : null)),
       ctx.list.length > MAX ? h('div.suggest-more.muted.small', `외 ${ctx.list.length - MAX}명 — 더 쓰면 좁혀집니다`) : null,
       h('div.suggest-foot.muted.small', '↑↓ 이동 · Enter/Tab 넣기 · Esc 닫기'));
-    const { x, y } = caretXY(ta, ctx.start);
-    const w = Math.min(280, window.innerWidth - 16);
+    place();
+  };
+  /**
+   * 자리 잡기: 휴대폰 키보드가 올라오면 실제로 보이는 영역(visualViewport)이 줄어든다.
+   * 그 영역 안에서 커서 아래에 넣고, 모자라면 커서 위로 뒤집는다. 높이는 남은 공간에 맞춘다.
+   */
+  const place = () => {
+    if (!menu || !ctx) return;
+    const vv = window.visualViewport;
+    const visTop = vv ? vv.offsetTop : 0, visLeft = vv ? vv.offsetLeft : 0;
+    const visH = vv ? vv.height : window.innerHeight, visW = vv ? vv.width : window.innerWidth;
+    const visBottom = visTop + visH;
+    const touch = window.matchMedia('(pointer: coarse)').matches;
+    const { x, y } = caretXY(ta, ctx.start); // y = 커서 줄의 아래쪽
+    const lh = parseFloat(getComputedStyle(ta).lineHeight) || 24;
+    const caretTop = y - lh;
+    const w = touch ? visW - 16 : Math.min(300, visW - 16);
     menu.style.width = `${w}px`;
-    menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - w - 8))}px`;
-    const below = y + 4;
-    menu.style.top = `${below}px`;
-    // 화면 아래가 모자라면 위로
-    requestAnimationFrame(() => { if (menu && below + menu.offsetHeight > window.innerHeight - 8) menu.style.top = `${Math.max(8, y - menu.offsetHeight - 28)}px`; });
+    menu.style.left = `${touch ? visLeft + 8 : Math.max(visLeft + 8, Math.min(x, visLeft + visW - w - 8))}px`;
+    menu.style.maxHeight = 'none';
+    const natural = menu.scrollHeight;
+    const below = visBottom - y - 10;
+    const above = caretTop - visTop - 10;
+    if (natural <= below || below >= above) {
+      menu.style.top = `${y + 4}px`;
+      menu.style.maxHeight = `${Math.max(90, below)}px`;
+    } else {
+      const hgt = Math.min(natural, above);
+      menu.style.top = `${Math.max(visTop + 6, caretTop - hgt - 4)}px`;
+      menu.style.maxHeight = `${Math.max(90, above)}px`;
+    }
   };
   ta.addEventListener('input', () => { idx = 0; open(); });
   ta.addEventListener('click', () => { idx = 0; open(); });
@@ -100,8 +124,12 @@ export function attachStudentSuggest(ta, getStudents) {
     else if (e.key === 'Escape') { e.preventDefault(); close(); }
   });
   ta.addEventListener('blur', () => setTimeout(close, 150));
-  ta.addEventListener('scroll', close);
+  ta.addEventListener('scroll', replace);
 }
 
-// 화면을 스크롤하면 떠 있는 추천 창을 닫는다 (한 번만 등록)
-window.addEventListener('scroll', (e) => { if (!e.target?.closest?.('.suggest')) document.querySelectorAll('.suggest').forEach((m) => m.remove()); }, { passive: true, capture: true });
+// 키보드가 올라오며 화면이 움직이거나 스크롤하면, 떠 있는 추천 창의 자리를 다시 잡는다 (전역 리스너 한 번만)
+const openMenus = new Set();
+const replaceAll = () => openMenus.forEach((fn) => fn());
+window.addEventListener('scroll', replaceAll, { passive: true, capture: true });
+window.visualViewport?.addEventListener('resize', replaceAll);
+window.visualViewport?.addEventListener('scroll', replaceAll);

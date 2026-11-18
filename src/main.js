@@ -4,6 +4,8 @@ import { Store } from './store.js';
 import { LocalBackend } from './backends/local.js';
 import { NotionBackend } from './backends/notion.js';
 import { DropboxBackend, completeLogin } from './backends/dropbox.js';
+import { FolderBackend } from './backends/folder.js';
+import { isDesktop, appPaths, installDesktopHooks, PORTABLE_FOLDER } from './lib/desktop.js';
 import { h, today, schoolYearOf, addDays, toast, modal, koDate, weekdayOf, WEEKDAYS, debounce, fill } from './lib/util.js';
 import * as holidays from './lib/holidays.js';
 import { vaultEnabled, lockNow } from './lib/vault.js';
@@ -26,6 +28,7 @@ const loadConfig = () => { try { return JSON.parse(sget(CONFIG_KEY) || '{}'); } 
 function makeBackend(cfg) {
   if (cfg.backend === 'notion') return new NotionBackend({ url: cfg.url, key: cfg.key });
   if (cfg.backend === 'dropbox') return new DropboxBackend();
+  if (cfg.backend === 'folder') return new FolderBackend({ folder: cfg.folder });
   return new LocalBackend();
 }
 
@@ -232,6 +235,14 @@ async function start() {
     lastActive = Date.now();
   }
   app.config = loadConfig();
+  // 데스크톱 앱: 처음에는 "이 컴퓨터 폴더" 저장소 (포터블은 USB 안 나날노트자료 폴더)
+  if (isDesktop()) {
+    installDesktopHooks();
+    const p = await appPaths().catch(() => null);
+    if (p && !app.config.backend) app.saveConfig({ backend: 'folder', folder: p.portable ? PORTABLE_FOLDER : p.default_data_dir });
+    if (p?.portable && app.config.backend === 'folder' && app.config.folder !== PORTABLE_FOLDER && !app.config.folderChosen) app.saveConfig({ folder: PORTABLE_FOLDER });
+    app.desktop = p;
+  }
   document.getElementById('app').replaceChildren(h('header#header'), h('main#main'), h('div#notes'));
   // 드롭박스 로그인 후 돌아온 경우 (?code=...)
   let loginMsg = null;

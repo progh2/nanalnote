@@ -20,6 +20,22 @@ PC와 휴대폰 모두 쓸 수 있고, 휴대폰은 "홈 화면에 추가"로 �
 | 이 브라우저(로컬) | 설치 없이 바로 체험. 이 브라우저에만 저장 |
 | 노션 (고급) | Cloudflare Worker 중계가 필요. 노션 데이터베이스 9개에 저장 |
 
+## 데스크톱 앱 (Windows · macOS · Linux)
+
+[Tauri](https://tauri.app)(Rust)로 같은 화면을 데스크톱 앱으로 만듭니다. 내려받기: **[GitHub 릴리스](https://github.com/progh2/nanalnote/releases/latest)**
+
+| 운영체제 | 설치판 | 포터블(USB) |
+|---|---|---|
+| Windows 10/11 | `…_x64-setup.exe`, `.msi` | `나날노트-포터블-windows-x64-….zip` |
+| macOS | `…_universal.dmg` | `나날노트-포터블-macos-universal-….zip` |
+| Linux | `.deb`, `.rpm` | `.AppImage` (+ 옆에 `portable.txt`) |
+
+- 데스크톱 앱은 **이 컴퓨터 폴더** 저장소를 씁니다. 드롭박스와 같은 마크다운 형식이라, 드롭박스 프로그램이 동기화하는 폴더(`Dropbox/Apps/<앱 폴더>`)를 고르면 웹판과 같은 자료를 함께 씁니다.
+- **포터블:** 실행 파일 옆에 `portable.txt` 가 있으면 자료와 설정(웹뷰 저장소)을 모두 그 폴더의 `나날노트자료`에 둡니다. 드라이브 문자가 바뀌어도 됩니다. (macOS 는 자료만 USB 에, 설정은 사용자 폴더에)
+- 코드 서명을 하지 않아 처음 실행할 때 Windows SmartScreen·macOS Gatekeeper 경고가 나옵니다(릴리스 설명 참고).
+- 빌드: `v1.2.3` 태그를 올리거나 Actions → *Desktop apps* 를 직접 실행하면 `.github/workflows/desktop.yml` 이 세 운영체제에서 만들어 릴리스에 올립니다. 버전은 `src-tauri/tauri.conf.json` 의 `version`.
+- 직접 빌드: Rust + `npm run tauri build` (`npx tauri dev` 로 개발 실행).
+
 ## 드롭박스 저장 형식
 
 ```

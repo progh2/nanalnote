@@ -1,0 +1,10 @@
+{
+  "productName": "nanalnote",
+  "bundle": {
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    }
+  }
+}

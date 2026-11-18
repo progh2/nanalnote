@@ -144,6 +144,11 @@ export async function readTextFile(file) {
 }
 
 export function downloadBlob(blob, filename) {
+  // 데스크톱 앱: "다른 이름으로 저장" 창으로 (웹뷰는 내려받기를 지원하지 않는 경우가 있음)
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    import('./desktop.js').then((d) => d.saveBlobDesktop(blob, filename)).then((ok) => ok && toast('저장했습니다.', 'ok')).catch((e) => toast(`저장 실패: ${e?.message || e}`, 'error'));
+    return;
+  }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;

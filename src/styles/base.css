@@ -446,3 +446,10 @@ input.due-input { position: absolute; inset: 0; width: 100% !important; height: 
 
 .doc-slot { min-height: 120px; display: grid; place-items: center; color: var(--muted); background: var(--surface); border: 1px dashed var(--border); border-radius: 4px; font-size: calc(13px * var(--fs, 1)); }
 .doc-slot.err { color: var(--danger); }
+
+/* 학생 이름 추천 창 */
+.suggest { position: fixed; z-index: 120; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 28px #0003; padding: 4px; max-height: 50vh; overflow: auto; }
+.suggest-head, .suggest-foot, .suggest-more { padding: 4px 8px; font-size: calc(12px * var(--fs, 1)); color: var(--muted); }
+.suggest-item { padding: 7px 10px; border-radius: 6px; cursor: pointer; }
+.suggest-item.active, .suggest-item:hover { background: var(--highlight); }
+@media (pointer: coarse) { .suggest-foot { display: none; } .suggest-item { padding: 10px 12px; } }

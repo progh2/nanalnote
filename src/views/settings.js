@@ -3,6 +3,7 @@ import { h, newId, toCSV, parseCSV, readTextFile, pickFile, downloadBlob, toast,
 import { NotionBackend } from '../backends/notion.js';
 import { LocalBackend } from '../backends/local.js';
 import { DropboxBackend, startLogin, logout as dropboxLogout, isPublicMode } from '../backends/dropbox.js';
+import { isDesktop, pickFolder, PORTABLE_FOLDER } from '../lib/desktop.js';
 import { COLLECTIONS } from '../store.js';
 import { THEMES } from '../themes.js';
 import { ttCell, courseOf } from '../store.js';
@@ -38,6 +39,27 @@ function storageCard(app) {
   const out = h('div.result');
   const say = (msg, kind = '') => fill(out, h(`p.${kind || 'muted'}`, msg));
   const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); } catch (e) { say(e.message, 'err'); } finally { btn.disabled = false; } };
+
+  // ----- 이 컴퓨터 폴더 (데스크톱 앱) -----
+  const desk = app.desktop;
+  let folderSection = null;
+  if (isDesktop()) {
+    const curFolder = cfg.folder === PORTABLE_FOLDER ? `${desk?.default_data_dir || ''} (포터블)` : (cfg.folder || desk?.default_data_dir || '');
+    folderSection = h('div.storage-opt',
+      h('h3', `이 컴퓨터 폴더 (추천)${desk?.portable ? ' · 포터블 모드' : ''}`),
+      h('p.muted.small', '고른 폴더에 학년도별 마크다운(.md) 파일로 저장합니다. 드롭박스 프로그램이 동기화하는 폴더(예: Dropbox/Apps/<앱 폴더>)를 고르면 웹판(드롭박스 저장소)과 같은 자료를 함께 쓸 수 있습니다.'),
+      desk?.portable ? h('p.muted.small', '포터블 모드: 실행 파일 옆 portable.txt 가 있어 자료와 설정을 이 USB(폴더) 안의 "나날노트자료"에 저장합니다. 다른 컴퓨터에 꽂아도 그대로 이어집니다.') : null,
+      h('p', '폴더: ', h('code', curFolder)),
+      h('div.row',
+        cfg.backend !== 'folder' ? h('button.primary', { onclick: () => app.switchBackend({ backend: 'folder', folder: cfg.folder || (desk?.portable ? PORTABLE_FOLDER : desk?.default_data_dir) }) }, '이 컴퓨터 폴더 사용하기') : h('span.ok', '✓ 사용 중'),
+        h('button', { onclick: async () => {
+          const dir = await pickFolder(cfg.folder && cfg.folder !== PORTABLE_FOLDER ? cfg.folder : desk?.default_data_dir);
+          if (!dir) return;
+          if (!(await confirmDialog('자료 폴더 바꾸기', `이제부터 "${dir}" 폴더의 자료를 쓰고 저장합니다. 지금 폴더의 자료는 옮겨지지 않습니다(필요하면 파일을 직접 복사하세요). 계속할까요?`, '바꾸기'))) return;
+          await app.switchBackend({ backend: 'folder', folder: dir, folderChosen: true });
+        } }, '폴더 바꾸기'),
+        desk?.portable && cfg.folder !== PORTABLE_FOLDER ? h('button', { onclick: () => app.switchBackend({ backend: 'folder', folder: PORTABLE_FOLDER, folderChosen: false }) }, 'USB 안 기본 폴더로') : null));
+  }
 
   // ----- 드롭박스 -----
   const dbx = new DropboxBackend();
@@ -96,7 +118,8 @@ function storageCard(app) {
   return card('저장소',
     h('p', '현재: ', h('strong', app.store.backend.label),
       cfg.backend !== 'local' ? h('button.small', { style: { marginLeft: '8px' }, onclick: () => app.switchBackend({ backend: 'local' }) }, '이 브라우저(로컬)로 전환') : null),
-    dropboxSection,
+    folderSection,
+    isDesktop() ? h('p.muted.small', '드롭박스 로그인 연결은 웹판(브라우저)에서만 됩니다. 데스크톱 앱에서는 드롭박스 프로그램이 동기화하는 폴더를 "이 컴퓨터 폴더"로 고르세요.') : dropboxSection,
     notionSection,
     out,
     h('p.muted.small', '상담 일지 등 민감정보가 클라우드에 저장됩니다. 공유 범위를 본인으로 한정하고, 학교 정보보호 지침을 확인하세요. 공용 PC에서는 사용 후 연결을 끊으세요.'));

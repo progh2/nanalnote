@@ -2,3 +2,5 @@ node_modules
 dist
 .wrangler
 worker/.dev.vars
+src-tauri/target
+src-tauri/gen

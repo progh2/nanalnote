@@ -20,17 +20,51 @@ export const CONTACT_DOCS = {
   kinds: [['contacts', '연락처']],
 };
 
+const KIND_KEY = (cfg) => `sn:docs:${cfg.key}:kind`;
+
 function viewState(app, cfg) {
   app.docView ||= {};
-  const v = (app.docView[cfg.key] ||= { kind: cfg.kinds[0][0] });
+  // 마지막에 보던 탭(연간/월중/주간)을 기억해서 다시 연다
+  const saved = localStorage.getItem(KIND_KEY(cfg));
+  const v = (app.docView[cfg.key] ||= { kind: cfg.kinds.some(([k]) => k === saved) ? saved : cfg.kinds[0][0] });
   if (v.kind === 'monthly') v.period = (v.month ||= app.date.slice(0, 7));
   else if (v.kind === 'weekly') v.period = (v.week ||= mondayOf(app.date));
   else v.period = '';
   return v;
 }
 
+/** 이 기간에 자료가 없으면 가장 가까운 자료가 있는 기간으로 (처음 들어올 때만) */
+function nearestPeriod(app, v) {
+  const periods = [...new Set(app.store.work.docs.filter((d) => d.kind === v.kind && d.period).map((d) => d.period))].sort();
+  if (!periods.length || periods.includes(v.period)) return null;
+  const past = periods.filter((p) => p <= v.period);
+  return past.at(-1) || periods[0];
+}
+
+const periodText = (kind, p) => (kind === 'weekly' ? `${+p.slice(5, 7)}월 ${+p.slice(8, 10)}일 주` : `${p.slice(0, 4)}년 ${+p.slice(5, 7)}월`);
+
+/** 올릴 때 어느 주(달)의 자료인지 묻는다 */
+async function askPeriod(app, v) {
+  if (v.kind !== 'weekly' && v.kind !== 'monthly') return v.period;
+  const weekly = v.kind === 'weekly';
+  const cur = v.period;
+  const next = weekly ? addDays(cur, 7) : (() => { const [y, m] = cur.split('-').map(Number); const d = new Date(y, m, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; })();
+  const thisNow = weekly ? mondayOf(today()) : today().slice(0, 7);
+  const pick = h('input', { type: weekly ? 'date' : 'month', value: cur, 'aria-label': weekly ? '주 고르기' : '달 고르기' });
+  const label = (p) => `${periodText(v.kind, p)}${p === thisNow ? ' (이번' + (weekly ? ' 주)' : ' 달)') : ''}`;
+  const choice = await modal(weekly ? '어느 주의 주간업무계획인가요?' : '어느 달의 월중일정인가요?',
+    h('div', h('p.muted.small', weekly ? '금요일에 다음 주 계획을 올릴 때는 "다음 주"를 고르세요.' : '다음 달 일정을 미리 올릴 때는 "다음 달"을 고르세요.'),
+      h('div.row', h('label', '직접 고르기 ', pick))),
+    [{ label: '취소', value: null }, { label: label(cur), value: cur }, { label: label(next), value: next, primary: true }, { label: '고른 날짜로', value: 'pick' }]);
+  if (choice === 'pick') {
+    if (!pick.value) return null;
+    return weekly ? mondayOf(pick.value) : pick.value.slice(0, 7);
+  }
+  return choice;
+}
+
 /** 파일 하나를 받아 원본 + 보기용 이미지(+본문)를 저장하고 문서 항목을 만든다 */
-async function ingest(app, cfg, file, { series = null } = {}) {
+async function ingest(app, cfg, file, { series = null, period: forced = undefined } = {}) {
   const { store } = app;
   const v = viewState(app, cfg);
   if (!store.backend.putFile) throw new Error('이 저장소는 파일을 지원하지 않습니다.');
@@ -38,7 +72,7 @@ async function ingest(app, cfg, file, { series = null } = {}) {
   if (type === 'hwp') throw new Error('예전 한글 파일(.hwp)은 열 수 없습니다. 한글에서 "다른 이름으로 저장 → HWPX 또는 PDF"로 저장해 올려 주세요.');
   if (type === 'other') throw new Error('이미지, PDF, HWPX 파일만 올릴 수 있습니다.');
   const kind = series?.kind || v.kind;
-  const period = series ? series.period : v.period;
+  const period = series ? series.period : forced !== undefined ? forced : v.period;
   const label = cfg.kinds.find(([k]) => k === kind)[1];
   const ext = (file.name.match(/\.[^.]+$/)?.[0] || (type === 'image' ? `.${(file.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}` : '')).toLowerCase();
   const base = safeName(`${period || store.year}_${label}_${Date.now().toString(36)}`);
@@ -73,6 +107,8 @@ async function ingest(app, cfg, file, { series = null } = {}) {
   store.markDirty();
   await app.save({ silent: true });
   v.sel = seriesKey(doc); v.rev = doc.rev;
+  if (kind === 'weekly') v.week = period;
+  if (kind === 'monthly') v.month = period;
   toast(series ? `${doc.rev}판을 올렸습니다.` : '올렸습니다.', 'ok');
   return doc;
 }
@@ -140,7 +176,9 @@ export function renderDocs(app, cfg, { bottom = null } = {}) {
 
   const upload = async (file, series = null) => {
     try {
-      const doc = await ingest(app, cfg, file, { series });
+      const period = series ? undefined : await askPeriod(app, v);
+      if (period === null) return;
+      const doc = await ingest(app, cfg, file, { series, period });
       app.render();
       if (cfg.ai && aiReady() && (await confirmDialog('AI 로 학사일정 넣기', '올린 문서에서 AI 로 날짜별 일정을 뽑아 학사일정에 넣을까요? (반영 전에 미리 보고 고를 수 있어요)', '추출하기'))) aiExtract(app, cfg, doc);
     } catch (e) { toast(e.message, 'error'); }
@@ -171,6 +209,23 @@ export function renderDocs(app, cfg, { bottom = null } = {}) {
       h('button.small', { onclick: () => { v.week = mondayOf(app.date); v.sel = null; app.render(); } }, '이번 주'));
   }
 
+  // 처음 들어왔는데 이 기간 자료가 없으면 가장 가까운 자료를 보여 준다
+  let fallbackNote = null;
+  if (!v.entered && (kind === 'weekly' || kind === 'monthly')) {
+    v.entered = true;
+    const near = nearestPeriod(app, v);
+    if (near) {
+      const was = v.period;
+      if (kind === 'weekly') v.week = near; else v.month = near;
+      v.period = near;
+      fallbackNote = h('p.fallback-note', `${kind === 'weekly' ? '이번 주' : '이번 달'}(${periodText(kind, was)}) 자료가 없어 가장 가까운 ${periodText(kind, near)} 자료를 보여 드려요. `,
+        h('button.link', { onclick: () => { if (kind === 'weekly') v.week = was; else v.month = was; app.render(); } }, kind === 'weekly' ? '이번 주로' : '이번 달로'));
+    }
+  }
+  // 최근 자료 바로가기
+  const recent = (kind === 'weekly' || kind === 'monthly')
+    ? [...new Set(store.work.docs.filter((d) => d.kind === kind && d.period).map((d) => d.period))].sort().reverse().slice(0, 6) : [];
+
   // 이 기간의 문서들 (같은 제목 = 같은 문서의 판들)
   const docs = store.work.docs.filter((d) => d.kind === kind && (d.period || '') === v.period);
   const series = [...new Map(docs.map((d) => [seriesKey(d), d])).keys()];
@@ -187,12 +242,19 @@ export function renderDocs(app, cfg, { bottom = null } = {}) {
     if (!pages.length && !doc.textFile) viewer.append(h('p.muted', '미리보기가 없습니다. [원본 받기]로 파일을 내려받아 보세요.'));
     const pageBox = h('div.doc-pages');
     viewer.append(pageBox);
+    // 쪽마다 자리를 먼저 만들고, 이미지는 동시에(최대 4개씩) 받아 채운다 → 드롭박스에서도 빨리 보임
+    const slots = pages.map((_, i) => { const el = h('div.doc-slot', `${i + 1}쪽 불러오는 중…`); pageBox.append(el); return el; });
     (async () => {
-      for (const [i, p] of pages.entries()) {
-        const url = await store.backend.fileUrl?.(store.year, cfg.folder, p).catch(() => null);
-        if (!url) continue;
-        pageBox.append(h('a', { href: url, target: '_blank', rel: 'noopener', title: `${i + 1}쪽 크게 보기` }, h('img.doc-img', { src: url, alt: `${doc.title} ${i + 1}쪽`, loading: 'lazy' })));
-      }
+      let next = 0;
+      await Promise.all(Array.from({ length: Math.min(4, pages.length) }, async () => {
+        while (next < pages.length) {
+          const i = next++;
+          const url = await store.backend.fileUrl?.(store.year, cfg.folder, pages[i]).catch(() => null);
+          slots[i].replaceWith(url
+            ? h('a', { href: url, target: '_blank', rel: 'noopener', title: `${i + 1}쪽 크게 보기` }, h('img.doc-img', { src: url, alt: `${doc.title} ${i + 1}쪽` }))
+            : h('div.doc-slot.err', `${i + 1}쪽을 불러오지 못했습니다`));
+        }
+      }));
       if (doc.textFile) {
         const url = await store.backend.fileUrl?.(store.year, cfg.folder, doc.textFile).catch(() => null);
         if (url) pageBox.append(h('details.doc-text', { open: !pages.length }, h('summary', '문서 본문 (HWPX 에서 뽑은 글)'), h('pre', await (await fetch(url)).text())));
@@ -219,10 +281,12 @@ export function renderDocs(app, cfg, { bottom = null } = {}) {
   const sideItems = [...monthItems, ...weekItems];
 
   return h('div.schedule-page',
-    cfg.kinds.length > 1 ? h('nav.subtabs', cfg.kinds.map(([k, l]) => h(`button${kind === k ? '.active' : ''}`, { onclick: () => { v.kind = k; v.sel = null; v.rev = null; app.render(); } }, l))) : null,
+    cfg.kinds.length > 1 ? h('nav.subtabs', cfg.kinds.map(([k, l]) => h(`button${kind === k ? '.active' : ''}`, { onclick: () => { v.kind = k; v.sel = null; v.rev = null; v.entered = false; localStorage.setItem(KIND_KEY(cfg), k); app.render(); } }, l))) : null,
     h('section.card',
       h('div.card-head', h('h2', label), btns),
       nav,
+      fallbackNote,
+      recent.length ? h('div.chips.recent-periods', h('span.small.muted', '최근 자료: '), recent.map((p) => h(`button.chip-btn${p === v.period ? '.active' : ''}`, { onclick: () => { if (kind === 'weekly') v.week = p; else v.month = p; v.sel = null; v.rev = null; app.render(); } }, periodText(kind, p)))) : null,
       series.length > 1 ? h('div.chips', series.map((k) => {
         const latest = docs.filter((d) => seriesKey(d) === k).sort((a, b) => (b.rev || 1) - (a.rev || 1))[0];
         return h(`button.chip-btn${k === curKey ? '.active' : ''}`, { onclick: () => { v.sel = k; v.rev = null; app.render(); } }, latest.title);

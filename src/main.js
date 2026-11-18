@@ -4,7 +4,7 @@ import { Store } from './store.js';
 import { LocalBackend } from './backends/local.js';
 import { NotionBackend } from './backends/notion.js';
 import { DropboxBackend, completeLogin } from './backends/dropbox.js';
-import { h, today, schoolYearOf, addDays, toast, modal, koDate, weekdayOf, WEEKDAYS, debounce } from './lib/util.js';
+import { h, today, schoolYearOf, addDays, toast, modal, koDate, weekdayOf, WEEKDAYS, debounce, fill } from './lib/util.js';
 import * as holidays from './lib/holidays.js';
 import { vaultEnabled, lockNow } from './lib/vault.js';
 import { sget, sset, loadAll, flush, memClear } from './lib/securestore.js';
@@ -149,7 +149,7 @@ const app = {
     const wdEl = h(`span.wd${wd === 0 ? '.sun' : wd === 6 ? '.sat' : ''}`, `(${WEEKDAYS[wd]})`);
     if (s.year && s.isSchoolHoliday(this.date)) wdEl.classList.add('sun');
     this.specials(this.date).then((list) => { if (list.some((x) => x.holiday)) wdEl.classList.add('sun'); }).catch(() => {});
-    el.replaceChildren(
+    fill(el, 
       h('div.brand',
         h('span.logo', '✎'),
         h('div', h('strong', '쌔미노트'), h('small', ' Web')),
@@ -189,7 +189,7 @@ const app = {
       const views = { notebook: renderNotebook, schedule: renderSchedule, contacts: renderContacts, tags: renderTags, students: renderStudents, reports: renderReports, settings: renderSettings };
       view = views[this.tab](this);
     }
-    main.replaceChildren(view);
+    fill(main, view);
     renderNotes(this);
     document.title = `쌔미노트 · ${koDate(this.date)}`;
   },

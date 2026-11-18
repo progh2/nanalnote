@@ -343,6 +343,9 @@ ol.small { font-size: calc(13px * var(--fs, 1)); color: var(--muted); padding-le
 .task-tools { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .task-tools select { width: auto; font-size: calc(13px * var(--fs, 1)); padding: 3px 6px; }
 .prio { flex: none; min-width: 2.2em; padding: 1px 6px; font-size: calc(12px * var(--fs, 1)); font-weight: 800; border-radius: 6px; border: 1px solid transparent; }
+select.prio { width: auto !important; min-width: 3.2em; padding: 2px 4px !important; text-align: center; text-align-last: center; cursor: pointer; appearance: none; -webkit-appearance: none; border: 1px solid transparent !important; }
+select.prio:disabled { cursor: default; }
+select.prio option { background: var(--surface); color: var(--text); font-weight: 600; }
 .prio.p-A { background: #fee2e2; color: #b91c1c; }
 .prio.p-B { background: #fef3c7; color: #b45309; }
 .prio.p-C { background: #dbeafe; color: #1d4ed8; }
@@ -432,3 +435,8 @@ textarea.day-note { min-height: 110px; line-height: 1.7; background: var(--paper
 .type-badge.t-task { background: #fef3c7; color: #b45309; }
 .type-badge.t-lesson { background: #dcfce7; color: #15803d; }
 .type-badge.t-counsel { background: #fce7f3; color: #be185d; }
+
+.due-pick { position: relative; display: inline-flex; cursor: pointer; }
+.due-pick .due-btn { pointer-events: none; }
+input.due-input { position: absolute; inset: 0; width: 100% !important; height: 100%; opacity: 0; padding: 0 !important; border: 0 !important; cursor: pointer; }
+.due-clear { padding: 0 4px; font-size: calc(12px * var(--fs, 1)); color: var(--muted); }

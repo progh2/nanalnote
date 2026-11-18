@@ -1,5 +1,5 @@
 // 잠금 화면: PIN 6자리 또는 패스키(지문·얼굴·Windows Hello)
-import { h, confirmDialog } from '../lib/util.js';
+import { h, confirmDialog, fill } from '../lib/util.js';
 import { unlockPin, unlockPasskey, hasPasskey, removeVault } from '../lib/vault.js';
 import { sensitiveKeys } from '../lib/securestore.js';
 
@@ -11,7 +11,7 @@ export function showLockScreen(root) {
     let busy = false;
     const dots = h('div.pin-dots');
     const msg = h('p.lock-msg', ' ');
-    const drawDots = () => dots.replaceChildren(...Array.from({ length: 6 }, (_, i) => h(`span${i < pin.length ? '.on' : ''}`)));
+    const drawDots = () => fill(dots, ...Array.from({ length: 6 }, (_, i) => h(`span${i < pin.length ? '.on' : ''}`)));
     drawDots();
 
     const done = () => { document.removeEventListener('keydown', onKey); resolve(); };
@@ -53,7 +53,7 @@ export function showLockScreen(root) {
       try { await unlockPasskey(); localStorage.removeItem(FAIL_KEY); done(); } catch (e) { msg.textContent = e.message; }
     } }, '🔑 지문·얼굴·Windows Hello 로 열기') : null;
 
-    root.replaceChildren(h('div.lock-screen',
+    fill(root, h('div.lock-screen',
       h('div.lock-box',
         h('div.lock-logo', '✎'),
         h('h2', '쌔미노트 잠금'),

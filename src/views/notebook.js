@@ -1,5 +1,5 @@
 // 교사수첩 탭: 학사일정·특일, 수업일지, 업무일지, 학생출결, 학생 상담 일지, 학급요록
-import { h, newId, weekdayOf, fmtDateTime, downloadBlob, toast, confirmDialog, today, pad } from '../lib/util.js';
+import { h, newId, weekdayOf, fmtDateTime, downloadBlob, toast, confirmDialog, today, pad, fill } from '../lib/util.js';
 import { dayRows, fmtRange, currentRow, EVENING_BASE } from '../lib/bell.js';
 
 const nowHM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
@@ -30,7 +30,7 @@ export function renderNotebook(app) {
   // ----- 학사일정 + 특일 -----
   const specialsEl = h('div.specials', h('span.muted', '특일정보 확인 중…'));
   app.specials(date).then((list) => {
-    specialsEl.replaceChildren(...(list.length
+    fill(specialsEl, ...(list.length
       ? list.map((x) => h(`span.chip${x.holiday ? '.holiday' : ''}`, x.name))
       : [h('span.muted', '오늘의 국경일·절기 정보 없음')]));
   });
@@ -69,14 +69,14 @@ export function renderNotebook(app) {
     const wrap = h('div.subj-cell');
     const show = () => {
       const short = courseShort(s, l.subject);
-      wrap.replaceChildren(h('button.subj-view', { title: l.subject ? `${l.subject} (눌러서 바꾸기)` : `${subjLabel} 입력`, 'aria-label': `${label} ${subjLabel}`, onclick: edit }, short || h('span.muted', '—')));
+      fill(wrap, h('button.subj-view', { title: l.subject ? `${l.subject} (눌러서 바꾸기)` : `${subjLabel} 입력`, 'aria-label': `${label} ${subjLabel}`, onclick: edit }, short || h('span.muted', '—')));
     };
     const edit = () => {
       const inp = h('input', { value: l.subject, list: 'subject-list', 'aria-label': `${label} ${subjLabel}`,
         oninput: (e) => { l.subject = e.target.value; store.setLesson(date, l.period, { subject: e.target.value }); },
         onblur: () => { const cur = store.lessonsFor(date, wd).find((x) => x.period === l.period); if (cur) l = cur; show(); },
         onkeydown: (e) => { if (e.key === 'Enter') e.target.blur(); } });
-      wrap.replaceChildren(inp);
+      fill(wrap, inp);
       inp.focus(); inp.select();
     };
     show();
@@ -150,30 +150,29 @@ export function renderNotebook(app) {
       });
       // 마감일 아이콘: 누르면 날짜 고르기, 정해 두면 D-day 표시 (달력에도 보임)
       const dueWrap = h('span.due');
+      // 마감일: 배지 위에 투명한 날짜 칸을 겹쳐 둔다 → 누르면 바로 날짜 창, 창이 떠도 칸이 사라지지 않음
+      // D-day 는 보고 있는 날짜가 아니라 실제 오늘 기준
       const drawDue = () => {
-        if (!t) { dueWrap.replaceChildren(); return; }
-        const d = dday(t.due, date);
-        dueWrap.replaceChildren(h(`button.due-btn${d ? (d.n < 0 ? '.over' : d.n <= 3 ? '.soon' : '') : ''}`, {
-          title: t.due ? `마감 ${t.due} (눌러서 바꾸기)` : '마감일 정하기',
-          onclick: () => {
-            const inp = h('input', { type: 'date', value: t.due || '', 'aria-label': '마감일',
-              onchange: (e) => { if (e.target.value) t.due = e.target.value; else delete t.due; store.markDirty(); drawDue(); },
-              onblur: () => drawDue() });
-            dueWrap.replaceChildren(inp, t.due ? h('button.icon-btn', { title: '마감일 지우기', onmousedown: (e) => { e.preventDefault(); delete t.due; store.markDirty(); drawDue(); } }, '✕') : null);
-            inp.focus(); inp.showPicker?.();
-          },
-        }, d ? d.label : '📅'));
+        if (!t) { fill(dueWrap); return; }
+        const d = dday(t.due, today());
+        const badge = h(`span.due-btn${d ? (d.n < 0 ? '.over' : d.n <= 3 ? '.soon' : '') : ''}`, d ? d.label : '📅');
+        const inp = h('input.due-input', {
+          type: 'date', value: t.due || '', 'aria-label': '마감일', title: t.due ? `마감 ${t.due} (눌러서 바꾸기)` : '마감일 정하기',
+          onclick: (e) => { try { e.target.showPicker?.(); } catch { /* 지원 안 하는 브라우저는 기본 동작 */ } },
+          onchange: (e) => { if (e.target.value) t.due = e.target.value; else delete t.due; store.markDirty(); drawTasks(); },
+        });
+        fill(dueWrap, ...[h('label.due-pick', badge, inp),
+          t.due ? h('button.icon-btn.due-clear', { title: '마감일 지우기', 'aria-label': '마감일 지우기', onclick: () => { delete t.due; store.markDirty(); drawTasks(); } }, '✕') : null].filter(Boolean));
       };
       drawDue();
-      // 중요도 배지: 새 업무는 언젠가, 누를 때마다 C → B → A → 언젠가
-      const prio = h('button.prio', { title: '중요도 (눌러서 바꾸기)', onclick: () => {
+      // 중요도: 눌러서 A · B · C · 언젠가 중 하나를 바로 고른다 (새 업무는 언젠가)
+      const prio = h('select.prio', { 'aria-label': '중요도', title: '중요도', disabled: !t, onchange: (e) => {
         if (!t) return;
-        const keys = ['Z', 'C', 'B', 'A']; // 누를 때마다 한 단계 올라가고, A 다음은 언젠가
-        t.priority = keys[(keys.indexOf(priorityOf(t)) + 1) % keys.length];
+        t.priority = e.target.value;
         store.markDirty();
         drawTasks(); // 중요도 묶음이 바뀌므로 바로 자리 이동
-      } });
-      const paintPrio = () => { const p = t ? priorityOf(t) : 'Z'; prio.textContent = priorityLabel(p); prio.className = `prio p-${p}${t ? '' : ' ghost-prio'}`; };
+      } }, PRIORITIES.map(([k, l]) => h('option', { value: k }, l)));
+      const paintPrio = () => { const p = t ? priorityOf(t) : 'Z'; prio.value = p; prio.disabled = !t; prio.className = `prio p-${p}${t ? '' : ' ghost-prio'}`; };
       paintPrio();
       const rowEl = h(`div.task-row${t?.doneDate === date ? '.done' : ''}`, prio, check, input, dueWrap);
       // 업무가 생기면(처음부터 있거나, 빈 줄에 입력을 시작하면) 순서 바꾸기·중요도를 켠다
@@ -192,7 +191,7 @@ export function renderNotebook(app) {
       else store.updateSettings({ taskSort: 'auto' });
       drawTasks();
     } }, h('option', { value: 'auto', selected: store.settings.taskSort !== 'manual' }, '중요도 안에서 마감일 순'), h('option', { value: 'manual', selected: store.settings.taskSort === 'manual' }, '중요도 안에서 직접 정한 순서'));
-    taskList.replaceChildren(
+    fill(taskList, 
       h('div.task-tools', sortSel, h('span.muted.small', '할 일을 길게 눌러 끌면 같은 중요도 안에서 순서를 바꿀 수 있어요')),
       h('label.bulk', h('input', { type: 'checkbox', checked: allDone, onchange: (e) => {
         for (const t of store.visibleTasks(date)) t.doneDate = e.target.checked ? date : null;
@@ -235,7 +234,7 @@ export function renderNotebook(app) {
     };
     rowEl.addEventListener('contextmenu', (e) => { if (timer || dragging) e.preventDefault(); });
     rowEl.addEventListener('pointerdown', (e) => {
-      if (!getTask() || e.button > 0 || e.target.closest('button, input[type=checkbox], input[type=date]')) return;
+      if (!getTask() || e.button > 0 || e.target.closest('button, select, input[type=checkbox], input[type=date]')) return;
       start = { x: e.clientX, y: e.clientY };
       cancel(); detach();
       document.addEventListener('pointermove', onMove, { passive: false });
@@ -278,7 +277,7 @@ export function renderNotebook(app) {
   const drawAtt = () => {
     const rows = store.work.attendance.filter((a) => a.date === date);
     const sel = (opts, val, on, label) => h('select', { onchange: on, 'aria-label': label }, h('option', { value: '' }, '-'), opts.map((o) => h('option', { value: o, selected: o === val }, o)));
-    attBody.replaceChildren(...rows.map((a) => {
+    fill(attBody, ...rows.map((a) => {
       const cur = blockKey(a);
       const known = lessonBlocks.some((b) => blockKey(b) === cur);
       const lessonSel = h('select', { 'aria-label': '수업', onchange: (e) => {
@@ -318,7 +317,7 @@ export function renderNotebook(app) {
   const tripBody = h('div.trips');
   const drawTrips = () => {
     const trips = store.tripsOn(date);
-    tripBody.replaceChildren(...trips.map((t) => h('div.trip-row',
+    fill(tripBody, ...trips.map((t) => h('div.trip-row',
       h('input', { value: t.time || '', placeholder: '시간 (예: 13:00~17:00)', 'aria-label': '출장 시간', oninput: (e) => { t.time = e.target.value; store.markDirty(); } }),
       h('input', { value: t.place || '', placeholder: '출장지', 'aria-label': '출장지', oninput: (e) => { t.place = e.target.value; store.markDirty(); } }),
       h('input', { value: t.purpose || '', placeholder: '목적·내용', 'aria-label': '출장 목적', oninput: (e) => { t.purpose = e.target.value; store.markDirty(); } }),
@@ -336,7 +335,7 @@ export function renderNotebook(app) {
 
   // ----- 오늘의 노트 (날짜별, #태그) -----
   const noteTags = h('div.chips.note-tags');
-  const drawNoteTags = (text) => noteTags.replaceChildren(...extractTags(text).map((t) => h('button.chip-btn.tag-chip', { onclick: () => openTag(app, t), title: `#${t} 모아보기` }, `#${t}`)));
+  const drawNoteTags = (text) => fill(noteTags, ...extractTags(text).map((t) => h('button.chip-btn.tag-chip', { onclick: () => openTag(app, t), title: `#${t} 모아보기` }, `#${t}`)));
   let noteT;
   const noteTa = autoGrow(h('textarea.day-note', {
     rows: 4, value: store.dayNote(date), 'aria-label': '오늘의 노트',
@@ -352,7 +351,7 @@ export function renderNotebook(app) {
   const livePreview = (text) => { clearTimeout(liveT); liveT = setTimeout(() => drawCounselView(text), 300); };
   const drawCounselView = (text) => {
     const paras = splitParagraphs(text);
-    counselView.replaceChildren(...paras.map((p) => h('p.counsel-para', tokenizeStudents(p, store.work.students).map((t) => t.uid
+    fill(counselView, ...paras.map((p) => h('p.counsel-para', tokenizeStudents(p, store.work.students).map((t) => t.uid
       ? h('button.name-link', { onclick: () => showStudentCounsel(app, t.uid), title: `${store.label(t.uid)} 상담 모아보기` }, t.text)
       : tagNodes(t.text, (tag) => openTag(app, tag))))));
   };
@@ -367,7 +366,7 @@ export function renderNotebook(app) {
   // 학생 넣기: 학반 → 학생 고르면 커서 위치에 "학번 이름 " 삽입
   let pickCls = '';
   const pickWrap = h('span');
-  const drawPick = () => pickWrap.replaceChildren(studentSelect(store, '', (uid) => {
+  const drawPick = () => fill(pickWrap, studentSelect(store, '', (uid) => {
     const st = store.studentIndex().byUid.get(uid);
     if (!st) return;
     const ins = `${studentLabel(st)} `;
@@ -396,10 +395,10 @@ export function renderNotebook(app) {
   let newRecCls = '';
   const drawRecords = () => {
     const recs = store.visibleRecords(date);
-    if (!hasStudents) { recWrap.replaceChildren(h('p.muted', '학생 정보를 등록하면 학급요록을 사용할 수 있습니다.')); return; }
+    if (!hasStudents) { fill(recWrap, h('p.muted', '학생 정보를 등록하면 학급요록을 사용할 수 있습니다.')); return; }
     const groups = new Map();
     for (const r of recs) { const k = r.cls || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); }
-    recWrap.replaceChildren(...[...groups].map(([cls, list]) => h('div.records-wrap',
+    fill(recWrap, ...[...groups].map(([cls, list]) => h('div.records-wrap',
       h('h3.small', cls ? `${cls}반` : '전체 학생'),
       h('table.grid.records',
         h('thead', h('tr', h('th.sticky', '학생'), list.map((r) => h('th',

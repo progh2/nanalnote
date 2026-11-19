@@ -15,6 +15,7 @@ import { renderReports } from './views/reports.js';
 import { renderSettings } from './views/settings.js';
 import { renderSchedule, renderContacts } from './views/schedule.js';
 import { renderTags } from './views/tags.js';
+import { renderPeople } from './views/people.js';
 import { renderAbout } from './views/about.js';
 import { APP_NAME, APP_SUB } from './brand.js';
 import { renderNotes, addNote } from './views/notes.js';
@@ -146,7 +147,7 @@ const app = {
     if (!el || !this.store) return;
     const s = this.store;
     const status = this.loading ? '불러오는 중…' : s.saving ? '저장 중…' : s.dirty ? (prefs.autosave ? '저장 대기' : '저장 안 됨') : '저장됨';
-    const tabs = [['notebook', '교사수첩'], ['schedule', '학사일정'], ['contacts', '연락'], ['tags', '태그'], ['students', '학생관리'], ['reports', '보고서'], ['settings', '설정'], ['about', '소개']];
+    const tabs = [['notebook', '교사수첩'], ['schedule', '학사일정'], ['contacts', '연락'], ['tags', '태그'], ['students', '학생관리'], ['people', '사람·기관'], ['reports', '보고서'], ['settings', '설정'], ['about', '소개']];
     // 요일: 일요일·공휴일·학교 휴업일은 빨강, 토요일은 파랑
     const wd = weekdayOf(this.date);
     const wdEl = h(`span.wd${wd === 0 ? '.sun' : wd === 6 ? '.sat' : ''}`, `(${WEEKDAYS[wd]})`);
@@ -189,7 +190,7 @@ const app = {
         h('div.row', h('button.primary', { onclick: () => this.loadYear(schoolYearOf(this.date)) }, '다시 시도'),
           h('button', { onclick: () => this.go('settings') }, '설정으로 이동')));
     } else {
-      const views = { notebook: renderNotebook, schedule: renderSchedule, contacts: renderContacts, tags: renderTags, students: renderStudents, reports: renderReports, settings: renderSettings, about: renderAbout };
+      const views = { notebook: renderNotebook, schedule: renderSchedule, contacts: renderContacts, tags: renderTags, students: renderStudents, people: renderPeople, reports: renderReports, settings: renderSettings, about: renderAbout };
       view = views[this.tab](this);
     }
     fill(main, view);

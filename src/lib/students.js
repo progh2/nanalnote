@@ -3,7 +3,7 @@
 // - uid 는 학년도가 바뀌어도 유지되는 학생 고유 ID (지난 학년도 기록 연결용). 학번은 해마다 바뀐다.
 // - 상담·출결·요록은 uid 로 학생을 가리킨다. 파일에는 사람이 읽을 수 있는 "학번 이름" 으로 쓰고, 읽을 때 다시 uid 로 바꾼다.
 
-const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const newUid = () => `s_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
@@ -73,9 +73,9 @@ export const labelOf = (ref, idx) => { const s = resolveRef(ref, idx); return s 
 // ---------- 상담 일지 속 학생 인식 ----------
 // 규칙: "학번 이름", "이름(학번)", 또는 (명단에 하나뿐인) "이름" 뒤에 띄어쓰기/구두점/끝
 // 이름 뒤에 붙는 조사: 고은별이, 고은별이가, 고은별에게, 고은별을 …
-export const PARTICLE = '(?:이(?:가|는|를|의|도|랑|와|만|에게|한테|하고|께서)?|가|은|는|을|를|의|도|만|와|과|랑|하고|에게서|에게|한테|께서|께|로|으로|처럼|보다|부터|까지)?';
-const AFTER = `(?=${PARTICLE}(?:[\\s,.:;!?)\\]]|$))`;
-const BEFORE = '(^|[^0-9A-Za-z가-힣])';
+export const PARTICLE = '(?:이(?:가|는|를|의|도|랑|와|만|에게|한테|하고|께서)?|가|은|는|을|를|의|도|만|와|과|랑|하고|에게서|에게|에서|에|한테|께서|께|로|으로|처럼|보다|부터|까지)?';
+export const AFTER = `(?=${PARTICLE}(?:[\\s,.:;!?)\\]]|$))`;
+export const BEFORE = '(^|[^0-9A-Za-z가-힣])';
 
 function patterns(students) {
   const idx = buildIndex(students);

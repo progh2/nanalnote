@@ -2,6 +2,7 @@
 import { h, koDate } from '../lib/util.js';
 import { tagEntries, tagCounts, tagNodes, TYPE_LABEL } from '../lib/tags.js';
 import { renderMd } from '../lib/notemd.js';
+import { mentionInline } from './mentions.js';
 
 export function openTag(app, tag) { app.tagView = { ...(app.tagView || {}), tag }; app.tab = 'tags'; app.render(); }
 
@@ -15,6 +16,7 @@ export function renderTags(app) {
     .sort((a, b) => (b.date || '0').localeCompare(a.date || '0'));
   const types = [...new Set(entries.filter((e) => e.tag === v.tag).map((e) => e.type))];
   const pick = (t) => { v.tag = t; v.type = ''; app.render(); };
+  const plain = mentionInline(app, { onTag: pick, activeTag: v.tag });
   const go = async (d) => { if (!d) return; app.tab = 'notebook'; await app.setDate(d); app.render(); };
 
   const search = h('input', { type: 'search', placeholder: '태그 찾기', value: v.q, oninput: (e) => { v.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => app.render(), 250); } });
@@ -42,8 +44,8 @@ export function renderTags(app) {
         h(`span.type-badge.t-${e.type}`, TYPE_LABEL[e.type]),
         e.label ? h('strong.small', `${e.label} `) : null,
         e.md
-          ? h('div.tag-text.md', renderMd(e.text, { plain: (s) => tagNodes(s, pick, v.tag) }))
-          : h('span.tag-text', tagNodes(e.text, pick, v.tag)),
+          ? h('div.tag-text.md', renderMd(e.text, { plain }))
+          : h('span.tag-text', plain(e.text)),
         e.done ? h('span.muted.small', ' (완료)') : null))))) : h('p.muted', '기록이 없습니다.'));
   return h('div.split.tags-page', left, right);
 }

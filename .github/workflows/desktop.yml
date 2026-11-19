@@ -1,14 +1,24 @@
 name: Desktop apps (Windows · macOS · Linux)
 
-# v1.2.3 같은 태그를 올리거나, Actions 화면에서 직접 실행하면
-# 세 운영체제용 설치 파일과 포터블 파일을 만들어 GitHub 릴리스에 올린다.
+# 새 버전 내는 법: tauri.conf.json·package.json 의 version 을 올려 push 한 뒤
+#   gh release create v1.2.3 --title "나날노트 v1.2.3" --notes "…"
+# 처럼 릴리스를 "게시"하면 세 운영체제용 설치 파일·포터블 파일을 만들어 그 릴리스에 올린다.
+# (GITHUB_TOKEN 은 릴리스를 새로 만들 수 없어서, 릴리스는 사람이 만들고 빌드는 올리기만 한다)
+# Actions 화면에서 이미 있는 릴리스 태그를 넣어 다시 돌릴 수도 있다.
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: '파일을 올릴 릴리스 태그 (예: v1.0.0)'
+        required: true
 
 permissions:
   contents: write
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
 
 jobs:
   build:
@@ -25,6 +35,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
 
       - name: Linux 빌드 도구
         if: matrix.platform == 'ubuntu-22.04'
@@ -47,35 +59,21 @@ jobs:
 
       - run: npm ci
 
+      - name: 릴리스 번호 찾기
+        id: rel
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "id=$(gh api repos/$GITHUB_REPOSITORY/releases/tags/$TAG --jq .id)" >> "$GITHUB_OUTPUT"
+
       - name: 설치 파일 만들기 + 릴리스에 올리기
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
-          releaseName: 나날노트 v__VERSION__
-          releaseBody: |
-            ## 나날노트 데스크톱 앱 v__VERSION__
-
-            나날이 쓰는 교사수첩. 원 쌔미노트에서 영감을 받아 만들었습니다. 웹판: https://progh2.github.io/nanalnote/
-
-            ### 어떤 파일을 받나요?
-            | 운영체제 | 설치해서 쓰기 | 설치 없이(포터블, USB) |
-            |---|---|---|
-            | Windows 10/11 | `나날노트_…_x64-setup.exe` (또는 `.msi`) | `나날노트-포터블-windows-x64-….zip` |
-            | macOS (Intel·Apple 칩) | `나날노트_…_universal.dmg` | `나날노트-포터블-macos-….zip` |
-            | Linux | `.deb` (우분투·데비안), `.rpm` | `.AppImage` |
-
-            ### 포터블(USB)로 쓰기
-            zip 을 USB 에 풀고 `나날노트.exe`(맥은 `나날노트.app`)를 실행하세요. 옆에 있는 `portable.txt` 덕분에 자료와 설정이 모두 USB 안 `나날노트자료` 폴더에 저장됩니다. 리눅스는 AppImage 옆에 `portable.txt` 라는 빈 파일을 만들면 같은 방식으로 동작합니다.
-
-            ### 처음 실행할 때 경고가 나와요
-            개인이 만든 무료 프로그램이라 코드 서명을 하지 않았습니다.
-            - Windows: "Windows의 PC 보호" 창 → **추가 정보** → **실행**
-            - macOS: 앱을 **Control(⌃)+클릭 → 열기**, 또는 시스템 설정 → 개인정보 보호 및 보안 → **확인 없이 열기**
-            - Windows 포터블은 Microsoft Edge WebView2 런타임이 필요합니다(Windows 10/11 에는 대부분 이미 있음).
-          releaseDraft: false
-          prerelease: false
+          releaseId: ${{ steps.rel.outputs.id }}
+          # GitHub 은 파일 이름의 한글을 지워 버리므로 영문 이름으로 올린다
+          releaseAssetNamePattern: '[mainBinaryName]_[version]_[platform]_[arch][setup][ext]'
           args: ${{ matrix.args }}
 
       - name: Windows 포터블 zip
@@ -89,9 +87,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dir | Out-Null
           Copy-Item src-tauri/target/release/nanalnote.exe "$dir/나날노트.exe"
           Set-Content -Encoding utf8 "$dir/portable.txt" "이 파일이 있으면 나날노트가 포터블 모드로 실행됩니다. 자료와 설정은 같은 폴더의 '나날노트자료'에 저장됩니다. 지우지 마세요."
-          $zip = "나날노트-포터블-windows-x64-$v.zip"
+          $zip = "nanalnote-windows-portable-$v.zip"
           Compress-Archive -Path "portable/나날노트" -DestinationPath $zip -Force
-          gh release upload "v$v" "$zip" --clobber
+          gh release upload "$env:TAG" "$zip" --clobber
 
       - name: macOS 포터블 zip
         if: matrix.platform == 'macos-latest'
@@ -103,8 +101,8 @@ jobs:
           mkdir -p "portable/나날노트"
           cp -R "$app" "portable/나날노트/"
           printf '%s\n' "이 파일이 있으면 나날노트가 포터블 모드로 실행됩니다. 자료는 같은 폴더의 '나날노트자료'에 저장됩니다." > "portable/나날노트/portable.txt"
-          (cd portable && ditto -c -k --sequesterRsrc --keepParent "나날노트" "../나날노트-포터블-macos-universal-$v.zip")
-          gh release upload "v$v" "나날노트-포터블-macos-universal-$v.zip" --clobber
+          (cd portable && ditto -c -k --sequesterRsrc --keepParent "나날노트" "../nanalnote-macos-portable-$v.zip")
+          gh release upload "$TAG" "nanalnote-macos-portable-$v.zip" --clobber
 
   # 세 운영체제 빌드가 모두 끝나면, 버전 없는 고정 이름으로 한 벌 더 올린다 (웹판 "내려받기" 버튼이 쓰는 주소)
   latest-links:
@@ -117,5 +115,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          v=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          bash .github/scripts/release-aliases.sh "v$v" "$GITHUB_REPOSITORY"
+          bash .github/scripts/release-aliases.sh "$TAG" "$GITHUB_REPOSITORY"

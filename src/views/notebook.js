@@ -10,6 +10,7 @@ import { ATT_TYPES, ATT_REASONS, ttCell, courseShort, dday, PRIORITIES, priority
 import { exportDay } from '../lib/export.js';
 import { showStudentCounsel } from './students.js';
 import { extractTags, tagNodes } from '../lib/tags.js';
+import { splitSections, renderMd, toggleTodo } from '../lib/notemd.js';
 import { openTag } from './tags.js';
 import { attachStudentSuggest } from './suggest.js';
 
@@ -339,17 +340,7 @@ export function renderNotebook(app) {
   const tripCard = card('출장', h('div.row', { style: { margin: 0 } }, h('label.check.small', tripCheck, ' 출장 있음'), h('button.small', { onclick: () => { tripCheck.checked = true; addTrip(); } }, '+ 추가')), tripBody);
 
   // ----- 오늘의 노트 (날짜별, #태그) -----
-  const noteTags = h('div.chips.note-tags');
-  const drawNoteTags = (text) => fill(noteTags, ...extractTags(text).map((t) => h('button.chip-btn.tag-chip', { onclick: () => openTag(app, t), title: `#${t} 모아보기` }, `#${t}`)));
-  let noteT;
-  const noteTa = autoGrow(h('textarea.day-note', {
-    rows: 4, value: store.dayNote(date), 'aria-label': '오늘의 노트',
-    placeholder: '오늘의 노트 — 회의 내용, 생각, 아이디어, 메모를 자유롭게.\n#회의 #수행평가 처럼 #태그를 붙이면 태그 메뉴에서 모아 볼 수 있어요.',
-    oninput: (e) => { store.setDayNote(date, e.target.value); clearTimeout(noteT); noteT = setTimeout(() => drawNoteTags(e.target.value), 300); },
-  }));
-  drawNoteTags(noteTa.value);
-  attachStudentSuggest(noteTa, () => store.work.students);
-  const noteCard = card('오늘의 노트', h('button.small', { onclick: () => { app.tab = 'tags'; app.render(); } }, '# 태그 모아보기'), noteTa, noteTags);
+  const noteCard = dayNoteCard(app, date);
 
   // ----- 학생 상담 일지 (가리기 기능) -----
   const counselView = h('div.counsel-view');
@@ -458,4 +449,99 @@ export function renderNotebook(app) {
     privacy,
     recCard,
     footer);
+}
+
+// ----- 오늘의 노트: 쓰기 ↔ 보기, --- 로 주제 나누기, 간단한 마크다운 -----
+const NOTE_MODE_KEY = 'sn:noteMode';
+
+/** 노트 글자 속 #태그·학생 이름을 누를 수 있는 노드로 */
+export function noteInline(app) {
+  const students = app.store.work.students;
+  return (s) => tokenizeStudents(s, students).flatMap((t) => (t.uid
+    ? [h('button.name-link', { onclick: (e) => { e.stopPropagation(); showStudentCounsel(app, t.uid); }, title: `${app.store.label(t.uid)} 상담 모아보기` }, t.text)]
+    : tagNodes(t.text, (tag) => openTag(app, tag))));
+}
+
+function dayNoteCard(app, date) {
+  const { store } = app;
+  let mode = store.dayNote(date).trim() ? (localStorage.getItem(NOTE_MODE_KEY) || 'view') : 'edit';
+  const body = h('div.note-body');
+  const modeBtn = h('button.small');
+  const info = h('span.muted.small');
+
+  const ta = autoGrow(h('textarea.day-note', {
+    rows: 4, value: store.dayNote(date), 'aria-label': '오늘의 노트',
+    placeholder: '오늘의 노트 — 회의 내용, 주고받은 이야기, 생각, 아이디어를 자유롭게.\n' +
+      '· #회의 #수행평가 처럼 #태그를 붙이면 태그 메뉴에서 모아 볼 수 있어요.\n' +
+      '· 한 줄에 --- 만 쓰면 주제가 나뉘어 따로 보여요. (아래 "― 주제 나누기" 단추)\n' +
+      '· ## 제목, - 목록, - [ ] 할 일, **굵게** 도 쓸 수 있어요.',
+    oninput: (e) => { store.setDayNote(date, e.target.value); drawInfo(); },
+  }));
+  attachStudentSuggest(ta, () => store.work.students);
+
+  /** 커서 자리에 글 넣기 (줄 단위면 줄 처음에) */
+  const insert = (snippet, { line = false } = {}) => {
+    const v = ta.value;
+    let at = ta.selectionStart ?? v.length;
+    if (line) {
+      at = v.lastIndexOf('\n', at - 1) + 1;
+    }
+    let s = snippet;
+    if (!line && at > 0 && v[at - 1] !== '\n') s = '\n' + s;
+    ta.setRangeText(s, at, at, 'end');
+    ta.dispatchEvent(new Event('input'));
+    ta.focus();
+  };
+  const tools = h('div.note-tools',
+    h('button.small', { type: 'button', title: '주제 나누기 (--- 한 줄)', onclick: () => insert('---\n') }, '― 주제 나누기'),
+    h('button.small', { type: 'button', title: '제목 (## )', onclick: () => insert('## ', { line: true }) }, '제목'),
+    h('button.small', { type: 'button', title: '목록 (- )', onclick: () => insert('- ', { line: true }) }, '• 목록'),
+    h('button.small', { type: 'button', title: '할 일 (- [ ] )', onclick: () => insert('- [ ] ', { line: true }) }, '☐ 할 일'),
+    h('button.small', { type: 'button', title: '#태그', onclick: () => { ta.setRangeText('#', ta.selectionStart, ta.selectionEnd, 'end'); ta.focus(); } }, '#'));
+
+  const drawInfo = () => {
+    const secs = splitSections(ta.value);
+    const tags = new Set(extractTags(ta.value));
+    info.textContent = [secs.length > 1 ? `주제 ${secs.length}개` : '', tags.size ? `태그 ${tags.size}개` : ''].filter(Boolean).join(' · ');
+  };
+
+  const openEdit = (line = null) => {
+    mode = 'edit'; localStorage.setItem(NOTE_MODE_KEY, 'edit'); draw();
+    requestAnimationFrame(() => {
+      ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 2 + 'px';
+      if (line != null) {
+        const pos = ta.value.split('\n').slice(0, line).join('\n').length + (line ? 1 : 0);
+        ta.setSelectionRange(pos, pos);
+      }
+      ta.focus({ preventScroll: line == null });
+    });
+  };
+
+  const drawView = () => {
+    const text = store.dayNote(date);
+    const secs = splitSections(text);
+    if (!secs.length) return h('p.muted.note-empty', { onclick: () => openEdit() }, '아직 쓴 노트가 없어요. 눌러서 쓰기');
+    const plain = noteInline(app);
+    const onToggle = (line) => { const next = toggleTodo(store.dayNote(date), line); store.setDayNote(date, next); ta.value = next; draw(); };
+    return h('div.note-secs', secs.map((s, i) => h(`article.note-sec${secs.length > 1 ? '.multi' : ''}`, {
+      title: '두 번 누르면 이 부분을 고칩니다',
+      ondblclick: (e) => { if (!e.target.closest('button, a, input, label')) openEdit(s.start); },
+    },
+    h('button.note-sec-edit', { type: 'button', title: '이 부분 고치기', 'aria-label': '이 부분 고치기', onclick: () => openEdit(s.start) }, '✎'),
+    secs.length > 1 ? h('div.note-sec-no', `${i + 1}`) : null,
+    h('div.md', renderMd(s.text, { start: s.start, plain, onToggle })))));
+  };
+
+  const draw = () => {
+    modeBtn.textContent = mode === 'edit' ? '✓ 다 썼어요 (보기)' : '✎ 쓰기';
+    if (mode === 'edit') fill(body, tools, ta);
+    else fill(body, drawView());
+    drawInfo();
+  };
+  modeBtn.onclick = () => {
+    if (mode === 'edit') { mode = 'view'; localStorage.setItem(NOTE_MODE_KEY, 'view'); draw(); } else openEdit();
+  };
+  draw();
+  return card('오늘의 노트', h('div.row', { style: { margin: 0, gap: '6px', alignItems: 'center' } }, info, modeBtn,
+    h('button.small', { onclick: () => { app.tab = 'tags'; app.render(); } }, '# 태그')), body);
 }

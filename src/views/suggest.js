@@ -28,7 +28,7 @@ function caretXY(ta, index) {
   const div = document.createElement('div');
   for (const p of ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
     'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'boxSizing', 'textIndent', 'tabSize']) div.style[p] = cs[p];
-  Object.assign(div.style, { position: 'absolute', top: '0', left: '-9999px', visibility: 'hidden', whiteSpace: 'pre-wrap', wordWrap: 'break-word', overflow: 'hidden', width: `${ta.clientWidth + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth)}px`, borderStyle: 'solid' });
+  Object.assign(div.style, { position: 'absolute', top: '0', left: '-9999px', visibility: 'hidden', whiteSpace: ta.tagName === 'INPUT' ? 'pre' : 'pre-wrap', wordWrap: 'break-word', overflow: 'hidden', width: `${ta.clientWidth + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth)}px`, borderStyle: 'solid' });
   div.textContent = ta.value.slice(0, index);
   const span = document.createElement('span');
   span.textContent = '​';
@@ -39,6 +39,20 @@ function caretXY(ta, index) {
   const out = { x: r.left + span.offsetLeft - ta.scrollLeft, y: r.top + span.offsetTop - ta.scrollTop + lh };
   div.remove();
   return out;
+}
+
+/** #태그 쓰는 중이면 쓰던 태그 추천: 그렇게 시작하는 것 먼저, 다음은 들어 있는 것 (많이 쓴 순) */
+function tagContext(ta, getTags) {
+  const pos = ta.selectionStart;
+  if (pos !== ta.selectionEnd) return null;
+  const m = ta.value.slice(0, pos).match(/(^|[\s([{,.;:!?'"])#([0-9A-Za-z가-힣_-]*)$/);
+  if (!m) return null;
+  const tags = getTags() || []; // 태그 목록은 # 뒤에서만 계산
+  const q = m[2];
+  const starts = tags.filter(([t]) => t.startsWith(q) && t !== q);
+  const has = q ? tags.filter(([t]) => !t.startsWith(q) && t.includes(q)) : [];
+  const list = [...starts, ...has].map(([t, n]) => ({ key: `t:${t}`, insert: `#${t} `, main: `#${t}`, sub: n ? `${n}건` : '' }));
+  return list.length ? { start: pos - q.length - 1, end: pos, q, list, mode: 'tag' } : null;
 }
 
 /** 지금 커서 앞의 글자를 보고 추천할 상황인지 판단 */
@@ -69,8 +83,9 @@ function context(ta, cands) {
  * @param ta textarea
  * @param getStudents () => 학생 배열
  * @param getPeople () => 사람·기관 배열 (없어도 됨)
+ * @param getTags () => [[태그, 개수]] (없어도 됨) — # 을 쓰면 추천
  */
-export function attachStudentSuggest(ta, getStudents, getPeople = () => []) {
+export function attachStudentSuggest(ta, getStudents, getPeople = () => [], getTags = () => []) {
   let menu = null, items = [], idx = 0, ctx = null;
   const close = () => { menu?.remove(); menu = null; ctx = null; openMenus.delete(replace); };
   const replace = () => { if (menu) requestAnimationFrame(place); };
@@ -86,14 +101,17 @@ export function attachStudentSuggest(ta, getStudents, getPeople = () => []) {
     [...menu.querySelectorAll('.suggest-item')].forEach((el, i) => el.classList.toggle('active', i === idx));
   };
   const open = () => {
-    const cands = candidates(getStudents() || [], getPeople() || []);
-    ctx = cands.length ? context(ta, cands) : null;
+    ctx = tagContext(ta, getTags);
+    if (!ctx) {
+      const cands = candidates(getStudents() || [], getPeople() || []);
+      ctx = cands.length ? context(ta, cands) : null;
+    }
     if (!ctx || !ctx.list.length) { close(); return; }
     items = ctx.list.slice(0, MAX);
     idx = Math.min(idx, items.length - 1);
     if (!menu) { menu = h('div.suggest', { role: 'listbox' }); document.body.append(menu); openMenus.add(replace); }
     fill(menu, 
-      h('div.suggest-head', ctx.mode === 'search' ? (ctx.q ? `"${ctx.q}" 찾기` : '찾기 — 이름 일부나 학번을 쓰세요') : '이름 추천'),
+      h('div.suggest-head', ctx.mode === 'tag' ? '태그 추천 — 새 태그면 그대로 쓰세요' : ctx.mode === 'search' ? (ctx.q ? `"${ctx.q}" 찾기` : '찾기 — 이름 일부나 학번을 쓰세요') : '이름 추천'),
       ...items.map((c, i) => h(`div.suggest-item${i === idx ? '.active' : ''}`, {
         role: 'option',
         onmousedown: (e) => { e.preventDefault(); pick(c); }, // 칸의 포커스를 잃기 전에 고른다
@@ -134,13 +152,15 @@ export function attachStudentSuggest(ta, getStudents, getPeople = () => []) {
   };
   ta.addEventListener('input', () => { idx = 0; open(); });
   ta.addEventListener('click', () => { idx = 0; open(); });
+  // 칸 자체의 Enter 처리(예: 업무일지 다음 줄로)보다 먼저 받는다
   ta.addEventListener('keydown', (e) => {
     if (!menu || !ctx) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); idx = (idx + 1) % items.length; paint(); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); idx = (idx - 1 + items.length) % items.length; paint(); }
-    else if ((e.key === 'Enter' || e.key === 'Tab') && !e.isComposing) { e.preventDefault(); pick(items[idx]); }
-    else if (e.key === 'Escape') { e.preventDefault(); close(); }
-  });
+    const stop = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+    if (e.key === 'ArrowDown') { stop(); idx = (idx + 1) % items.length; paint(); }
+    else if (e.key === 'ArrowUp') { stop(); idx = (idx - 1 + items.length) % items.length; paint(); }
+    else if ((e.key === 'Enter' || e.key === 'Tab') && !e.isComposing) { stop(); pick(items[idx]); }
+    else if (e.key === 'Escape') { stop(); close(); }
+  }, true);
   ta.addEventListener('blur', () => setTimeout(close, 150));
   ta.addEventListener('scroll', replace);
 }

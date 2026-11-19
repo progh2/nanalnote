@@ -95,7 +95,7 @@ export function renderNotebook(app) {
       sec ? h('td', h('input', { value: l.room || '', list: 'room-list', placeholder: '교실', 'aria-label': `${label} 교실`, oninput: (e) => store.setLesson(date, l.period, { room: e.target.value }) })) : null,
       h('td', (() => {
         const ta = autoGrow(h('textarea', { rows: 1, value: l.content, 'aria-label': `${label} 내용`, oninput: (e) => store.setLesson(date, l.period, { content: e.target.value }) }));
-        attachStudentSuggest(ta, () => store.studentsOf(l.cls || '').length ? store.studentsOf(l.cls || '') : store.work.students, () => store.work.people);
+        attachStudentSuggest(ta, () => store.studentsOf(l.cls || '').length ? store.studentsOf(l.cls || '') : store.work.students, () => store.work.people, () => store.tagList());
         return ta;
       })()));
   };
@@ -155,6 +155,8 @@ export function renderNotebook(app) {
           if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); taskList.querySelector('.task-row:last-child input.task-text')?.focus(); }
         },
       });
+      // #태그·이름 추천 (업무에 #사업명 을 붙여 두면 태그 카드의 "남은 업무"로 모인다)
+      attachStudentSuggest(input, () => store.work.students, () => store.work.people, () => store.tagList());
       // 마감일 아이콘: 누르면 날짜 고르기, 정해 두면 D-day 표시 (달력에도 보임)
       const dueWrap = h('span.due');
       // 마감일: 배지 위에 투명한 날짜 칸을 겹쳐 둔다 → 누르면 바로 날짜 창, 창이 떠도 칸이 사라지지 않음
@@ -360,7 +362,7 @@ export function renderNotebook(app) {
     onblur: (e) => drawCounselView(e.target.value),
   }));
   drawCounselView(counselTa.value);
-  attachStudentSuggest(counselTa, () => store.work.students, () => store.work.people);
+  attachStudentSuggest(counselTa, () => store.work.students, () => store.work.people, () => store.tagList());
   // 학생 넣기: 학반 → 학생 고르면 커서 위치에 "학번 이름 " 삽입
   let pickCls = '';
   const pickWrap = h('span');
@@ -472,7 +474,7 @@ function dayNoteCard(app, date) {
       '· ## 제목, - 목록, - [ ] 할 일, **굵게** 도 쓸 수 있어요.',
     oninput: (e) => { store.setDayNote(date, e.target.value); drawInfo(); },
   }));
-  attachStudentSuggest(ta, () => store.work.students, () => store.work.people);
+  attachStudentSuggest(ta, () => store.work.students, () => store.work.people, () => store.tagList());
 
   /** 커서 자리에 글 넣기 (줄 단위면 줄 처음에) */
   const insert = (snippet, { line = false } = {}) => {

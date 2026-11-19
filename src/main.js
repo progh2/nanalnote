@@ -16,6 +16,7 @@ import { renderSettings } from './views/settings.js';
 import { renderSchedule, renderContacts } from './views/schedule.js';
 import { renderTags } from './views/tags.js';
 import { renderPeople } from './views/people.js';
+import { openSearch } from './views/search.js';
 import { renderAbout } from './views/about.js';
 import { APP_NAME, APP_SUB } from './brand.js';
 import { renderNotes, addNote } from './views/notes.js';
@@ -168,6 +169,7 @@ const app = {
       h('div.head-right',
         h('span.badge.backend', { title: s.backend.label }, { dropbox: 'Dropbox', folder: '폴더' }[s.backend.name] || '로컬'),
         h(`span.status${s.dirty ? '.dirty' : ''}`, status),
+        h('button.icon-btn', { title: '전체 검색 (Ctrl+K)', 'aria-label': '전체 검색', onclick: () => openSearch(this) }, '🔍'),
         h('button.icon-btn', { title: '포스트잇 추가', onclick: () => addNote(this) }, '🗒'),
         vaultEnabled() ? h('button.icon-btn', { title: '지금 잠그기', onclick: () => this.lock() }, '🔒') : null,
         h('select.theme-pick', { title: '테마', onchange: (e) => this.setTheme(e.target.value) },
@@ -203,6 +205,12 @@ window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     e.preventDefault();
     if (!e.repeat) app.save(); // 꾹 누르고 있어도 한 번만 저장
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    if (app.store?.year && !document.querySelector('.lock-screen')) openSearch(app);
+  } else if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.closest?.('input, textarea, select, [contenteditable]')) {
+    // 글 쓰는 칸 밖에서 / 를 누르면 검색
+    if (app.store?.year && !document.querySelector('.lock-screen, .modal-overlay')) { e.preventDefault(); openSearch(app); }
   } else if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); app.setDate(addDays(app.date, -1)); }
   else if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); app.setDate(addDays(app.date, 1)); }
 });

@@ -114,12 +114,12 @@ export function renderTags(app) {
       types.map((t) => h(`button.chip-btn${v.type === t ? '.active' : ''}`, { onclick: () => { v.type = t; app.render(); } }, TYPE_LABEL[t]))) : null,
     groups.length ? h('div.tag-timeline', groups.map((g) => h('div.tag-day',
       h('div.tag-date', g.k === '날짜 없음' ? g.k : h('button.link', { onclick: () => go(g.k) }, koDate(g.k))),
-      g.items.map((e) => h(`div.tag-item${e.type === 'counsel' ? '.private-item' : ''}`,
+      g.items.map((e) => { const pl = mentionInline(app, { onTag: pick, activeTag: v.tag, update: e.update }); return h(`div.tag-item${e.type === 'counsel' ? '.private-item' : ''}`,
         h(`span.type-badge.t-${e.type}`, TYPE_LABEL[e.type]),
         e.label ? h('strong.small', `${e.label} `) : null,
         e.md
-          ? h('div.tag-text.md', renderMd(e.text, { plain }))
-          : h('span.tag-text', plain(e.text)),
-        e.done ? h('span.muted.small', ' (완료)') : null))))) : (v.tag ? h('p.muted', '기록이 없습니다.') : null));
+          ? h('div.tag-text.md', renderMd(e.text, { plain: pl }))
+          : h('span.tag-text', pl(e.text)),
+        e.done ? h('span.muted.small', ' (완료)') : null); })))) : (v.tag ? h('p.muted', '기록이 없습니다.') : null));
   return h('div.split.tags-page', left, right);
 }

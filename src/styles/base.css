@@ -550,3 +550,11 @@ input.search-input { flex: 1; border: 0; background: transparent; font-size: cal
 .tag-card-block { display: grid; gap: 4px; }
 .tag-tasks { margin: 0; padding-left: 1.2em; line-height: 1.7; }
 .chip-btn.tag-done { opacity: .55; text-decoration: line-through; }
+
+/* 동명이인 */
+.person-link.amb { color: var(--muted); border-bottom-style: dashed; }
+.person-link.amb sup { font-size: .7em; margin-left: 1px; color: #c2410c; font-weight: 800; }
+.homonym-badge { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 999px; background: #ffedd5; color: #c2410c; font-size: .85em; font-weight: 700; }
+.homonym-note { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); line-height: 1.6; font-size: calc(14px * var(--fs, 1)); }
+.homonym-note.warn { background: #fff7ed; border: 1px solid #fed7aa; }
+.people-maybe { margin-top: 6px; }

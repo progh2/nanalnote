@@ -39,6 +39,11 @@ const sample = {
     { id: 'dc1', kind: 'monthly', period: '2026-03', title: '3월 월중일정', file: '2026-03_월중일정.pdf', rev: 1, src: 'pdf', uploaded: '2026-03-01', pages: ['a_p1.jpg', 'a_p2.jpg'] },
     { id: 'dc3', kind: 'monthly', period: '2026-03', title: '3월 월중일정', file: '2026-03_월중일정_개정.pdf', rev: 2, src: 'pdf', uploaded: '2026-03-10', pages: ['b_p1.jpg'] }],
   trips: [{ id: 't', date: '2026-03-02', time: '13:00~17:00', place: '교육청', purpose: '정보교육 연수 · 1일차' }, { id: 't2', date: '2026-03-02', time: '', place: '', purpose: '' }],
+  // 명부 파일은 사람(이름순) → 기관(이름순) 으로 쓴다
+  people: [
+    { id: 'p1', kind: 'person', name: '김민수', title: '선생님', org: '2학년부', phone: '010-1234-5678', email: 'kim@example.com', aliases: ['김쌤'], memo: '정보 | 방과후 담당' },
+    { id: 'p2', kind: 'org', name: '경기도교육청', title: '', org: '', phone: '031-000-0000', email: '', aliases: ['교육청', '도교육청'], memo: '' },
+  ],
 };
 
 test('마크다운 왕복 변환이 손실 없이 동일', () => {

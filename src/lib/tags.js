@@ -37,12 +37,11 @@ export function tagNodes(text, onTag, active = null) {
 
 export const TYPE_LABEL = { note: '노트', task: '업무', lesson: '수업', counsel: '상담', schedule: '학사', trip: '출장', attendance: '출결', postit: '포스트잇' };
 
-/** 학년도 자료 전체에서 태그가 붙은 기록 목록 */
-export function tagEntries(store) {
+/** 학년도 자료 전체의 글 기록 → [{type, date, text, ...}] (노트는 --- 로 나눈 주제마다 하나) */
+export function textEntries(store) {
   const out = [];
-  const add = (type, date, text, extra = {}) => { for (const tag of extractTags(text)) out.push({ tag, type, date: date || '', text, ...extra }); };
+  const add = (type, date, text, extra = {}) => { if (String(text || '').trim()) out.push({ type, date: date || '', text, ...extra }); };
   const w = store.work;
-  // 노트는 --- 로 나눈 주제마다 따로 (태그가 붙은 주제만 보이게)
   for (const d of w.days) for (const s of splitSections(d.note)) add('note', d.date, s.text, { md: true });
   for (const t of w.tasks) add('task', t.created, t.text, { done: !!t.doneDate });
   for (const l of w.lessons) add('lesson', l.date, l.content, { label: [store.periodLabel(l.period), l.subject, l.cls].filter(Boolean).join(' ') });
@@ -54,6 +53,11 @@ export function tagEntries(store) {
   for (const a of w.attendance) add('attendance', a.date, a.note, { label: store.label(a.student) });
   for (const n of w.notes) add('postit', '', n.text);
   return out;
+}
+
+/** 학년도 자료 전체에서 태그가 붙은 기록 목록 */
+export function tagEntries(store) {
+  return textEntries(store).flatMap((e) => extractTags(e.text).map((tag) => ({ tag, ...e })));
 }
 
 /** 태그별 개수 (많은 순) */

@@ -13,6 +13,7 @@ import { extractTags, tagNodes } from '../lib/tags.js';
 import { splitSections, renderMd, toggleTodo } from '../lib/notemd.js';
 import { openTag } from './tags.js';
 import { attachStudentSuggest } from './suggest.js';
+import { mentionInline } from './mentions.js';
 
 /** textarea 높이 자동 조절 */
 export function autoGrow(el) {
@@ -94,7 +95,7 @@ export function renderNotebook(app) {
       sec ? h('td', h('input', { value: l.room || '', list: 'room-list', placeholder: '교실', 'aria-label': `${label} 교실`, oninput: (e) => store.setLesson(date, l.period, { room: e.target.value }) })) : null,
       h('td', (() => {
         const ta = autoGrow(h('textarea', { rows: 1, value: l.content, 'aria-label': `${label} 내용`, oninput: (e) => store.setLesson(date, l.period, { content: e.target.value }) }));
-        attachStudentSuggest(ta, () => store.studentsOf(l.cls || '').length ? store.studentsOf(l.cls || '') : store.work.students);
+        attachStudentSuggest(ta, () => store.studentsOf(l.cls || '').length ? store.studentsOf(l.cls || '') : store.work.students, () => store.work.people);
         return ta;
       })()));
   };
@@ -348,9 +349,8 @@ export function renderNotebook(app) {
   const livePreview = (text) => { clearTimeout(liveT); liveT = setTimeout(() => drawCounselView(text), 300); };
   const drawCounselView = (text) => {
     const paras = splitParagraphs(text);
-    fill(counselView, ...paras.map((p) => h('p.counsel-para', tokenizeStudents(p, store.work.students).map((t) => t.uid
-      ? h('button.name-link', { onclick: () => showStudentCounsel(app, t.uid), title: `${store.label(t.uid)} 상담 모아보기` }, t.text)
-      : tagNodes(t.text, (tag) => openTag(app, tag))))));
+    const plain = mentionInline(app, { onTag: (tag) => openTag(app, tag) });
+    fill(counselView, ...paras.map((p) => h('p.counsel-para', plain(p))));
   };
   const counselTa = autoGrow(h('textarea.counsel', {
     rows: 6,
@@ -360,7 +360,7 @@ export function renderNotebook(app) {
     onblur: (e) => drawCounselView(e.target.value),
   }));
   drawCounselView(counselTa.value);
-  attachStudentSuggest(counselTa, () => store.work.students);
+  attachStudentSuggest(counselTa, () => store.work.students, () => store.work.people);
   // 학생 넣기: 학반 → 학생 고르면 커서 위치에 "학번 이름 " 삽입
   let pickCls = '';
   const pickWrap = h('span');
@@ -454,13 +454,8 @@ export function renderNotebook(app) {
 // ----- 오늘의 노트: 쓰기 ↔ 보기, --- 로 주제 나누기, 간단한 마크다운 -----
 const NOTE_MODE_KEY = 'sn:noteMode';
 
-/** 노트 글자 속 #태그·학생 이름을 누를 수 있는 노드로 */
-export function noteInline(app) {
-  const students = app.store.work.students;
-  return (s) => tokenizeStudents(s, students).flatMap((t) => (t.uid
-    ? [h('button.name-link', { onclick: (e) => { e.stopPropagation(); showStudentCounsel(app, t.uid); }, title: `${app.store.label(t.uid)} 상담 모아보기` }, t.text)]
-    : tagNodes(t.text, (tag) => openTag(app, tag))));
-}
+/** 노트 글자 속 #태그·학생·사람·기관 이름을 누를 수 있는 노드로 */
+export const noteInline = (app) => mentionInline(app, { onTag: (tag) => openTag(app, tag) });
 
 function dayNoteCard(app, date) {
   const { store } = app;
@@ -477,7 +472,7 @@ function dayNoteCard(app, date) {
       '· ## 제목, - 목록, - [ ] 할 일, **굵게** 도 쓸 수 있어요.',
     oninput: (e) => { store.setDayNote(date, e.target.value); drawInfo(); },
   }));
-  attachStudentSuggest(ta, () => store.work.students);
+  attachStudentSuggest(ta, () => store.work.students, () => store.work.people);
 
   /** 커서 자리에 글 넣기 (줄 단위면 줄 처음에) */
   const insert = (snippet, { line = false } = {}) => {

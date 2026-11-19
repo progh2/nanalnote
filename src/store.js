@@ -5,8 +5,9 @@ import { clone, newId, isTempId } from './lib/util.js';
 import { splitParagraphs } from './lib/counsel.js';
 import { normStudent, sortStudents, buildIndex, toUid, labelOf, mentionedUids, classKeys, newUid } from './lib/students.js';
 import { bellOf, periodList, periodLabel } from './lib/bell.js';
+import { normPerson, sortPeople, mentionedStudentUids } from './lib/people.js';
 
-export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records', 'trips', 'notes', 'docs'];
+export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records', 'trips', 'notes', 'docs', 'people'];
 
 export const DEFAULT_SETTINGS = {
   teacherInfo: '',
@@ -142,6 +143,10 @@ export class Store {
   /** 학반(예: '1-2')의 학생들. 빈 값이면 전체 */
   studentsOf(cls) { return this.students().filter((s) => !cls || `${s.grade}-${s.cls}` === cls); }
 
+  // ----- 사람·기관 명부 -----
+  people() { return sortPeople(this.work.people); }
+  person(id) { return this.work.people.find((p) => p.id === id); }
+
   // ----- 휴업일 -----
   scheduleItem(date) { return this.work.schedule.find((x) => x.date === date); }
   isSchoolHoliday(date) { return !!this.scheduleItem(date)?.holiday; }
@@ -248,7 +253,7 @@ export class Store {
     for (const c of this.work.counsel) if (!draftDates.has(c.date) && (c.students || []).includes(uid)) out.push(c);
     for (const d of draftDates) {
       splitParagraphs(this.counselDraft[d]).forEach((text, i) => {
-        if (mentionedUids(text, students).includes(uid)) out.push({ date: d, order: i, text });
+        if (mentionedStudentUids(text, students, this.work.people).includes(uid)) out.push({ date: d, order: i, text });
       });
     }
     return out.sort((a, b) => (a.date + a.order).localeCompare(b.date + b.order));
@@ -264,7 +269,7 @@ export class Store {
       const paras = splitParagraphs(text);
       const existing = this.work.counsel.filter((c) => c.date === date).sort((a, b) => a.order - b.order);
       paras.forEach((p, i) => {
-        const uids = mentionedUids(p, students);
+        const uids = mentionedStudentUids(p, students, this.work.people);
         if (existing[i]) Object.assign(existing[i], { order: i, text: p, students: uids });
         else this.work.counsel.push({ id: newId(), date, order: i, text: p, students: uids });
       });
@@ -278,6 +283,7 @@ export class Store {
   normalize() {
     const w = this.work;
     for (const x of w.students) { Object.assign(x, normStudent(x)); x.uid ||= newUid(); }
+    for (const x of w.people) Object.assign(x, normPerson(x));
     // 내용만 있고 제목이 없는 요록은 날짜+순번으로 제목 채번
     for (const r of w.records) {
       if (!(r.title || '').trim() && Object.values(r.entries || {}).some((v) => String(v).trim())) {
@@ -294,6 +300,7 @@ export class Store {
     switch (col) {
       case 'tasks': return !!(x.text || '').trim();
       case 'students': return !!(x.name || '').trim();
+      case 'people': return !!(x.name || '').trim();
       case 'attendance': return !!x.student;
       case 'records': return !!(x.title || '').trim();
       case 'schedule': return !!((x.text || '').trim() || x.holiday || x.csat);

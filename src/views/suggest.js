@@ -1,9 +1,24 @@
-// 글 쓰는 칸에서 학생 이름 추천
+// 글 쓰는 칸에서 학생·사람·기관 이름 추천
 // - 이름 첫 두 글자 이상을 쓰면(예: "오세") 그렇게 시작하는 학생을 추천
 // - "..." 뒤에 이름 일부나 학번을 쓰면(예: "...오", "...21") 이름 어디에든 들어간 학생을 찾기
 // - 고르면 "학번 이름" 으로 바꿔 넣는다 (동명이인도 정확히 연결, 뒤에 조사를 바로 이어 써도 됨)
 import { h, fill } from '../lib/util.js';
 import { studentLabel, classKey, sortStudents } from '../lib/students.js';
+import { sortPeople, namesOf, personLabel, KINDS } from '../lib/people.js';
+
+/** 추천 후보: { key, names, find(검색용), insert(넣을 글), main, sub } */
+function candidates(students, people) {
+  const studentNames = new Set(students.map((s) => s.name));
+  return [
+    ...sortStudents(students).map((s) => ({ key: `s:${s.uid || s.id}`, names: [s.name], find: `${s.studentNo || ''} ${s.name}`, insert: studentLabel(s), main: studentLabel(s), sub: classKey(s) ? `${classKey(s)}반` : '' })),
+    ...sortPeople(people).filter((p) => p.name).map((p) => ({
+      key: `p:${p.id}`, names: namesOf(p), find: [...namesOf(p), p.org || ''].join(' '),
+      // 같은 이름 학생이 있으면 호칭까지 넣어야 사람으로 알아본다
+      insert: p.kind === 'person' && studentNames.has(p.name) ? personLabel(p) || `${p.name} 선생님` : p.name,
+      main: personLabel(p), sub: [KINDS[p.kind], p.org].filter(Boolean).join(' · '),
+    })),
+  ];
+}
 
 const MAX = 8;
 
@@ -27,14 +42,14 @@ function caretXY(ta, index) {
 }
 
 /** 지금 커서 앞의 글자를 보고 추천할 상황인지 판단 */
-function context(ta, students) {
+function context(ta, cands) {
   const pos = ta.selectionStart;
   if (pos !== ta.selectionEnd) return null;
   const before = ta.value.slice(0, pos);
   let m = before.match(/\.\.\.([0-9가-힣A-Za-z]*)$/);
   if (m) {
     const q = m[1];
-    const list = students.filter((s) => !q || (/^\d+$/.test(q) ? (s.studentNo || '').startsWith(q) : s.name.includes(q) || studentLabel(s).includes(q)));
+    const list = cands.filter((c) => !q || (/^\d+$/.test(q) ? c.find.startsWith(q) : c.find.includes(q)));
     return { start: pos - m[0].length, end: pos, q, list, mode: 'search' };
   }
   m = before.match(/(^|[^0-9가-힣A-Za-z])([가-힣]{2,})$/);
@@ -42,7 +57,9 @@ function context(ta, students) {
     const q = m[2];
     const start = pos - q.length;
     if (/\d{3,}\s*$/.test(before.slice(0, start))) return null; // 이미 "학번 이름" 으로 쓴 경우
-    const list = students.filter((s) => s.name.startsWith(q));
+    // 이미 다 쓴 이름 하나뿐이면 굳이 띄우지 않는다
+    const list = cands.filter((c) => c.names.some((n) => n.startsWith(q)));
+    if (list.length === 1 && list[0].names.includes(q) && list[0].insert === q) return null;
     return list.length ? { start, end: pos, q, list, mode: 'prefix' } : null;
   }
   return null;
@@ -51,16 +68,17 @@ function context(ta, students) {
 /**
  * @param ta textarea
  * @param getStudents () => 학생 배열
+ * @param getPeople () => 사람·기관 배열 (없어도 됨)
  */
-export function attachStudentSuggest(ta, getStudents) {
+export function attachStudentSuggest(ta, getStudents, getPeople = () => []) {
   let menu = null, items = [], idx = 0, ctx = null;
   const close = () => { menu?.remove(); menu = null; ctx = null; openMenus.delete(replace); };
   const replace = () => { if (menu) requestAnimationFrame(place); };
-  const pick = (s) => {
+  const pick = (c) => {
     if (!ctx) return;
     ta.focus();
-    // 띄어쓰기 없이 넣는다: 바로 "이/가/에게" 같은 조사를 이어 써도 학생으로 인식된다
-    ta.setRangeText(studentLabel(s), ctx.start, ctx.end, 'end');
+    // 띄어쓰기 없이 넣는다: 바로 "이/가/에게" 같은 조사를 이어 써도 알아본다
+    ta.setRangeText(c.insert, ctx.start, ctx.end, 'end');
     close();
     ta.dispatchEvent(new Event('input', { bubbles: true }));
   };
@@ -68,19 +86,19 @@ export function attachStudentSuggest(ta, getStudents) {
     [...menu.querySelectorAll('.suggest-item')].forEach((el, i) => el.classList.toggle('active', i === idx));
   };
   const open = () => {
-    const students = sortStudents(getStudents() || []);
-    ctx = students.length ? context(ta, students) : null;
+    const cands = candidates(getStudents() || [], getPeople() || []);
+    ctx = cands.length ? context(ta, cands) : null;
     if (!ctx || !ctx.list.length) { close(); return; }
     items = ctx.list.slice(0, MAX);
     idx = Math.min(idx, items.length - 1);
     if (!menu) { menu = h('div.suggest', { role: 'listbox' }); document.body.append(menu); openMenus.add(replace); }
     fill(menu, 
-      h('div.suggest-head', ctx.mode === 'search' ? (ctx.q ? `"${ctx.q}" 찾기` : '학생 찾기 — 이름 일부나 학번을 쓰세요') : '학생 추천'),
-      ...items.map((s, i) => h(`div.suggest-item${i === idx ? '.active' : ''}`, {
+      h('div.suggest-head', ctx.mode === 'search' ? (ctx.q ? `"${ctx.q}" 찾기` : '찾기 — 이름 일부나 학번을 쓰세요') : '이름 추천'),
+      ...items.map((c, i) => h(`div.suggest-item${i === idx ? '.active' : ''}`, {
         role: 'option',
-        onmousedown: (e) => { e.preventDefault(); pick(s); }, // 칸의 포커스를 잃기 전에 고른다
-      }, h('strong', studentLabel(s)), classKey(s) ? h('span.muted.small', ` ${classKey(s)}반`) : null)),
-      ctx.list.length > MAX ? h('div.suggest-more.muted.small', `외 ${ctx.list.length - MAX}명 — 더 쓰면 좁혀집니다`) : null,
+        onmousedown: (e) => { e.preventDefault(); pick(c); }, // 칸의 포커스를 잃기 전에 고른다
+      }, h('strong', c.main), c.sub ? h('span.muted.small', ` ${c.sub}`) : null)),
+      ctx.list.length > MAX ? h('div.suggest-more.muted.small', `외 ${ctx.list.length - MAX}개 — 더 쓰면 좁혀집니다`) : null,
       h('div.suggest-foot.muted.small', '↑↓ 이동 · Enter/Tab 넣기 · Esc 닫기'));
     place();
   };

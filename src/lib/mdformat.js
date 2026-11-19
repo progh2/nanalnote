@@ -6,16 +6,18 @@
 //   {학년도}학년도/학사일정.md     - 2026-03-02: 입학식
 //   {학년도}학년도/업무일지.md     - [x] 할 일 (작성 2026-03-02, 완료 2026-03-04)
 //   {학년도}학년도/학급요록.md     ## 제목 / - 등록: / - 완료: / | 학생 | 내용 |
+//   {학년도}학년도/사람·기관.md    | 구분 | 이름 | 호칭 | 소속 | 전화 | 이메일 | 다른 이름 | 메모 |
 //   {학년도}학년도/일지/YYYY-MM-DD.md   하루치 수업일지·학생출결·상담일지
 
 import { splitParagraphs } from './counsel.js';
-import { buildIndex, labelOf, mentionedUids, newUid, sortStudents } from './students.js';
+import { buildIndex, labelOf, newUid, sortStudents } from './students.js';
+import { normPerson, sortPeople, mentionedStudentUids, KINDS } from './people.js';
 import { ttCell, ttIsEmpty, courseOf } from '../store.js';
 import { koDate } from './util.js';
 import { bellOf, rawBell, periodLabel, parsePeriodLabel, fmtRange, EVENING_BASE } from './bell.js';
 
 export const yearDir = (year) => `/${year}학년도`;
-export const FILES = { settings: '설정.md', students: '학생명단.md', schedule: '학사일정.md', tasks: '업무일지.md', records: '학급요록.md', notes: '포스트잇.md', docs: '학사일정자료.md' };
+export const FILES = { settings: '설정.md', students: '학생명단.md', schedule: '학사일정.md', tasks: '업무일지.md', records: '학급요록.md', notes: '포스트잇.md', docs: '학사일정자료.md', people: '사람·기관.md' };
 const DAY_COLS = new Set(['days', 'lessons', 'attendance', 'counsel', 'trips']);
 
 /** 항목이 저장되는 파일 경로 */
@@ -98,7 +100,7 @@ const trimBlank = (lines) => {
 
 // ---------- 직렬화 ----------
 export function serialize(year, input) {
-  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], ...input };
+  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [], ...input };
   const files = new Map();
   const dir = yearDir(year);
   const header = (t) => `# ${t} (${year}학년도)\n\n> 나날노트가 관리하는 파일입니다. 형식을 지키면 직접 고쳐도 됩니다.\n`;
@@ -183,6 +185,14 @@ export function serialize(year, input) {
     files.set(`${dir}/${FILES.notes}`, parts.join('\n'));
   }
 
+  // 사람·기관 명부
+  if (data.people.length) {
+    files.set(`${dir}/${FILES.people}`, [header('사람·기관'),
+      '> 글 속의 "김민수 선생님", "교육청에" 같은 이름을 알아보는 명부입니다. 다른 이름은 쉼표로 나눕니다.', '',
+      table(['구분', '이름', '호칭', '소속', '전화', '이메일', '다른 이름', '메모'],
+        sortPeople(data.people).map((x) => [KINDS[x.kind] || '사람', x.name, x.title || '', x.org || '', x.phone || '', x.email || '', (x.aliases || []).join(', '), x.memo || ''])), ''].join('\n'));
+  }
+
   // 학사일정 자료 (연간·월중·주간 이미지/PDF 목록)
   if (data.docs.length) {
     const kinds = { annual: '연간', monthly: '월중', weekly: '주간', contacts: '연락처' };
@@ -246,7 +256,7 @@ export function parse(year, files, makeId) {
     for (const [p, t] of files) if (p.toLowerCase() === `${dir}/${name}`.toLowerCase()) return t;
     return null;
   };
-  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [] };
+  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [] };
 
   // 포스트잇
   const nt = get(FILES.notes);
@@ -261,6 +271,15 @@ export function parse(year, files, makeId) {
       }
       n.text = unescBlock(trimBlank(lines).join('\n'));
       data.notes.push(n);
+    }
+  }
+
+  // 사람·기관 (상담일지의 학생 인식에 쓰므로 일지보다 먼저)
+  const pp = get(FILES.people);
+  if (pp != null) {
+    for (const r of parseTableObjects(pp.split('\n'))) {
+      if (!(r['이름'] || '').trim()) continue;
+      data.people.push(normPerson({ id: makeId(), kind: r['구분'] === '기관' ? 'org' : 'person', name: r['이름'], title: r['호칭'], org: r['소속'], phone: r['전화'], email: r['이메일'], aliases: r['다른 이름'], memo: r['메모'] }));
     }
   }
 
@@ -457,7 +476,7 @@ export function parse(year, files, makeId) {
         }
       } else if (sec.title === '상담일지') {
         splitParagraphs(unescBlock(trimBlank(sec.lines).join('\n'))).forEach((t, i) => {
-          data.counsel.push({ id: makeId(), date, order: i, text: t, students: mentionedUids(t, data.students) });
+          data.counsel.push({ id: makeId(), date, order: i, text: t, students: mentionedStudentUids(t, data.students, data.people) });
         });
       } else if (sec.title === '노트') {
         note = unescBlock(trimBlank(sec.lines).join('\n'));

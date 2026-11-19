@@ -1,10 +1,11 @@
 // 여러 화면에서 쓰는 작은 UI 조각
 import { h, fill } from '../lib/util.js';
-import { studentLabel, classKey } from '../lib/students.js';
+import { studentLabel, classKey, isActiveOn } from '../lib/students.js';
 
 /** 학반별로 묶인 학생 선택 상자 (값 = uid) */
-export function studentSelect(store, value, onChange, { cls = '', label = '학생', placeholder = '- 학생 -' } = {}) {
-  const list = store.studentsOf(cls);
+export function studentSelect(store, value, onChange, { cls = '', label = '학생', placeholder = '- 학생 -', date = '' } = {}) {
+  // date 를 주면 그날 휴학·떠난 학생은 뺀다 (이미 골라 둔 학생은 그대로 보임)
+  const list = store.studentsOf(cls).filter((s) => !date || isActiveOn(s, date) || s.uid === value);
   const groups = new Map();
   for (const s of list) {
     const k = classKey(s) || '학생';

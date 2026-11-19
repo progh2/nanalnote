@@ -422,6 +422,30 @@ button.active-size { background: var(--primary); color: var(--primary-text); bor
 /* 노트와 태그 */
 textarea.day-note { min-height: 110px; line-height: 1.7; background: var(--paper-lines, var(--input-bg)); }
 .note-tags { margin: 6px 0 0; }
+.note-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.note-secs { display: flex; flex-direction: column; gap: 10px; }
+.note-sec { position: relative; padding: 10px 40px 10px 14px; background: var(--surface-2); border-radius: var(--radius); line-height: 1.7; overflow-wrap: anywhere; }
+.note-sec.multi { border-left: 4px solid var(--accent); padding-left: 34px; }
+.note-sec-no { position: absolute; left: 8px; top: 10px; font-size: .8em; font-weight: 800; color: var(--accent); }
+.note-sec-edit { position: absolute; right: 6px; top: 6px; border: 0; background: transparent; opacity: .55; padding: 4px 8px; }
+.note-sec-edit:hover, .note-sec-edit:focus-visible { opacity: 1; }
+.note-empty { cursor: pointer; padding: 14px; border: 1px dashed var(--border); border-radius: var(--radius); text-align: center; }
+/* 노트 마크다운 */
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md-h1, .md-h2, .md-h3 { font-weight: 800; margin: 10px 0 4px; line-height: 1.4; }
+.md-h1 { font-size: 1.2em; }
+.md-h2 { font-size: 1.08em; border-bottom: 1px solid var(--border); padding-bottom: 2px; }
+.md-h3 { font-size: 1em; color: var(--muted); }
+.md-p { margin: 4px 0; }
+.md-list { margin: 4px 0; padding-left: 1.4em; }
+.md-list li { margin: 2px 0; }
+li.md-todo { list-style: none; margin-left: -1.3em; }
+li.md-todo label { display: inline-flex; gap: 6px; align-items: flex-start; cursor: pointer; }
+li.md-todo input { margin-top: .45em; }
+li.md-todo.done span { text-decoration: line-through; color: var(--muted); }
+.md-quote { margin: 6px 0; padding: 4px 10px; border-left: 3px solid var(--border); color: var(--muted); }
+.tag-text.md { display: block; margin-top: 4px; }
 .tag-chip, .tag-link { color: var(--link); font-weight: 700; }
 .tag-link { padding: 0 2px; border: 0; background: transparent; font-size: inherit; }
 .tag-link.active { background: var(--highlight); border-radius: 4px; }

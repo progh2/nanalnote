@@ -1,5 +1,6 @@
 // #태그: 노트·업무·수업일지·상담·학사일정·출장·출결 비고·포스트잇에 쓴 "#단어"를 모아 본다
 import { h } from './util.js';
+import { splitSections } from './notemd.js';
 
 // 앞: 줄 처음이나 공백/괄호/구두점, 뒤: 한글·영문·숫자·_·- (숫자만은 태그로 보지 않음 — "#1" 같은 번호)
 const TAG_RE = /(^|[\s([{,.;:!?'"])#([0-9A-Za-z가-힣_][0-9A-Za-z가-힣_-]*)/g;
@@ -41,7 +42,8 @@ export function tagEntries(store) {
   const out = [];
   const add = (type, date, text, extra = {}) => { for (const tag of extractTags(text)) out.push({ tag, type, date: date || '', text, ...extra }); };
   const w = store.work;
-  for (const d of w.days) add('note', d.date, d.note);
+  // 노트는 --- 로 나눈 주제마다 따로 (태그가 붙은 주제만 보이게)
+  for (const d of w.days) for (const s of splitSections(d.note)) add('note', d.date, s.text, { md: true });
   for (const t of w.tasks) add('task', t.created, t.text, { done: !!t.doneDate });
   for (const l of w.lessons) add('lesson', l.date, l.content, { label: [store.periodLabel(l.period), l.subject, l.cls].filter(Boolean).join(' ') });
   const drafts = new Set(Object.keys(store.counselDraft || {}));

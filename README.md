@@ -32,14 +32,14 @@ PC와 휴대폰 모두 쓸 수 있고, 휴대폰은 "홈 화면에 추가"로 �
 
 | 운영체제 | 설치판 | 포터블(USB) |
 |---|---|---|
-| Windows 10/11 | `…_x64-setup.exe`, `.msi` | `나날노트-포터블-windows-x64-….zip` |
-| macOS | `…_universal.dmg` | `나날노트-포터블-macos-universal-….zip` |
-| Linux | `.deb`, `.rpm` | `.AppImage` (+ 옆에 `portable.txt`) |
+| Windows 10/11 | `nanalnote-windows-setup.exe` (또는 `.msi`) | `nanalnote-windows-portable.zip` |
+| macOS | `nanalnote-macos.dmg` | `nanalnote-macos-portable.zip` |
+| Linux | `nanalnote-linux.deb`, `.rpm` | `nanalnote-linux.AppImage` (+ 옆에 `portable.txt`) |
 
 - 데스크톱 앱은 **이 컴퓨터 폴더** 저장소를 씁니다. 드롭박스와 같은 마크다운 형식이라, 드롭박스 프로그램이 동기화하는 폴더(`Dropbox/Apps/<앱 폴더>`)를 고르면 웹판과 같은 자료를 함께 씁니다.
 - **포터블:** 실행 파일 옆에 `portable.txt` 가 있으면 자료와 설정(웹뷰 저장소)을 모두 그 폴더의 `나날노트자료`에 둡니다. 드라이브 문자가 바뀌어도 됩니다. (macOS 는 자료만 USB 에, 설정은 사용자 폴더에)
 - 코드 서명을 하지 않아 처음 실행할 때 Windows SmartScreen·macOS Gatekeeper 경고가 나옵니다(릴리스 설명 참고).
-- 빌드: `v1.2.3` 태그를 올리거나 Actions → *Desktop apps* 를 직접 실행하면 `.github/workflows/desktop.yml` 이 세 운영체제에서 만들어 릴리스에 올립니다. 버전은 `src-tauri/tauri.conf.json` 의 `version`.
+- 새 버전 내기: `src-tauri/tauri.conf.json`·`package.json` 의 `version` 을 올려 push 한 뒤 `gh release create v1.2.3 --title "나날노트 v1.2.3" --notes "…"` 로 릴리스를 게시하면, `.github/workflows/desktop.yml` 이 세 운영체제에서 빌드해 그 릴리스에 올리고 위의 고정 이름 파일도 새로 바꿉니다. (이미 있는 릴리스는 Actions → *Desktop apps* → 태그 입력으로 다시 빌드)
 - 직접 빌드: Rust + `npm run tauri build` (`npx tauri dev` 로 개발 실행).
 
 ## 드롭박스 저장 형식
@@ -89,7 +89,7 @@ App key는 공개값이라 `src/backends/dropbox.js` 에 기본값으로 들어 
 | — | ➕ **보안**: PIN 6자리 잠금 + 이 기기 저장 정보 암호화(AES-GCM), 지문·얼굴·Windows Hello(패스키 PRF), 자동 잠금(설정), 공용 PC 모드 |
 | — | ➕ **자동 저장**(설정에서 끌 수 있음), 업무 **중요도(A·B·C·언젠가)·자동 정렬·끌어서 순서 바꾸기**, **마감일·D-day**(달력 표시), **수업별 출결**(교시·수업·학반, 시수 집계) |
 | — | ➕ **포스트잇**(화면 어디에나, 모든 탭에서 보임) |
-| — | ➕ **오늘의 노트**(날짜별, 프랭클린 플래너식)와 **#태그**: 노트·업무·수업일지·상담·학사일정·출장·출결 비고·포스트잇의 #태그를 **태그** 메뉴에서 모아 보기 |
+| — | ➕ **오늘의 노트**(날짜별, 프랭클린 플래너식; `---` 로 주제 나누기, 제목·목록·할 일 체크 같은 간단한 마크다운)와 **#태그**: 노트·업무·수업일지·상담·학사일정·출장·출결 비고·포스트잇의 #태그를 **태그** 메뉴에서 모아 보기 |
 | — | ➕ **학사일정** 메뉴(연간일정·월중일정·주간업무계획)와 **연락** 메뉴: 이미지·PDF·HWPX 올리기, PDF 는 쪽 이미지로 자동 변환, 원본 받기, **개정판**(1판·2판…), Ctrl+V 붙여넣기, 관계자 연락처 메모 |
 | — | ➕ **AI 학사일정 추출**: Anthropic(Claude)·OpenAI(ChatGPT)·Ollama 키/주소 설정, 모델 불러오기·테스트, 문서에서 날짜별 일정을 뽑아 미리 보고 학사일정에 반영 |
 | — | ➕ 좁은 화면(갤럭시 폴드 커버 등): 수업일지·출결을 카드형으로, 시간표 설정은 요일별로 |

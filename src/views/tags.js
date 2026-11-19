@@ -1,6 +1,7 @@
 // 태그 탭: #태그 목록과, 태그가 붙은 기록을 날짜순으로 모아 보기
 import { h, koDate } from '../lib/util.js';
 import { tagEntries, tagCounts, tagNodes, TYPE_LABEL } from '../lib/tags.js';
+import { renderMd } from '../lib/notemd.js';
 
 export function openTag(app, tag) { app.tagView = { ...(app.tagView || {}), tag }; app.tab = 'tags'; app.render(); }
 
@@ -13,6 +14,7 @@ export function renderTags(app) {
   const list = entries.filter((e) => e.tag === v.tag && (!v.type || e.type === v.type))
     .sort((a, b) => (b.date || '0').localeCompare(a.date || '0'));
   const types = [...new Set(entries.filter((e) => e.tag === v.tag).map((e) => e.type))];
+  const pick = (t) => { v.tag = t; v.type = ''; app.render(); };
   const go = async (d) => { if (!d) return; app.tab = 'notebook'; await app.setDate(d); app.render(); };
 
   const search = h('input', { type: 'search', placeholder: '태그 찾기', value: v.q, oninput: (e) => { v.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => app.render(), 250); } });
@@ -39,7 +41,9 @@ export function renderTags(app) {
       g.items.map((e) => h(`div.tag-item${e.type === 'counsel' ? '.private-item' : ''}`,
         h(`span.type-badge.t-${e.type}`, TYPE_LABEL[e.type]),
         e.label ? h('strong.small', `${e.label} `) : null,
-        h('span.tag-text', tagNodes(e.text, (t) => { v.tag = t; v.type = ''; app.render(); }, v.tag)),
+        e.md
+          ? h('div.tag-text.md', renderMd(e.text, { plain: (s) => tagNodes(s, pick, v.tag) }))
+          : h('span.tag-text', tagNodes(e.text, pick, v.tag)),
         e.done ? h('span.muted.small', ' (완료)') : null))))) : h('p.muted', '기록이 없습니다.'));
   return h('div.split.tags-page', left, right);
 }

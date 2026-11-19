@@ -40,3 +40,42 @@ test('붙여넣기 줄 나누기 (쉼표·탭)', () => {
   assert.equal(r[1].org, '행정실');
   assert.equal(parsePeopleLines('경기도교육청, 031-0', 'org')[0].phone, '031-0');
 });
+
+// ---------- 동명이인 ----------
+const { qualifiedText, resolveAmbiguous, ambiguousPids, distinctQual, nameGroups } = await import('../src/lib/people.js');
+const twins = [
+  normPerson({ id: 'k1', name: '김민수', title: '선생님', org: '2학년부' }),
+  normPerson({ id: 'k2', name: '김민수', title: '선생님', org: '○○중', aliases: '체육김민수' }),
+  normPerson({ id: 'k3', name: '박지영', title: '장학사' }),
+  normPerson({ id: 'k4', name: '박지영', title: '선생님', org: '3학년부' }),
+  normPerson({ id: 'o1', kind: 'org', name: '경기도교육청', aliases: '교육청' }),
+  normPerson({ id: 'o2', kind: 'org', name: '서울특별시교육청', aliases: '교육청' }),
+];
+const pk = (text, st = []) => tokenizeMentions(text, st, twins).filter((t) => t.uid || t.pid || t.amb).map((t) => `${t.text}=${t.uid || t.pid || `?${t.amb.join(',')}`}`);
+
+test('동명이인: 괄호로 소속·다른 이름을 붙이면 그 사람', () => {
+  assert.deepEqual(pk('김민수(2학년부) 선생님께, 김민수(○○중)쌤이, 김민수(체육김민수)'), ['김민수(2학년부) 선생님=k1', '김민수(○○중)쌤=k2', '김민수(체육김민수)=k2']);
+});
+
+test('동명이인: 호칭이 다르면 호칭으로, 같으면 누군지 모름', () => {
+  assert.deepEqual(pk('박지영 장학사님과 박지영 선생님'), ['박지영 장학사님=k3', '박지영 선생님=k4']);
+  assert.deepEqual(pk('김민수 선생님께 김민수에게'), ['김민수 선생님=?k1,k2', '김민수=?k1,k2']);
+  assert.deepEqual(pk('교육청에 공문'), ['교육청=?o1,o2']);
+  assert.deepEqual(pk('경기도교육청에'), ['경기도교육청=o1']);
+  assert.deepEqual(ambiguousPids('김민수 선생님', [], twins), ['k1', 'k2']);
+  // 같은 이름 학생이 있으면 호칭 없는 이름은 학생
+  assert.deepEqual(pk('김민수가 김민수 선생님께', [{ uid: 'u9', studentNo: '1101', name: '김민수' }]), ['김민수=u9', '김민수 선생님=?k1,k2']);
+});
+
+test('동명이인 고르기 → 글을 구분된 이름으로 고친다', () => {
+  const g = nameGroups(twins).get('김민수');
+  assert.equal(distinctQual(twins[0], '김민수', g), '2학년부');
+  assert.equal(qualifiedText('김민수 선생님', '김민수', twins[1], twins), '김민수(○○중) 선생님');
+  assert.equal(qualifiedText('교육청', '교육청', twins[4], twins), '경기도교육청');
+  const text = '김민수(2학년부) 선생님과 김민수 선생님, 또 김민수 선생님';
+  const out = resolveAmbiguous(text, '김민수 선생님', '김민수(○○중) 선생님', twins);
+  assert.equal(out, '김민수(2학년부) 선생님과 김민수(○○중) 선생님, 또 김민수(○○중) 선생님');
+  // 구분할 말이 없으면 빈 문자열
+  const same = [normPerson({ id: 'a', name: '이하나', title: '선생님' }), normPerson({ id: 'b', name: '이하나', title: '선생님' })];
+  assert.equal(qualifiedText('이하나 선생님', '이하나', same[0], same), '');
+});

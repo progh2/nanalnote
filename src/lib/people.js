@@ -34,21 +34,65 @@ export function sortPeople(list) {
   return [...list].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'org' ? 1 : -1) || String(a.name).localeCompare(String(b.name), 'ko'));
 }
 
+// ---------- 동명이인 ----------
+// 같은 이름(또는 다른 이름)을 가진 사람·기관 묶음 → Map(이름 → [레코드])
+export function nameGroups(people) {
+  const g = new Map();
+  for (const p of people) for (const n of new Set(namesOf(p))) g.set(n, [...(g.get(n) || []), p]);
+  return g;
+}
+
+/** 괄호 안에 넣어 구분할 말: 소속, 다른 이름 */
+const qualsOf = (p, n) => [p.org, ...(p.aliases || [])].map(str).filter((q) => q && q !== n);
+const titleBase = (t) => str(t).replace(/님$/, '');
+
+/** 같은 이름 묶음 안에서 이 사람만 가진 구분말 (없으면 '') */
+export function distinctQual(p, n, group) {
+  return qualsOf(p, n).find((q) => group.every((o) => o === p || !qualsOf(o, n).includes(q))) || '';
+}
+
+/** 동명이인 중 하나를 고르면 그 글을 무엇으로 바꿀지: "김민수 선생님" → "김민수(2학년부) 선생님", 기관은 정식 이름으로 */
+export function qualifiedText(tokenText, name, p, people) {
+  if (p.kind === 'org') {
+    const g = nameGroups(people).get(p.name) || [p];
+    return g.length === 1 ? p.name + tokenText.slice(name.length) : '';
+  }
+  const q = distinctQual(p, name, nameGroups(people).get(name) || [p]);
+  return q ? `${name}(${q})${tokenText.slice(name.length)}` : '';
+}
+
 // ---------- 글 속에서 알아보기 ----------
+// 맞추는 순서(긴 것·분명한 것 먼저):
+//   1) 이름(소속) / 이름(다른 이름) [+호칭]   → 그 사람
+//   2) 이름 + 그 사람의 호칭                   → 같은 이름 중 그 호칭이 하나뿐이면 그 사람
+//   3) 이름 + 아무 호칭                        → 하나뿐이면 그 사람, 여럿이면 "누군지 모름"(amb)
+//   4) 이름만                                  → 하나뿐이고 같은 이름 학생이 없으면 그 사람, 여럿이면 amb (학생과 겹치면 학생)
 let memo = { key: '', re: null, pats: [] };
 
 function compiled(people, students) {
-  const key = JSON.stringify([people.map((p) => [p.id, p.kind, namesOf(p)]), students.map((s) => s.name)]);
+  const key = JSON.stringify([people.map((p) => [p.id, p.kind, namesOf(p), p.title, p.org]), students.map((s) => s.name)]);
   if (memo.key === key) return memo;
   const studentNames = new Set(students.map((s) => s.name));
-  const count = new Map();
-  for (const p of people) for (const n of new Set(namesOf(p))) count.set(n, (count.get(n) || 0) + 1);
+  const groups = nameGroups(people);
   const pats = [];
-  for (const p of people) {
-    for (const n of new Set(namesOf(p))) {
-      if (p.kind !== 'org') pats.push({ re: `${escapeRe(n)} ?${TITLE_RE}`, p, len: n.length + 100 });
-      if (count.get(n) === 1 && (p.kind === 'org' || !studentNames.has(n))) pats.push({ re: escapeRe(n), p, len: n.length });
+  const seen = new Set();
+  const add = (re, target, len, name) => { if (seen.has(re)) return; seen.add(re); pats.push({ re, len, name, ...target }); };
+  for (const [n, group] of groups) {
+    const N = escapeRe(n);
+    const persons = group.filter((p) => p.kind !== 'org');
+    for (const p of group) {
+      const quals = qualsOf(p, n).filter((q) => group.every((o) => o === p || !qualsOf(o, n).includes(q)));
+      if (quals.length) add(`${N} ?\\((?:${quals.map(escapeRe).join('|')})\\)(?: ?${TITLE_RE})?`, { pid: p.id }, 300 + n.length, n);
     }
+    if (persons.length > 1) {
+      for (const p of persons) {
+        const b = titleBase(p.title);
+        if (b && persons.filter((o) => titleBase(o.title) === b).length === 1) add(`${N} ?(?:${escapeRe(b)}님|${escapeRe(b)})`, { pid: p.id }, 200 + n.length + b.length, n);
+      }
+    }
+    if (persons.length) add(`${N} ?${TITLE_RE}`, persons.length === 1 && group.length === 1 ? { pid: persons[0].id } : { amb: group.map((p) => p.id) }, 100 + n.length, n);
+    const bareOk = group.length > 1 || group[0].kind === 'org' || !studentNames.has(n);
+    if (bareOk && !(group.length > 1 && studentNames.has(n))) add(N, group.length === 1 ? { pid: group[0].id } : { amb: group.map((p) => p.id) }, n.length, n);
   }
   pats.sort((a, b) => b.len - a.len);
   const re = pats.length ? new RegExp(`${BEFORE}(${pats.map((x) => `(${x.re})`).join('|')})${AFTER}`, 'g') : null;
@@ -56,7 +100,7 @@ function compiled(people, students) {
   return memo;
 }
 
-/** 텍스트를 [{text, pid?}] 로 (사람·기관만) */
+/** 텍스트를 [{text, pid?} | {text, amb: [pid…], name}] 로 (사람·기관만) */
 export function tokenizePeople(text, people = [], students = []) {
   const s = String(text ?? '');
   const { re, pats } = compiled(people, students);
@@ -66,9 +110,9 @@ export function tokenizePeople(text, people = [], students = []) {
   let last = 0, m;
   while ((m = re.exec(s))) {
     const start = m.index + m[1].length;
-    const gi = m.slice(3).findIndex((g) => g !== undefined);
+    const pat = pats[m.slice(3).findIndex((g) => g !== undefined)];
     if (start > last) out.push({ text: s.slice(last, start) });
-    out.push({ text: m[2], pid: pats[gi].p.id });
+    out.push(pat.pid ? { text: m[2], pid: pat.pid } : { text: m[2], amb: pat.amb, name: pat.name });
     last = start + m[2].length;
     re.lastIndex = last;
   }
@@ -76,13 +120,22 @@ export function tokenizePeople(text, people = [], students = []) {
   return out;
 }
 
-/** 텍스트를 [{text, uid?, pid?}] 로: 사람·기관(호칭이 붙은 이름 포함)을 먼저, 나머지에서 학생을 찾는다 */
+/** 텍스트를 [{text, uid?, pid?, amb?}] 로: 사람·기관(호칭이 붙은 이름 포함)을 먼저, 나머지에서 학생을 찾는다 */
 export function tokenizeMentions(text, students = [], people = []) {
-  return tokenizePeople(text, people, students).flatMap((t) => (t.pid ? [t] : tokenizeStudents(t.text, students)));
+  return tokenizePeople(text, people, students).flatMap((t) => (t.pid || t.amb ? [t] : tokenizeStudents(t.text, students)));
 }
 
 export const mentionedPids = (text, students, people) =>
   [...new Set(tokenizePeople(text, people, students).filter((t) => t.pid).map((t) => t.pid))];
+
+/** 누군지 정해지지 않은(동명이인) 언급의 후보 pid 목록 */
+export const ambiguousPids = (text, students, people) =>
+  [...new Set(tokenizePeople(text, people, students).flatMap((t) => t.amb || []))];
+
+/** 글 속의 "누군지 모름" 언급 중 글자가 tokenText 인 것을 replacement 로 바꾼다 (분명한 언급은 그대로) */
+export function resolveAmbiguous(text, tokenText, replacement, people, students = []) {
+  return tokenizePeople(text, people, students).map((t) => (t.amb && t.text === tokenText ? replacement : t.text)).join('');
+}
 
 /** 학생 uid 목록 ("김민수 선생님"은 같은 이름 학생이 있어도 학생으로 치지 않는다) */
 export const mentionedStudentUids = (text, students, people = []) =>

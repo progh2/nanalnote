@@ -37,21 +37,32 @@ export function tagNodes(text, onTag, active = null) {
 
 export const TYPE_LABEL = { note: '노트', task: '업무', lesson: '수업', counsel: '상담', schedule: '학사', trip: '출장', attendance: '출결', postit: '포스트잇' };
 
-/** 학년도 자료 전체의 글 기록 → [{type, date, text, ...}] (노트는 --- 로 나눈 주제마다 하나) */
+/**
+ * 학년도 자료 전체의 글 기록 → [{type, date, text, update?, ...}] (노트는 --- 로 나눈 주제마다 하나)
+ * update(fn): 그 기록의 글을 fn(옛 글) 로 바꾼다 (동명이인 고르기 등)
+ */
 export function textEntries(store) {
   const out = [];
   const add = (type, date, text, extra = {}) => { if (String(text || '').trim()) out.push({ type, date: date || '', text, ...extra }); };
   const w = store.work;
-  for (const d of w.days) for (const s of splitSections(d.note)) add('note', d.date, s.text, { md: true });
-  for (const t of w.tasks) add('task', t.created, t.text, { done: !!t.doneDate, due: t.due || '', id: t.id });
-  for (const l of w.lessons) add('lesson', l.date, l.content, { label: [store.periodLabel(l.period), l.subject, l.cls].filter(Boolean).join(' ') });
+  const field = (obj, k) => (fn) => { obj[k] = fn(obj[k] || ''); };
+  for (const d of w.days) {
+    for (const s of splitSections(d.note)) add('note', d.date, s.text, { md: true, update: (fn) => { d.note = d.note.replace(s.text, () => fn(s.text)); } });
+  }
+  for (const t of w.tasks) add('task', t.created, t.text, { done: !!t.doneDate, due: t.due || '', id: t.id, update: field(t, 'text') });
+  for (const l of w.lessons) add('lesson', l.date, l.content, { label: [store.periodLabel(l.period), l.subject, l.cls].filter(Boolean).join(' '), update: field(l, 'content') });
   const drafts = new Set(Object.keys(store.counselDraft || {}));
-  for (const c of w.counsel) if (!drafts.has(c.date)) add('counsel', c.date, c.text);
-  for (const [date, text] of Object.entries(store.counselDraft || {})) add('counsel', date, text);
-  for (const s of w.schedule) add('schedule', s.date, s.text);
+  // 상담: 저장된 단락은 그 날 초안(전체 글)으로 바꿔 고친다 → 저장할 때 학생 연결도 다시 계산
+  const counselUpdate = (date, para) => (fn) => {
+    const full = store.counselText ? store.counselText(date) : para;
+    store.counselDraft[date] = full.replace(para, () => fn(para));
+  };
+  for (const c of w.counsel) if (!drafts.has(c.date)) add('counsel', c.date, c.text, { update: counselUpdate(c.date, c.text) });
+  for (const [date, text] of Object.entries(store.counselDraft || {})) add('counsel', date, text, { update: (fn) => { store.counselDraft[date] = fn(store.counselDraft[date]); } });
+  for (const s of w.schedule) add('schedule', s.date, s.text, { update: field(s, 'text') });
   for (const t of w.trips) add('trip', t.date, [t.place, t.purpose].filter(Boolean).join(' · '));
-  for (const a of w.attendance) add('attendance', a.date, a.note, { label: store.label(a.student) });
-  for (const n of w.notes) add('postit', '', n.text);
+  for (const a of w.attendance) add('attendance', a.date, a.note, { label: store.label(a.student), update: field(a, 'note') });
+  for (const n of w.notes) add('postit', '', n.text, { update: field(n, 'text') });
   return out;
 }
 

@@ -351,7 +351,7 @@ export function renderNotebook(app) {
   const livePreview = (text) => { clearTimeout(liveT); liveT = setTimeout(() => drawCounselView(text), 300); };
   const drawCounselView = (text) => {
     const paras = splitParagraphs(text);
-    const plain = mentionInline(app, { onTag: (tag) => openTag(app, tag) });
+    const plain = mentionInline(app, { onTag: (tag) => openTag(app, tag), update: (fn) => store.setCounselText(date, fn(store.counselText(date))) });
     fill(counselView, ...paras.map((p) => h('p.counsel-para', plain(p))));
   };
   const counselTa = autoGrow(h('textarea.counsel', {
@@ -457,7 +457,7 @@ export function renderNotebook(app) {
 const NOTE_MODE_KEY = 'sn:noteMode';
 
 /** 노트 글자 속 #태그·학생·사람·기관 이름을 누를 수 있는 노드로 */
-export const noteInline = (app) => mentionInline(app, { onTag: (tag) => openTag(app, tag) });
+export const noteInline = (app, update = null) => mentionInline(app, { onTag: (tag) => openTag(app, tag), update });
 
 function dayNoteCard(app, date) {
   const { store } = app;
@@ -518,7 +518,7 @@ function dayNoteCard(app, date) {
     const text = store.dayNote(date);
     const secs = splitSections(text);
     if (!secs.length) return h('p.muted.note-empty', { onclick: () => openEdit() }, '아직 쓴 노트가 없어요. 눌러서 쓰기');
-    const plain = noteInline(app);
+    const plain = noteInline(app, (fn) => store.setDayNote(date, fn(store.dayNote(date))));
     const onToggle = (line) => { const next = toggleTodo(store.dayNote(date), line); store.setDayNote(date, next); ta.value = next; draw(); };
     return h('div.note-secs', secs.map((s, i) => h(`article.note-sec${secs.length > 1 ? '.multi' : ''}`, {
       title: '두 번 누르면 이 부분을 고칩니다',

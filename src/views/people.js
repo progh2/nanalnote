@@ -1,22 +1,45 @@
 // 사람·기관 탭: 명부(선생님·장학사·외부 강사·교육청·대학·업체…)와, 그 이름이 나온 기록 모아 보기
 import { h, koDate, newId, modal, toast, confirmDialog, fill } from '../lib/util.js';
-import { KINDS, TITLES, normPerson, personLabel, sortPeople, mentionedPids, findUnregistered, parsePeopleLines } from '../lib/people.js';
+import { KINDS, TITLES, normPerson, personLabel, sortPeople, mentionedPids, ambiguousPids, findUnregistered, parsePeopleLines, nameGroups, namesOf, distinctQual } from '../lib/people.js';
 import { textEntries, TYPE_LABEL } from '../lib/tags.js';
 import { renderMd } from '../lib/notemd.js';
 import { mentionInline } from './mentions.js';
 
-/** 기록마다 나온 사람·기관 → Map(pid → [기록]) */
+/** 기록마다 나온 사람·기관 → { sure: Map(pid → [기록]), maybe: Map(pid → [동명이인이라 누군지 모르는 기록]) } */
 function mentionMap(store) {
-  const map = new Map();
+  const sure = new Map(), maybe = new Map();
   const { students, people } = store.work;
-  if (!people.length) return map;
+  if (!people.length) return { sure, maybe };
+  const push = (m, pid, e) => { if (!m.has(pid)) m.set(pid, []); m.get(pid).push(e); };
   for (const e of textEntries(store)) {
-    for (const pid of mentionedPids(e.text, students, people)) {
-      if (!map.has(pid)) map.set(pid, []);
-      map.get(pid).push(e);
-    }
+    for (const pid of mentionedPids(e.text, students, people)) push(sure, pid, e);
+    for (const pid of ambiguousPids(e.text, students, people)) push(maybe, pid, e);
   }
-  return map;
+  return { sure, maybe };
+}
+
+/** 이 사람과 이름(또는 다른 이름)이 겹치는 다른 사람·기관 */
+function homonymsOf(p, people) {
+  const g = nameGroups(people);
+  return [...new Set(namesOf(p).flatMap((n) => (g.get(n) || []).filter((o) => o !== p)))];
+}
+
+/** 동명이인 안내: 어떻게 구분해 쓰면 되는지 */
+function homonymNote(p, people) {
+  const others = homonymsOf(p, people);
+  if (!others.length) return null;
+  const g = nameGroups(people).get(p.name) || [p];
+  const q = distinctQual(p, p.name, g);
+  const sameTitle = p.kind === 'person' && others.some((o) => o.name === p.name && (o.title || '').replace(/님$/, '') === (p.title || '').replace(/님$/, ''));
+  return h(`div.homonym-note${q ? '' : '.warn'}`,
+    h('strong', `동명이인 ${others.length + 1}`), ' — ',
+    others.map((o) => `${personLabel(o)}${o.org ? `(${o.org})` : ''}`).join(', '),
+    h('br'),
+    p.kind === 'org'
+      ? '같은 다른 이름을 쓰면 누군지 정하지 못합니다. 정식 이름으로 쓰거나 다른 이름을 서로 다르게 정하세요.'
+      : q
+        ? [`글에 "${p.name}(${q})"처럼 쓰면 이 사람으로 알아봅니다.`, sameTitle ? '' : ` 호칭이 다르니 "${p.name} ${p.title || ''}"처럼 써도 됩니다.`]
+        : '소속이나 다른 이름을 다른 사람과 다르게 채워 주세요. 그래야 "이름(소속)"처럼 구분해 쓸 수 있습니다.');
 }
 
 function addPerson(app, init) {
@@ -96,7 +119,8 @@ export function renderPeople(app) {
   const { store } = app;
   const v = (app.peopleView ||= { sel: '', q: '', kind: '' });
   const people = sortPeople(store.work.people);
-  const mentions = mentionMap(store);
+  const { sure: mentions, maybe } = mentionMap(store);
+  const homonymIds = new Set(people.filter((p) => homonymsOf(p, people).length).map((p) => p.id));
   const sel = people.find((p) => p.id === v.sel) || null;
 
   // ----- 왼쪽: 명부 -----
@@ -109,7 +133,7 @@ export function renderPeople(app) {
       ? h('ul.people-list', shown.map((p) => h(`li${p.id === v.sel ? '.active' : ''}`, { onclick: () => { v.sel = p.id; app.render(); } },
         h('span.people-kind', p.kind === 'org' ? '🏢' : '👤'),
         h('span.people-name', h('strong', p.name || '(이름 없음)'), p.kind === 'person' && p.title ? ` ${p.title}` : ''),
-        h('span.muted.small.people-org', p.org || ''),
+        h('span.muted.small.people-org', homonymIds.has(p.id) ? h('span.homonym-badge', '동명이인') : null, p.org || ''),
         mentions.get(p.id)?.length ? h('span.badge', { title: '나온 기록 수' }, String(mentions.get(p.id).length)) : null)))
       : h('p.muted', people.length ? '찾는 이름이 없습니다.' : '아직 명부가 비어 있습니다. "+ 사람", "여러 명 붙여넣기"로 넣거나, 아래 "기록에서 찾은 이름"을 눌러 보세요.'));
   };
@@ -146,11 +170,12 @@ export function renderPeople(app) {
           h('li', '사람: "김민수 선생님께", "김민수쌤이"처럼 호칭이 붙으면 언제나 알아봅니다. 호칭이 없으면 같은 이름의 학생이 없을 때만 알아봅니다.'),
           h('li', '기관: 이름이나 "다른 이름"(예: 교육청, 도교육청)을 쓰면 알아봅니다. 뒤에 조사가 붙어도 됩니다.'),
           h('li', '이름 두 글자를 쓰면 추천 창이 뜹니다. 알아본 이름을 누르면 그 사람·기관이 나온 기록을 모아 봅니다.'),
+          h('li', '동명이인은 "김민수(2학년부) 선생님"처럼 괄호에 소속(또는 다른 이름)을 붙여 쓰세요. 추천 창에서 고르면 자동으로 붙습니다. 누군지 모르는 이름에는 ?가 붙고, 누르면 골라서 고칠 수 있습니다.'),
           h('li', '사업·행사·프로젝트는 #태그로 쓰세요. 예: #방과후 #진로캠프')),
         h('p.muted.small', '명부는 학년도 폴더의 "사람·기관.md" 파일에 저장됩니다. 새 학년도에는 "지난 학년도 명부 가져오기"로 옮겨 오세요.')));
   } else {
     const list = (mentions.get(sel.id) || []).slice().sort((a, b) => (b.date || '0').localeCompare(a.date || '0'));
-    const plain = mentionInline(app, { activePerson: sel.id });
+    const maybeList = (maybe.get(sel.id) || []).slice().sort((a, b) => (b.date || '0').localeCompare(a.date || '0'));
     const go = async (d) => { if (!d) return; app.tab = 'notebook'; await app.setDate(d); app.render(); };
     const groups = [];
     for (const e of list) {
@@ -158,6 +183,24 @@ export function renderPeople(app) {
       if (groups.at(-1)?.k !== k) groups.push({ k, items: [] });
       groups.at(-1).items.push(e);
     }
+    const recItems = (arr) => {
+      const gs = [];
+      for (const e of arr) {
+        const k = e.date || '날짜 없음';
+        if (gs.at(-1)?.k !== k) gs.push({ k, items: [] });
+        gs.at(-1).items.push(e);
+      }
+      return h('div.tag-timeline', gs.map((g) => h('div.tag-day',
+        h('div.tag-date', g.k === '날짜 없음' ? g.k : h('button.link', { onclick: () => go(g.k) }, koDate(g.k))),
+        g.items.map((e) => {
+          const plain = mentionInline(app, { activePerson: sel.id, update: e.update });
+          return h(`div.tag-item${e.type === 'counsel' ? '.private-item' : ''}`,
+            h(`span.type-badge.t-${e.type}`, TYPE_LABEL[e.type]),
+            e.label ? h('strong.small', `${e.label} `) : null,
+            e.md ? h('div.tag-text.md', renderMd(e.text, { plain })) : h('span.tag-text', plain(e.text)),
+            e.done ? h('span.muted.small', ' (완료)') : null);
+        }))));
+    };
     right = h('section.card',
       h('div.card-head', h('h2.person-title', `${sel.kind === 'org' ? '🏢' : '👤'} ${personLabel(sel) || '새 항목'}`),
         h('button.small', { onclick: () => { v.sel = ''; app.render(); } }, '닫기')),
@@ -165,14 +208,13 @@ export function renderPeople(app) {
         const t = document.querySelector('.people-page .person-title');
         if (t) t.textContent = `${sel.kind === 'org' ? '🏢' : '👤'} ${personLabel(sel)}`;
       }),
+      homonymNote(sel, people),
+      maybeList.length ? h('div.people-maybe',
+        h('h3.people-rec-head', `누군지 정해지지 않은 기록 (${maybeList.length})`),
+        h('p.muted.small', '동명이인이라 누구인지 정하지 못한 기록입니다. 물음표(?)가 붙은 이름을 눌러 고르면 글이 "이름(소속)"으로 고쳐집니다.'),
+        recItems(maybeList)) : null,
       h('h3.people-rec-head', `나온 기록 (${list.length})`),
-      groups.length ? h('div.tag-timeline', groups.map((g) => h('div.tag-day',
-        h('div.tag-date', g.k === '날짜 없음' ? g.k : h('button.link', { onclick: () => go(g.k) }, koDate(g.k))),
-        g.items.map((e) => h(`div.tag-item${e.type === 'counsel' ? '.private-item' : ''}`,
-          h(`span.type-badge.t-${e.type}`, TYPE_LABEL[e.type]),
-          e.label ? h('strong.small', `${e.label} `) : null,
-          e.md ? h('div.tag-text.md', renderMd(e.text, { plain })) : h('span.tag-text', plain(e.text)),
-          e.done ? h('span.muted.small', ' (완료)') : null)))))
+      groups.length ? recItems(list)
         : h('p.muted', sel.name ? `아직 "${sel.name}"이(가) 나온 기록이 없습니다.` : '이름을 먼저 쓰세요.'));
   }
   return h('div.split.people-page', left, right);

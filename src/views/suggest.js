@@ -4,19 +4,25 @@
 // - 고르면 "학번 이름" 으로 바꿔 넣는다 (동명이인도 정확히 연결, 뒤에 조사를 바로 이어 써도 됨)
 import { h, fill } from '../lib/util.js';
 import { studentLabel, classKey, sortStudents } from '../lib/students.js';
-import { sortPeople, namesOf, personLabel, KINDS } from '../lib/people.js';
+import { sortPeople, namesOf, personLabel, KINDS, nameGroups, distinctQual } from '../lib/people.js';
 
 /** 추천 후보: { key, names, find(검색용), insert(넣을 글), main, sub } */
 function candidates(students, people) {
   const studentNames = new Set(students.map((s) => s.name));
+  const groups = nameGroups(people);
   return [
     ...sortStudents(students).map((s) => ({ key: `s:${s.uid || s.id}`, names: [s.name], find: `${s.studentNo || ''} ${s.name}`, insert: studentLabel(s), main: studentLabel(s), sub: classKey(s) ? `${classKey(s)}반` : '' })),
-    ...sortPeople(people).filter((p) => p.name).map((p) => ({
-      key: `p:${p.id}`, names: namesOf(p), find: [...namesOf(p), p.org || ''].join(' '),
-      // 같은 이름 학생이 있으면 호칭까지 넣어야 사람으로 알아본다
-      insert: p.kind === 'person' && studentNames.has(p.name) ? personLabel(p) || `${p.name} 선생님` : p.name,
-      main: personLabel(p), sub: [KINDS[p.kind], p.org].filter(Boolean).join(' · '),
-    })),
+    ...sortPeople(people).filter((p) => p.name).map((p) => {
+      const group = groups.get(p.name) || [p];
+      // 동명이인이면 "김민수(2학년부)" 처럼 구분말을 붙여 넣는다
+      const q = p.kind === 'person' && group.length > 1 ? distinctQual(p, p.name, group) : '';
+      return {
+        key: `p:${p.id}`, names: namesOf(p), find: [...namesOf(p), p.org || ''].join(' '),
+        // 같은 이름 학생이 있으면 호칭까지 넣어야 사람으로 알아본다
+        insert: q ? `${p.name}(${q})` : p.kind === 'person' && studentNames.has(p.name) ? personLabel(p) || `${p.name} 선생님` : p.name,
+        main: personLabel(p), sub: [KINDS[p.kind], p.org, group.length > 1 ? '동명이인' : ''].filter(Boolean).join(' · '),
+      };
+    }),
   ];
 }
 

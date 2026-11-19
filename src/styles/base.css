@@ -520,3 +520,21 @@ table.compare td { vertical-align: top; }
 .dl-os { font-size: calc(18px * var(--fs, 1)); font-weight: 800; }
 .dl-sub { font-size: calc(13px * var(--fs, 1)); opacity: .85; }
 .dl-tag { position: absolute; top: 10px; right: 12px; font-size: calc(11.5px * var(--fs, 1)); font-weight: 800; background: #ffffff33; padding: 1px 8px; border-radius: 999px; }
+
+/* 전체 검색 */
+.search-overlay { display: flex; justify-content: center; align-items: flex-start; padding-top: 8vh; }
+.search-box { width: min(720px, 100% - 24px); max-height: 80vh; display: flex; flex-direction: column; background: var(--surface); border-radius: var(--radius); box-shadow: 0 18px 48px #0004; overflow: hidden; }
+.search-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.search-bar .search-icon { opacity: .6; }
+input.search-input { flex: 1; border: 0; background: transparent; font-size: calc(17px * var(--fs, 1)); padding: 6px 2px; outline: none; box-shadow: none; }
+.search-results { overflow: auto; padding: 6px 6px 10px; }
+.search-group { font-size: calc(12px * var(--fs, 1)); font-weight: 800; color: var(--muted); padding: 10px 10px 4px; }
+.search-item { padding: 8px 10px; border-radius: var(--radius); cursor: pointer; line-height: 1.5; }
+.search-item.active { background: var(--highlight); }
+.search-kind { display: inline-block; width: 1.6em; text-align: center; }
+.search-snippet { margin-top: 2px; overflow-wrap: anywhere; }
+.search-item mark, .search-snippet mark { background: #ffe58a; color: inherit; border-radius: 3px; padding: 0 1px; }
+.search-hint { padding: 12px; }
+.search-hint p { margin: 4px 0; }
+.search-more { padding: 8px 10px; }
+@media (max-width: 640px) { .search-overlay { padding: 0; } .search-box { width: 100%; max-height: 100dvh; height: 100dvh; border-radius: 0; } }

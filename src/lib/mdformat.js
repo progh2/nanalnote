@@ -7,6 +7,7 @@
 //   {학년도}학년도/업무일지.md     - [x] 할 일 (작성 2026-03-02, 완료 2026-03-04)
 //   {학년도}학년도/학급요록.md     ## 제목 / - 등록: / - 완료: / | 학생 | 내용 |
 //   {학년도}학년도/사람·기관.md    | 구분 | 이름 | 호칭 | 소속 | 전화 | 이메일 | 다른 이름 | 메모 |
+//   {학년도}학년도/태그.md         | 태그 | 상태 | 시작 | 끝 | 고정 | 설명 |
 //   {학년도}학년도/일지/YYYY-MM-DD.md   하루치 수업일지·학생출결·상담일지
 
 import { splitParagraphs } from './counsel.js';
@@ -17,7 +18,7 @@ import { koDate } from './util.js';
 import { bellOf, rawBell, periodLabel, parsePeriodLabel, fmtRange, EVENING_BASE } from './bell.js';
 
 export const yearDir = (year) => `/${year}학년도`;
-export const FILES = { settings: '설정.md', students: '학생명단.md', schedule: '학사일정.md', tasks: '업무일지.md', records: '학급요록.md', notes: '포스트잇.md', docs: '학사일정자료.md', people: '사람·기관.md' };
+export const FILES = { settings: '설정.md', students: '학생명단.md', schedule: '학사일정.md', tasks: '업무일지.md', records: '학급요록.md', notes: '포스트잇.md', docs: '학사일정자료.md', people: '사람·기관.md', tagcards: '태그.md' };
 const DAY_COLS = new Set(['days', 'lessons', 'attendance', 'counsel', 'trips']);
 
 /** 항목이 저장되는 파일 경로 */
@@ -100,7 +101,7 @@ const trimBlank = (lines) => {
 
 // ---------- 직렬화 ----------
 export function serialize(year, input) {
-  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [], ...input };
+  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [], tagcards: [], ...input };
   const files = new Map();
   const dir = yearDir(year);
   const header = (t) => `# ${t} (${year}학년도)\n\n> 나날노트가 관리하는 파일입니다. 형식을 지키면 직접 고쳐도 됩니다.\n`;
@@ -193,6 +194,14 @@ export function serialize(year, input) {
         sortPeople(data.people).map((x) => [KINDS[x.kind] || '사람', x.name, x.title || '', x.org || '', x.phone || '', x.email || '', (x.aliases || []).join(', '), x.memo || ''])), ''].join('\n'));
   }
 
+  // 태그 카드
+  if (data.tagcards.length) {
+    const tc = [...data.tagcards].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || a.tag.localeCompare(b.tag, 'ko'));
+    files.set(`${dir}/${FILES.tagcards}`, [header('태그'),
+      '> #태그(사업·행사·프로젝트)마다 설명·기간·상태를 적어 두는 카드입니다.', '',
+      table(['태그', '상태', '시작', '끝', '고정', '설명'], tc.map((c) => [`#${c.tag}`, c.status === 'done' ? '끝남' : c.status === 'active' ? '진행 중' : '', c.start || '', c.end || '', c.pinned ? '📌' : '', c.memo || ''])), ''].join('\n'));
+  }
+
   // 학사일정 자료 (연간·월중·주간 이미지/PDF 목록)
   if (data.docs.length) {
     const kinds = { annual: '연간', monthly: '월중', weekly: '주간', contacts: '연락처' };
@@ -256,7 +265,7 @@ export function parse(year, files, makeId) {
     for (const [p, t] of files) if (p.toLowerCase() === `${dir}/${name}`.toLowerCase()) return t;
     return null;
   };
-  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [] };
+  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [], tagcards: [] };
 
   // 포스트잇
   const nt = get(FILES.notes);
@@ -280,6 +289,23 @@ export function parse(year, files, makeId) {
     for (const r of parseTableObjects(pp.split('\n'))) {
       if (!(r['이름'] || '').trim()) continue;
       data.people.push(normPerson({ id: makeId(), kind: r['구분'] === '기관' ? 'org' : 'person', name: r['이름'], title: r['호칭'], org: r['소속'], phone: r['전화'], email: r['이메일'], aliases: r['다른 이름'], memo: r['메모'] }));
+    }
+  }
+
+  // 태그 카드
+  const tgc = get(FILES.tagcards);
+  if (tgc != null) {
+    for (const r of parseTableObjects(tgc.split('\n'))) {
+      const tag = (r['태그'] || '').trim().replace(/^#/, '');
+      if (!tag) continue;
+      const c = { id: makeId(), tag };
+      const st = (r['상태'] || '').trim();
+      if (st === '끝남') c.status = 'done'; else if (st === '진행 중') c.status = 'active';
+      if ((r['시작'] || '').trim()) c.start = r['시작'].trim();
+      if ((r['끝'] || '').trim()) c.end = r['끝'].trim();
+      if ((r['고정'] || '').trim()) c.pinned = true;
+      if ((r['설명'] || '').trim()) c.memo = r['설명'];
+      data.tagcards.push(c);
     }
   }
 

@@ -538,3 +538,15 @@ input.search-input { flex: 1; border: 0; background: transparent; font-size: cal
 .search-hint p { margin: 4px 0; }
 .search-more { padding: 8px 10px; }
 @media (max-width: 640px) { .search-overlay { padding: 0; } .search-box { width: 100%; max-height: 100dvh; height: 100dvh; border-radius: 0; } }
+
+/* 태그 카드 */
+.tag-card { display: grid; gap: 10px; padding: 12px 14px; margin-bottom: 14px; background: var(--surface-2); border-radius: var(--radius); }
+.tag-card.done { opacity: .8; }
+.tag-card-top { justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0; }
+.tag-card-memo { display: grid; gap: 4px; }
+.tag-card-memo textarea { min-height: 52px; line-height: 1.6; }
+.tag-card-dates { align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; }
+.tag-card-dates input[type=date] { width: auto; }
+.tag-card-block { display: grid; gap: 4px; }
+.tag-tasks { margin: 0; padding-left: 1.2em; line-height: 1.7; }
+.chip-btn.tag-done { opacity: .55; text-decoration: line-through; }

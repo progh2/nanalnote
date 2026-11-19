@@ -44,6 +44,11 @@ const sample = {
     { id: 'p1', kind: 'person', name: '김민수', title: '선생님', org: '2학년부', phone: '010-1234-5678', email: 'kim@example.com', aliases: ['김쌤'], memo: '정보 | 방과후 담당' },
     { id: 'p2', kind: 'org', name: '경기도교육청', title: '', org: '', phone: '031-000-0000', email: '', aliases: ['교육청', '도교육청'], memo: '' },
   ],
+  // 태그 카드: 고정한 것 먼저, 그다음 태그 이름순
+  tagcards: [
+    { id: 'tc2', tag: '진로캠프', status: 'active', start: '2026-05-01', pinned: true, memo: '1·2학년 대상\n예산 | 300만원' },
+    { id: 'tc1', tag: '방과후', status: 'done', end: '2026-12-20' },
+  ],
 };
 
 test('마크다운 왕복 변환이 손실 없이 동일', () => {

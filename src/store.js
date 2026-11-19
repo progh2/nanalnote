@@ -6,8 +6,9 @@ import { splitParagraphs } from './lib/counsel.js';
 import { normStudent, sortStudents, buildIndex, toUid, labelOf, mentionedUids, classKeys, newUid } from './lib/students.js';
 import { bellOf, periodList, periodLabel } from './lib/bell.js';
 import { normPerson, sortPeople, mentionedStudentUids } from './lib/people.js';
+import { tagEntries, tagCounts } from './lib/tags.js';
 
-export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records', 'trips', 'notes', 'docs', 'people'];
+export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records', 'trips', 'notes', 'docs', 'people', 'tagcards'];
 
 export const DEFAULT_SETTINGS = {
   teacherInfo: '',
@@ -146,6 +147,23 @@ export class Store {
   // ----- 사람·기관 명부 -----
   people() { return sortPeople(this.work.people); }
   person(id) { return this.work.people.find((p) => p.id === id); }
+
+  // ----- 태그 카드 (사업·프로젝트 설명, 기간, 상태, 고정) -----
+  tagCard(tag) { return this.work.tagcards.find((c) => c.tag === tag) || null; }
+  /** 쓰던 태그 [[태그, 개수]] (많이 쓴 순, 카드만 있는 태그 포함) — # 추천용 */
+  tagList() {
+    const m = new Map(tagCounts(tagEntries(this)));
+    for (const c of this.work.tagcards) if (!m.has(c.tag)) m.set(c.tag, 0);
+    return [...m];
+  }
+  updateTagCard(tag, patch) {
+    let c = this.tagCard(tag);
+    if (!c) { c = { id: newId(), tag }; this.work.tagcards.push(c); }
+    Object.assign(c, patch);
+    for (const k of Object.keys(c)) if (c[k] === '' || c[k] === false || c[k] == null) delete c[k];
+    this.markDirty();
+    return c;
+  }
 
   // ----- 휴업일 -----
   scheduleItem(date) { return this.work.schedule.find((x) => x.date === date); }
@@ -301,6 +319,7 @@ export class Store {
       case 'tasks': return !!(x.text || '').trim();
       case 'students': return !!(x.name || '').trim();
       case 'people': return !!(x.name || '').trim();
+      case 'tagcards': return !!x.tag && !!((x.memo || '').trim() || x.start || x.end || x.status || x.pinned);
       case 'attendance': return !!x.student;
       case 'records': return !!(x.title || '').trim();
       case 'schedule': return !!((x.text || '').trim() || x.holiday || x.csat);

@@ -43,7 +43,7 @@ export function textEntries(store) {
   const add = (type, date, text, extra = {}) => { if (String(text || '').trim()) out.push({ type, date: date || '', text, ...extra }); };
   const w = store.work;
   for (const d of w.days) for (const s of splitSections(d.note)) add('note', d.date, s.text, { md: true });
-  for (const t of w.tasks) add('task', t.created, t.text, { done: !!t.doneDate });
+  for (const t of w.tasks) add('task', t.created, t.text, { done: !!t.doneDate, due: t.due || '', id: t.id });
   for (const l of w.lessons) add('lesson', l.date, l.content, { label: [store.periodLabel(l.period), l.subject, l.cls].filter(Boolean).join(' ') });
   const drafts = new Set(Object.keys(store.counselDraft || {}));
   for (const c of w.counsel) if (!drafts.has(c.date)) add('counsel', c.date, c.text);

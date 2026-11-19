@@ -22,8 +22,70 @@ export function normStudent(s) {
   }
   out.name = String(out.name ?? '').trim();
   for (const k of ['gender', 'email', 'phone']) if (out[k] != null) out[k] = String(out[k]).trim();
+  if (Array.isArray(out.statusLog)) {
+    out.statusLog = out.statusLog.filter((e) => e && e.date && e.type).map((e) => {
+      const x = { date: String(e.date), type: String(e.type) };
+      if (e.grade != null && e.grade !== '' && !isNaN(+e.grade)) x.grade = +e.grade;
+      if ((e.memo || '').trim()) x.memo = String(e.memo).trim();
+      return x;
+    }).sort((a, b) => a.date.localeCompare(b.date));
+    if (!out.statusLog.length) delete out.statusLog;
+  }
+  if (out.leaving && !out.leaving.type) delete out.leaving;
+  if (Array.isArray(out.flags)) { out.flags = FLAGS.map(([k]) => k).filter((k) => out.flags.includes(k)); if (!out.flags.length) delete out.flags; }
+  if (!(out.flagMemo || '').trim()) delete out.flagMemo;
   return out;
 }
+
+// ---------- 학적 (휴학·복학·자퇴·전출…) ----------
+// 학생마다 날짜별 이력 statusLog: [{date, type, grade?, memo?}] 을 쌓고, "지금 상태"는 보는 날짜 기준으로 계산한다.
+export const STATUS_EVENTS = ['전입', '휴학', '복학', '재입학', '학년 변경', '자퇴', '전출', '퇴학', '기타'];
+/** 학년을 함께 고르는 변동 (복학·재입학 때 다른 학년으로 가거나 승급하는 경우) */
+export const EVENT_HAS_GRADE = new Set(['전입', '복학', '재입학', '학년 변경']);
+const LEAVE_EVENTS = new Set(['휴학']);
+const GONE_EVENTS = new Set(['자퇴', '전출', '퇴학']);
+export const STATE_LABEL = { active: '재학', leave: '휴학', gone: '떠남' };
+/** 전출 예정 종류 → 날짜가 되면 학적에 넣을 변동 */
+export const LEAVING_TYPES = { 전학: '전출', 자퇴: '자퇴', 퇴학: '퇴학', 기타: '기타' };
+/** 티 나지 않는 표시: 화면에는 글자 없이 작은 점, 파일에는 기호로 */
+export const FLAGS = [['good', '우수', '◆'], ['watch', '관심', '●']];
+
+/** date 기준 학적 상태 → { state: active|leave|gone, ev: 마지막 변동(기타 제외) } */
+export function statusAt(st, date) {
+  let ev = null;
+  for (const e of st?.statusLog || []) if (e.date <= date && e.type !== '기타') ev = e;
+  const state = !ev ? 'active' : LEAVE_EVENTS.has(ev.type) ? 'leave' : GONE_EVENTS.has(ev.type) ? 'gone' : 'active';
+  return { state, ev };
+}
+export const isActiveOn = (st, date) => statusAt(st, date).state === 'active';
+
+/** 학적 이력 ↔ 파일 한 칸: "2026-03-02 휴학 - 질병; 2026-09-01 복학(2학년)" */
+export function logToText(log) {
+  return (log || []).map((e) => `${e.date} ${e.type}${e.grade ? `(${e.grade}학년)` : ''}${e.memo ? ` - ${e.memo.replace(/;/g, '；')}` : ''}`).join('; ');
+}
+const LOG_RE = new RegExp(`^(\\d{4}-\\d{2}-\\d{2})\\s+(${STATUS_EVENTS.map(escapeRe).join('|')})(?:\\((\\d+)학년\\))?(?:\\s+-\\s+(.*))?$`);
+export function textToLog(text) {
+  return String(text || '').split(/;\s*/).map((x) => x.trim()).filter(Boolean).map((x) => {
+    const m = x.match(LOG_RE);
+    if (!m) return null;
+    const e = { date: m[1], type: m[2] };
+    if (m[3]) e.grade = +m[3];
+    if (m[4]) e.memo = m[4].trim();
+    return e;
+  }).filter(Boolean);
+}
+/** 전출 예정 ↔ "전학 2026-12-01 - 이사" */
+export const leavingToText = (l) => (l?.type ? `${l.type}${l.date ? ` ${l.date}` : ''}${l.memo ? ` - ${l.memo}` : ''}` : '');
+export function textToLeaving(text) {
+  const m = String(text || '').trim().match(/^(\S+)(?:\s+(\d{4}-\d{2}-\d{2}))?(?:\s+-\s+(.*))?$/);
+  if (!m || !LEAVING_TYPES[m[1]]) return null;
+  const l = { type: m[1] };
+  if (m[2]) l.date = m[2];
+  if (m[3]) l.memo = m[3].trim();
+  return l;
+}
+export const flagsToText = (flags) => FLAGS.filter(([k]) => (flags || []).includes(k)).map(([, , sym]) => sym).join('');
+export const textToFlags = (text) => FLAGS.filter(([, , sym]) => String(text || '').includes(sym)).map(([k]) => k);
 
 export const classKey = (s) => (s?.grade && s?.cls ? `${s.grade}-${s.cls}` : '');
 export const studentLabel = (s) => (s ? (s.studentNo ? `${s.studentNo} ${s.name}` : s.name) : '');

@@ -11,7 +11,7 @@
 //   {학년도}학년도/일지/YYYY-MM-DD.md   하루치 수업일지·학생출결·상담일지
 
 import { splitParagraphs } from './counsel.js';
-import { buildIndex, labelOf, newUid, sortStudents } from './students.js';
+import { buildIndex, labelOf, newUid, sortStudents, logToText, textToLog, leavingToText, textToLeaving, flagsToText, textToFlags } from './students.js';
 import { normPerson, sortPeople, mentionedStudentUids, KINDS } from './people.js';
 import { ttCell, ttIsEmpty, courseOf } from '../store.js';
 import { koDate } from './util.js';
@@ -144,8 +144,11 @@ export function serialize(year, input) {
   if (data.students.length) {
     const st = sortStudents(data.students);
     files.set(`${dir}/${FILES.students}`, [header('학생명단'),
-      '> 학번은 학년도마다 바뀝니다. ID 는 여러 학년도에 걸쳐 같은 학생을 잇는 값이니 지우지 마세요.', '',
-      table(['학번', '학년', '반', '번호', '이름', '성별', '이메일', '전화번호', '사진', 'ID'], st.map((x) => [x.studentNo || '', x.grade ?? '', x.cls ?? '', x.no ?? '', x.name, x.gender || '', x.email || '', x.phone || '', x.photo || '', x.uid || ''])), ''].join('\n'));
+      '> 학번은 학년도마다 바뀝니다. ID 는 여러 학년도에 걸쳐 같은 학생을 잇는 값이니 지우지 마세요.',
+      '> 학적: "날짜 변동(학년) - 메모" 를 ; 로 이어 씁니다. 표시: ◆ ● (교사용 표시)', '',
+      table(['학번', '학년', '반', '번호', '이름', '성별', '이메일', '전화번호', '사진', 'ID', '학적', '전출예정', '표시', '비고'],
+        st.map((x) => [x.studentNo || '', x.grade ?? '', x.cls ?? '', x.no ?? '', x.name, x.gender || '', x.email || '', x.phone || '', x.photo || '', x.uid || '',
+          logToText(x.statusLog), leavingToText(x.leaving), flagsToText(x.flags), x.flagMemo || ''])), ''].join('\n'));
   }
 
   // 학사일정
@@ -396,6 +399,13 @@ export function parse(year, files, makeId) {
       if (!name) continue;
       const st = { id: makeId(), uid: (r.ID || '').trim() || newUid(), studentNo: (r['학번'] || '').trim(), grade: num(r['학년']), cls: num(r['반']), no: num(r['번호']), name, photo: (r['사진'] || '').trim() };
       for (const [k, col] of [['gender', '성별'], ['email', '이메일'], ['phone', '전화번호']]) if ((r[col] || '').trim()) st[k] = r[col].trim();
+      const log = textToLog(r['학적']);
+      if (log.length) st.statusLog = log;
+      const lv = textToLeaving(r['전출예정']);
+      if (lv) st.leaving = lv;
+      const fl = textToFlags(r['표시']);
+      if (fl.length) st.flags = fl;
+      if ((r['비고'] || '').trim()) st.flagMemo = r['비고'];
       data.students.push(st);
     }
   }

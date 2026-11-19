@@ -558,3 +558,32 @@ input.search-input { flex: 1; border: 0; background: transparent; font-size: cal
 .homonym-note { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); line-height: 1.6; font-size: calc(14px * var(--fs, 1)); }
 .homonym-note.warn { background: #fff7ed; border: 1px solid #fed7aa; }
 .people-maybe { margin-top: 6px; }
+
+/* 학적·표시 */
+.stu-card { position: relative; }
+.stu-card.inactive { opacity: .55; }
+.stu-state { margin-left: auto; font-size: calc(11px * var(--fs, 1)); color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; white-space: nowrap; }
+.stu-leaving { color: var(--muted); font-size: .8em; margin-left: 2px; }
+.fdots { position: absolute; top: 3px; right: 4px; display: flex; gap: 2px; }
+.fdot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; vertical-align: middle; }
+.fdot.f-good { background: #60a5fa; }
+.fdot.f-watch { background: #fb923c; }
+.status-log { margin: 4px 0 10px; padding-left: 1.4em; line-height: 1.8; }
+.status-log li.current { font-weight: 600; }
+.status-log li.future { opacity: .6; }
+.status-log .status-date { font-variant-numeric: tabular-nums; }
+.status-log .icon-btn { margin-left: 4px; padding: 0 6px; }
+.status-add { flex-wrap: wrap; gap: 6px; }
+.state-badge { font-size: calc(13px * var(--fs, 1)); padding: 2px 10px; border-radius: 999px; background: var(--chip-bg); color: var(--chip-text); font-weight: 700; }
+.state-badge.s-leave { background: #fef3c7; color: #92400e; }
+.state-badge.s-gone { background: var(--holiday-bg); color: var(--holiday); }
+.leaving-box { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); display: grid; gap: 6px; }
+.leaving-due { padding: 8px 10px; border-radius: var(--radius); background: #fff7ed; border: 1px solid #fed7aa; }
+.flag-box { margin-top: 10px; }
+.flag-open { opacity: .55; }
+.carry-list { max-height: 55vh; overflow: auto; }
+.carry-table { width: 100%; border-collapse: collapse; }
+.carry-table th, .carry-table td { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: left; }
+.carry-table tr.k-grad, .carry-table tr.k-gone { opacity: .6; }
+.status-add input[type=date], .leaving-box input[type=date] { width: auto; }
+.status-add select { width: auto; }

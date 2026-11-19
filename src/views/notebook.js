@@ -300,7 +300,7 @@ export function renderNotebook(app) {
         lessonBlocks.map((b) => h('option', { value: blockKey(b), selected: blockKey(b) === cur }, blockLabel(b))));
       return h('tr',
         h('td', lessonSel),
-        h('td', studentSelect(store, a.student, (v) => { a.student = v; store.markDirty(); }, { cls: a.cls || '' })),
+        h('td', studentSelect(store, a.student, (v) => { a.student = v; store.markDirty(); }, { cls: a.cls || '', date })),
         h('td', sel(ATT_TYPES, a.type, (e) => { a.type = e.target.value; store.markDirty(); }, '구분')),
         h('td', sel(ATT_REASONS, a.reason, (e) => { a.reason = e.target.value; store.markDirty(); }, '사유')),
         h('td', h('input', { value: a.note || '', placeholder: '비고 (예: 독감A형)', oninput: (e) => { a.note = e.target.value; store.markDirty(); } })),

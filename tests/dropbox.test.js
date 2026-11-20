@@ -46,6 +46,16 @@ const sample = {
     { id: 'p1', kind: 'person', name: '김민수', title: '선생님', org: '2학년부', phone: '010-1234-5678', email: 'kim@example.com', aliases: ['김쌤'], memo: '정보 | 방과후 담당' },
     { id: 'p2', kind: 'org', name: '경기도교육청', title: '', org: '', phone: '031-000-0000', email: '', aliases: ['교육청', '도교육청'], memo: '' },
   ],
+  // 대회·활동: 시작일 순
+  contests: [
+    { id: 'ct1', name: 'SW 공모전 | 2026', kind: '공모전', host: '과학기술정보통신부', start: '2026-05-01', end: '2026-11-20', completion: true,
+      summary: '## 목적\n- 소프트웨어 문제 해결 #공모전\n# 제목처럼 보이는 줄',
+      links: [{ title: '공식 | 사이트', url: 'https://example.com/a?b=1|2' }], files: [{ title: '포스터', file: '2026_포스터.png', uploaded: '2026-05-01' }],
+      stages: [{ id: 'st_1', name: '예선', start: '2026-09-01', end: '2026-09-30', memo: '온라인' }, { id: 'st_2', name: '본선', start: '2026-11-20' }],
+      entries: [{ id: 'e1', team: '코딩왕', members: ['U1', 'U2'], results: { st_1: '통과', st_2: '참가' }, award: '금상', done: true, memo: '발표 | 시연' },
+        { id: 'e2', team: '', members: ['U2'], results: { st_1: '탈락' }, award: '', memo: '' }] },
+    { id: 'ct2', name: '여름 코딩 캠프', kind: '프로그램', stages: [], entries: [] },
+  ],
   // 태그 카드: 고정한 것 먼저, 그다음 태그 이름순
   tagcards: [
     { id: 'tc2', tag: '진로캠프', status: 'active', start: '2026-05-01', pinned: true, memo: '1·2학년 대상\n예산 | 300만원' },

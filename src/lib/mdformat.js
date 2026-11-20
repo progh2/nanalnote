@@ -8,6 +8,7 @@
 //   {학년도}학년도/학급요록.md     ## 제목 / - 등록: / - 완료: / | 학생 | 내용 |
 //   {학년도}학년도/사람·기관.md    | 구분 | 이름 | 호칭 | 소속 | 전화 | 이메일 | 다른 이름 | 메모 |
 //   {학년도}학년도/태그.md         | 태그 | 상태 | 시작 | 끝 | 고정 | 설명 |
+//   {학년도}학년도/대회·활동.md    ## 대회 이름 / - 종류·주최·기간·링크·파일 / ### 개요 / ### 일정 표 / ### 참가 표
 //   {학년도}학년도/일지/YYYY-MM-DD.md   하루치 수업일지·학생출결·상담일지
 
 import { splitParagraphs } from './counsel.js';
@@ -18,7 +19,7 @@ import { koDate } from './util.js';
 import { bellOf, rawBell, periodLabel, parsePeriodLabel, fmtRange, EVENING_BASE } from './bell.js';
 
 export const yearDir = (year) => `/${year}학년도`;
-export const FILES = { settings: '설정.md', students: '학생명단.md', schedule: '학사일정.md', tasks: '업무일지.md', records: '학급요록.md', notes: '포스트잇.md', docs: '학사일정자료.md', people: '사람·기관.md', tagcards: '태그.md' };
+export const FILES = { settings: '설정.md', students: '학생명단.md', schedule: '학사일정.md', tasks: '업무일지.md', records: '학급요록.md', notes: '포스트잇.md', docs: '학사일정자료.md', people: '사람·기관.md', tagcards: '태그.md', contests: '대회·활동.md' };
 const DAY_COLS = new Set(['days', 'lessons', 'attendance', 'counsel', 'trips']);
 
 /** 항목이 저장되는 파일 경로 */
@@ -92,6 +93,17 @@ function sections(text, level = 2) {
   return out;
 }
 
+/** "가 \\| 나 | 다" → ['가 | 나', '다'] (\\| 는 글자 |) */
+function splitBar(v) {
+  const out = [''];
+  for (let i = 0; i < v.length; i++) {
+    if (v[i] === '\\' && i + 1 < v.length) { out[out.length - 1] += v[++i]; continue; }
+    if (v.startsWith(' | ', i)) { out.push(''); i += 2; continue; }
+    out[out.length - 1] += v[i];
+  }
+  return out;
+}
+
 const trimBlank = (lines) => {
   let a = 0, b = lines.length;
   while (a < b && !lines[a].trim()) a++;
@@ -101,7 +113,7 @@ const trimBlank = (lines) => {
 
 // ---------- 직렬화 ----------
 export function serialize(year, input) {
-  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [], tagcards: [], ...input };
+  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [], tagcards: [], contests: [], ...input };
   const files = new Map();
   const dir = yearDir(year);
   const header = (t) => `# ${t} (${year}학년도)\n\n> 나날노트가 관리하는 파일입니다. 형식을 지키면 직접 고쳐도 됩니다.\n`;
@@ -197,6 +209,31 @@ export function serialize(year, input) {
         sortPeople(data.people).map((x) => [KINDS[x.kind] || '사람', x.name, x.title || '', x.org || '', x.phone || '', x.email || '', (x.aliases || []).join(', '), x.memo || ''])), ''].join('\n'));
   }
 
+  // 대회·활동
+  if (data.contests.length) {
+    const bar = (x) => String(x ?? '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+    const parts = [header('대회·활동'), '> 대회·공모전·프로그램과 참가 학생·팀, 단계별 결과, 수상, 수료를 적는 파일입니다. 자료 파일은 "대회·활동자료" 폴더에 있습니다.', ''];
+    const cs = [...data.contests].sort((a, b) => (a.start || a.stages?.[0]?.start || '9999').localeCompare(b.start || b.stages?.[0]?.start || '9999') || a.name.localeCompare(b.name, 'ko'));
+    for (const c of cs) {
+      const stages = c.stages || [];
+      parts.push(`## ${oneLine(c.name)}`, '',
+        `- 종류: ${c.kind || '대회'}`,
+        ...(c.host ? [`- 주최: ${oneLine(c.host)}`] : []),
+        ...(c.start || c.end ? [`- 기간: ${c.start || ''} ~ ${c.end || ''}`] : []),
+        ...(c.completion ? ['- 수료 관리: 예'] : []),
+        ...(c.links || []).map((l) => `- 링크: ${bar(oneLine(l.title))} | ${bar(l.url)}`),
+        ...(c.files || []).map((f) => `- 파일: ${bar(oneLine(f.title))} | ${bar(f.file)}${f.uploaded ? ` | ${f.uploaded}` : ''}`),
+        '');
+      if ((c.summary || '').trim()) parts.push('### 개요', '', escBlock(c.summary), '');
+      if (stages.length) parts.push('### 일정', '', table(['단계', '시작', '끝', '메모'], stages.map((x) => [x.name, x.start || '', x.end || '', x.memo || ''])), '');
+      if ((c.entries || []).length) {
+        parts.push('### 참가', '', table(['팀', '학생', ...stages.map((x) => x.name), '수상', ...(c.completion ? ['수료'] : []), '메모'],
+          c.entries.map((e) => [e.team || '', (e.members || []).map(lab).join(', '), ...stages.map((x) => e.results?.[x.id] || ''), e.award || '', ...(c.completion ? [e.done ? 'O' : ''] : []), e.memo || ''])), '');
+      }
+    }
+    files.set(`${dir}/${FILES.contests}`, parts.join('\n'));
+  }
+
   // 태그 카드
   if (data.tagcards.length) {
     const tc = [...data.tagcards].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || a.tag.localeCompare(b.tag, 'ko'));
@@ -268,7 +305,7 @@ export function parse(year, files, makeId) {
     for (const [p, t] of files) if (p.toLowerCase() === `${dir}/${name}`.toLowerCase()) return t;
     return null;
   };
-  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [], tagcards: [] };
+  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [], tagcards: [], contests: [] };
 
   // 포스트잇
   const nt = get(FILES.notes);
@@ -292,6 +329,42 @@ export function parse(year, files, makeId) {
     for (const r of parseTableObjects(pp.split('\n'))) {
       if (!(r['이름'] || '').trim()) continue;
       data.people.push(normPerson({ id: makeId(), kind: r['구분'] === '기관' ? 'org' : 'person', name: r['이름'], title: r['호칭'], org: r['소속'], phone: r['전화'], email: r['이메일'], aliases: r['다른 이름'], memo: r['메모'] }));
+    }
+  }
+
+  // 대회·활동 (학생 참조는 "학번 이름" 그대로 두고 migrateRefs 가 uid 로 바꾼다)
+  const ctt = get(FILES.contests);
+  if (ctt != null) {
+    for (const sec of sections(ctt).slice(1)) {
+      const c = { id: makeId(), name: sec.title, kind: '대회', links: [], files: [], stages: [], entries: [] };
+      const subs = sections(sec.lines.join('\n'), 3);
+      for (const l of subs[0]?.lines || []) {
+        const m = l.match(/^-\s*([^:]+):\s*(.*)$/);
+        if (!m) continue;
+        const [k, v] = [m[1].trim(), m[2].trim()];
+        if (k === '종류') c.kind = v;
+        else if (k === '주최') c.host = fromOneLine(v);
+        else if (k === '기간') { const [a, b] = v.split('~').map((x) => x.trim()); if (a) c.start = a; if (b) c.end = b; }
+        else if (k === '수료 관리') c.completion = /^(예|o|y|yes|true)$/i.test(v);
+        else if (k === '링크') { const [t, u] = splitBar(v); c.links.push({ title: fromOneLine(t || ''), url: (u || '').trim() }); }
+        else if (k === '파일') { const [t, f, up] = splitBar(v); c.files.push({ title: fromOneLine(t || ''), file: (f || '').trim(), ...(up ? { uploaded: up.trim() } : {}) }); }
+      }
+      for (const sub of subs.slice(1)) {
+        if (sub.title === '개요') c.summary = unescBlock(trimBlank(sub.lines).join('\n'));
+        else if (sub.title === '일정') {
+          for (const r of parseTableObjects(sub.lines)) if ((r['단계'] || '').trim()) c.stages.push({ id: `st_${c.stages.length + 1}`, name: r['단계'].trim(), ...(r['시작']?.trim() ? { start: r['시작'].trim() } : {}), ...(r['끝']?.trim() ? { end: r['끝'].trim() } : {}), ...(r['메모']?.trim() ? { memo: r['메모'] } : {}) });
+        } else if (sub.title === '참가') {
+          for (const r of parseTableObjects(sub.lines)) {
+            const e = { id: makeId(), team: r['팀'] || '', members: (r['학생'] || '').split(/\s*,\s*/).map((x) => x.trim()).filter(Boolean), results: {}, award: r['수상'] || '', memo: r['메모'] || '' };
+            for (const st of c.stages) if ((r[st.name] || '').trim()) e.results[st.id] = r[st.name].trim();
+            if (c.completion && /^(o|예|수료|y|yes|true|✓)$/i.test((r['수료'] || '').trim())) e.done = true;
+            c.entries.push(e);
+          }
+        }
+      }
+      if (!c.links.length) delete c.links;
+      if (!c.files.length) delete c.files;
+      data.contests.push(c);
     }
   }
 

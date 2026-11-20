@@ -1,14 +1,17 @@
-// 보고서 탭: 캘린더, 학생출결, 수업일지(수업·학반별), 상담일지(학생별), 학급요록, 출장, 기간지정 다운로드
+// 보고서 탭: 캘린더, 학생출결, 수업일지(수업·학반별), 상담일지(학생별), 학급요록, 출장, 학생 활동(대회·활동), 기간지정 다운로드
 import { h, fmtDate, parseDate, today, yearRange, addDays, koDate, downloadBlob, toast, WEEKDAYS, pad, fill } from '../lib/util.js';
 import { ATT_TYPES } from '../store.js';
 import { exportRange, exportLessons, exportCounsel, exportAttendance, exportRecord, exportTrips } from '../lib/export.js';
 import { studentLabel, classKey } from '../lib/students.js';
 import { classSelect } from './ui.js';
+import { activityRows, ACTIVITY_HEAD, activityRowCells, spanOf, KINDS } from '../lib/contests.js';
+import { xlsxBlob } from '../lib/xlsx.js';
+import { openContest } from './contests.js';
 
-const TABS = [['calendar', '캘린더'], ['attendance', '학생출결'], ['lessons', '수업일지'], ['counsel', '상담일지'], ['records', '학급요록'], ['trips', '출장'], ['range', '기간지정 다운로드']];
+const TABS = [['calendar', '캘린더'], ['attendance', '학생출결'], ['lessons', '수업일지'], ['counsel', '상담일지'], ['records', '학급요록'], ['trips', '출장'], ['activities', '학생 활동'], ['range', '기간지정 다운로드']];
 
 export function renderReports(app) {
-  const views = { calendar, attendance, lessons, counsel, records, trips, range };
+  const views = { calendar, attendance, lessons, counsel, records, trips, activities, range };
   return h('div.reports',
     h('nav.subtabs', TABS.map(([k, l]) => h(`button${app.reportTab === k ? '.active' : ''}`, { onclick: () => { app.reportTab = k; app.render(); } }, l))),
     views[app.reportTab](app));
@@ -267,4 +270,53 @@ function range(app) {
     h('label.check', h('input', { type: 'checkbox', checked: st.includeIncomplete, onchange: (e) => { st.includeIncomplete = e.target.checked; } }), ' 미완료 업무일지 포함'),
     info,
     h('div.row', btn));
+}
+
+// ---------- 학생 활동 (대회·공모전·프로그램 참가·수상·수료) ----------
+function activities(app) {
+  const { store } = app;
+  const yr = yearRange(store.year);
+  app.actRange ||= { start: yr.start, end: yr.end, cls: '', kind: '', award: false, all: false };
+  const st = app.actRange;
+  const wrap = h('div');
+  const label = (uid) => store.label(uid);
+  const draw = () => {
+    const studs = store.studentsOf(st.cls);
+    const inCls = new Set(studs.map((x) => x.uid));
+    // 기간이 겹치는 대회·활동 (날짜가 없으면 포함)
+    const cs = (store.work.contests || []).filter((c) => {
+      const sp = spanOf(c);
+      return (!st.kind || c.kind === st.kind) && (!sp.end || sp.end >= st.start) && (!sp.start || sp.start <= st.end);
+    });
+    const rows = activityRows(cs, store.work.students, label).filter((r) => (!st.cls || inCls.has(r.uid)) && (!st.award || r.award));
+    const byStu = new Map();
+    for (const r of rows) { if (!byStu.has(r.uid)) byStu.set(r.uid, []); byStu.get(r.uid).push(r); }
+    const order = st.all ? studs.map((x) => x.uid) : [...byStu.keys()];
+    const awards = rows.filter((r) => r.award).length;
+    fill(wrap,
+      h('p', h('strong', `${byStu.size}명`), ` · 참가 ${rows.length}건 · 수상 ${awards}건`, st.cls ? h('span.muted.small', ` (${st.cls}반 ${studs.length}명 중)`) : null),
+      order.length ? h('div.records-wrap', h('table.grid.activity-report',
+        h('thead', h('tr', h('th', '학생'), h('th', '대회·활동'), h('th', '기간'), h('th', '팀'), h('th', '결과'), h('th', '수상'), h('th', '수료'))),
+        h('tbody', order.flatMap((uid) => {
+          const list = byStu.get(uid) || [];
+          if (!list.length) return [h('tr', h('th', label(uid)), h('td.muted', { colspan: 6 }, '참가 기록 없음'))];
+          return list.map((r, i) => h('tr',
+            i === 0 ? h('th', { rowspan: list.length }, r.studentNo ? `${r.studentNo} ${r.name}` : r.name) : null,
+            h('td', h('button.link', { onclick: () => openContest(app, r.c.id) }, r.contest), h('span.muted.small', ` ${r.kind}`)),
+            h('td.nowrap.small', r.period), h('td', r.team), h('td.small', r.result), h('td', r.award ? h('strong', `🏆 ${r.award}`) : ''), h('td', r.done)));
+        })))) : h('p.muted', '해당 조건의 활동 기록이 없습니다. 대회·활동 메뉴에서 참가 학생을 넣어 보세요.'),
+      h('p.muted.small', '생활기록부 입력 전 정리용으로 엑셀로 내려받을 수 있습니다. 교내 수상 등 기재 기준은 학교 지침을 따르세요.'));
+    wrap.rows = rows;
+  };
+  draw();
+  return h('section.card',
+    h('div.card-head', h('h2', '학생 활동 모아보기'),
+      h('button.small', { onclick: () => downloadBlob(xlsxBlob([{ name: '학생 활동', rows: [ACTIVITY_HEAD, ...wrap.rows.map(activityRowCells)] }]), `학생활동_${st.cls || '전체'}_${st.start}_${st.end}.xlsx`) }, '⬇ 엑셀')),
+    h('div.row',
+      store.classList().length ? classSelect(store, st.cls, (v) => { st.cls = v; draw(); }) : null,
+      h('select', { 'aria-label': '종류', onchange: (e) => { st.kind = e.target.value; draw(); } }, h('option', { value: '' }, '모든 종류'), KINDS.map((k) => h('option', { value: k, selected: k === st.kind }, k))),
+      dateRangeInputs(st, draw),
+      h('label.check.small', h('input', { type: 'checkbox', checked: st.award, onchange: (e) => { st.award = e.target.checked; draw(); } }), ' 수상만'),
+      h('label.check.small', h('input', { type: 'checkbox', checked: st.all, onchange: (e) => { st.all = e.target.checked; draw(); } }), ' 기록 없는 학생도')),
+    wrap);
 }

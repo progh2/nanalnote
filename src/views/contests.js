@@ -1,0 +1,289 @@
+// 대회·활동 탭: 대회·공모전·프로그램 목록과 상세(개요·일정·자료·참가 학생/팀·단계별 결과·수상·수료)
+import { h, fill, newId, toast, confirmDialog, downloadBlob, koDate, today, pickFile } from '../lib/util.js';
+import { KINDS, RESULTS, AWARDS, STAGE_PRESETS, STATUS, FILES_FOLDER, stageId, spanOf, contestStatus, nextEvent, awardCount, contestSheets, resultText, activityRows, ACTIVITY_HEAD, activityRowCells } from '../lib/contests.js';
+import { studentLabel, resolveRef } from '../lib/students.js';
+import { renderMd } from '../lib/notemd.js';
+import { xlsxBlob } from '../lib/xlsx.js';
+import { mentionInline } from './mentions.js';
+import { scrollToDetail } from './ui.js';
+import { attachStudentSuggest } from './suggest.js';
+
+const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_').slice(0, 60) || '파일';
+const dd = (n) => (n === 0 ? 'D-day' : n > 0 ? `D-${n}` : `D+${-n}`);
+const ddClass = (n) => (n < 0 ? '.over' : n <= 3 ? '.soon' : '');
+
+export function openContest(app, id) {
+  app.contestView = { ...(app.contestView || {}), sel: id };
+  app.tab = 'contests';
+  app.render();
+}
+
+const grow = (el) => {
+  const fit = () => { el.style.height = 'auto'; el.style.height = el.scrollHeight + 2 + 'px'; };
+  el.addEventListener('input', fit);
+  requestAnimationFrame(fit);
+  return el;
+};
+
+export function renderContests(app) {
+  const { store } = app;
+  const v = (app.contestView ||= { sel: '', q: '', status: '' });
+  const t = today();
+  const list = (store.work.contests || []);
+  const order = { active: 0, soon: 1, done: 2 };
+  const shown = list
+    .filter((c) => (!v.status || contestStatus(c, t) === v.status) && (!v.q || [c.name, c.host, c.kind, c.summary].some((x) => (x || '').includes(v.q))))
+    .sort((a, b) => order[contestStatus(a, t)] - order[contestStatus(b, t)]
+      || (nextEvent(a, t)?.date || spanOf(a).end || '9999').localeCompare(nextEvent(b, t)?.date || spanOf(b).end || '9999')
+      || a.name.localeCompare(b.name, 'ko'));
+  const sel = list.find((c) => c.id === v.sel) || null;
+
+  const add = () => {
+    const c = { id: newId(), name: '새 대회', kind: '대회', start: '', end: '', stages: [], entries: [] };
+    store.work.contests.push(c);
+    store.markDirty();
+    v.sel = c.id;
+    app.render();
+    requestAnimationFrame(() => { const el = document.querySelector('.contest-name'); el?.focus(); el?.select(); });
+  };
+  const search = h('input', { type: 'search', placeholder: '이름·주최로 찾기', value: v.q, oninput: (e) => { v.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => app.render(), 250); } });
+  const left = h('section.card.contest-list-card',
+    h('div.card-head', h('h2', `대회·활동 (${list.length})`),
+      h('div.row', { style: { margin: 0, gap: '6px' } },
+        h('button.small.primary', { onclick: add }, '+ 새로 만들기'),
+        list.length ? h('button.small', { title: '모든 대회·활동의 참가 학생을 엑셀로', onclick: () => exportAll(app) }, '⬇ 엑셀') : null)),
+    search,
+    h('div.chips', [['', '전체'], ['active', STATUS.active], ['soon', STATUS.soon], ['done', STATUS.done]].map(([k, l]) =>
+      h(`button.chip-btn${(v.status || '') === k ? '.active' : ''}`, { onclick: () => { v.status = k; app.render(); } }, l))),
+    shown.length ? h('ul.contest-list', shown.map((c) => {
+      const st = contestStatus(c, t);
+      const nx = nextEvent(c, t);
+      const sp = spanOf(c);
+      const people = new Set((c.entries || []).flatMap((e) => e.members || [])).size;
+      const aw = awardCount(c);
+      return h(`li${c.id === v.sel ? '.active' : ''}${st === 'done' ? '.done' : ''}`, { onclick: () => { v.sel = c.id; app.render(); scrollToDetail('.contests-page > section.card:last-child'); } },
+        h('div.contest-li-top', h(`span.kind-badge.k-${KINDS.indexOf(c.kind)}`, c.kind || '대회'), h('strong', c.name || '(이름 없음)'),
+          nx && st !== 'done' ? h(`span.due-btn${ddClass(nx.n)}`, { title: `${nx.label} ${nx.date}` }, dd(nx.n)) : null),
+        h('div.muted.small', [sp.start || sp.end ? `${sp.start ? koDate(sp.start).replace(/\s*\(.\)/, '') : ''} ~ ${sp.end ? koDate(sp.end).replace(/\s*\(.\)/, '') : ''}` : '기간 미정',
+          nx && st !== 'done' ? `다음: ${nx.label}` : STATUS[st], people ? `${people}명` : '', aw ? `🏆 ${aw}` : ''].filter(Boolean).join(' · ')));
+    })) : h('p.muted', list.length ? '맞는 항목이 없습니다.' : '대회·공모전·캠프 같은 활동을 만들어 개요·일정·자료와 참가 학생, 단계별 결과, 수상·수료를 관리하세요.'));
+
+  const right = sel ? detail(app, sel) : h('section.card', h('div.card-head', h('h2', '대회·활동')),
+    h('div.help',
+      h('p', '대회·공모전·프로그램(캠프·연수 등)마다 한 장씩 만들어 관리합니다.'),
+      h('ul',
+        h('li', '개요와 주요 자료(포스터·사이트·안내 문서), 접수·예선·본선 같은 단계별 일정을 적어 두면 교사수첩 그날에도 보이고 D-day 로 따라갑니다.'),
+        h('li', '참가는 팀(또는 개인)마다 한 줄: 학생, 단계별 결과(통과·탈락…), 수상, 수료를 표처럼 적습니다. 엑셀로 내려받을 수 있습니다.'),
+        h('li', '학생관리에서 학생마다, 보고서 > 학생 활동에서 학급별로 모아 봅니다.')),
+      h('p.muted.small', '학년도 폴더의 "대회·활동.md"에 저장되고, 파일은 "대회·활동자료" 폴더에 들어갑니다.')));
+  return h('div.split.contests-page', left, right);
+}
+
+function detail(app, c) {
+  const { store } = app;
+  const t = today();
+  const dirty = () => store.markDirty();
+  const label = (uid) => store.label(uid);
+  c.stages ||= []; c.entries ||= [];
+
+  // ----- 기본 정보 -----
+  const head = h('div.contest-head',
+    h('input.contest-name', { value: c.name, 'aria-label': '대회·활동 이름', placeholder: '이름 (예: 2026 SW 공모전)', oninput: (e) => { c.name = e.target.value; dirty(); }, onchange: () => app.render() }),
+    h('div.row', { style: { gap: '6px' } },
+      h('div.chips', { style: { margin: 0 } }, KINDS.map((k) => h(`button.chip-btn${c.kind === k ? '.active' : ''}`, { onclick: () => { c.kind = k; dirty(); app.render(); } }, k))),
+      h('label.check.small', h('input', { type: 'checkbox', checked: !!c.completion, onchange: (e) => { c.completion = e.target.checked; dirty(); app.render(); } }), ' 수료 관리')),
+    h('div.inline-form.contest-meta',
+      h('label', '주최', h('input', { value: c.host || '', placeholder: '주최·주관', style: { width: '14em' }, oninput: (e) => { c.host = e.target.value; dirty(); } })),
+      h('label', '기간', h('input', { type: 'date', value: c.start || '', onchange: (e) => { c.start = e.target.value; dirty(); app.render(); } })),
+      h('span', '~'),
+      h('input', { type: 'date', value: c.end || '', 'aria-label': '끝', onchange: (e) => { c.end = e.target.value; dirty(); app.render(); } })));
+
+  // ----- 개요 (마크다운) -----
+  const v = app.contestView;
+  const plain = mentionInline(app, { update: (fn) => { c.summary = fn(c.summary || ''); } });
+  const summaryBox = h('div.contest-summary');
+  const drawSummary = () => {
+    if (v.editSummary || !(c.summary || '').trim()) {
+      const ta = grow(h('textarea', { rows: 3, value: c.summary || '', placeholder: '개요 — 목적, 대상, 주제, 참가 방법, 유의 사항 등. ## 제목, - 목록, #태그 를 쓸 수 있어요.', oninput: (e) => { c.summary = e.target.value; dirty(); } }));
+      attachStudentSuggest(ta, () => store.work.students, () => store.work.people, () => store.tagList());
+      fill(summaryBox, ta, (c.summary || '').trim() ? h('button.small', { onclick: () => { v.editSummary = false; drawSummary(); } }, '✓ 보기') : null);
+    } else {
+      fill(summaryBox, h('div.md.contest-md', renderMd(c.summary, { plain })), h('button.small', { onclick: () => { v.editSummary = true; drawSummary(); } }, '✎ 고치기'));
+    }
+  };
+  drawSummary();
+
+  // ----- 일정·단계 -----
+  const stageRows = c.stages.map((s, i) => {
+    const nx = (s.end || s.start) && (s.end || s.start) >= t ? Math.round((new Date((s.start && s.start >= t ? s.start : s.end || s.start) + 'T00:00') - new Date(t + 'T00:00')) / 86400000) : null;
+    return h('tr',
+      h('td', h('input', { value: s.name, 'aria-label': '단계 이름', oninput: (e) => { s.name = e.target.value; dirty(); }, onchange: () => app.render() })),
+      h('td', h('input', { type: 'date', value: s.start || '', 'aria-label': '시작', onchange: (e) => { s.start = e.target.value; dirty(); app.render(); } })),
+      h('td', h('input', { type: 'date', value: s.end || '', 'aria-label': '끝', onchange: (e) => { s.end = e.target.value; dirty(); app.render(); } })),
+      h('td', h('input', { value: s.memo || '', placeholder: '메모 (장소, 방식…)', 'aria-label': '메모', oninput: (e) => { s.memo = e.target.value; dirty(); } })),
+      h('td.nowrap', nx != null ? h(`span.due-btn${ddClass(nx)}`, dd(nx)) : (s.end || s.start) ? h('span.muted.small', '지남') : null),
+      h('td', h('button.icon-btn', { title: '단계 지우기', 'aria-label': '단계 지우기', onclick: async () => {
+        const used = c.entries.some((e) => e.results?.[s.id]);
+        if (used && !(await confirmDialog('단계 지우기', `"${s.name}" 단계와 이 단계의 참가 결과를 지울까요?`, '지우기'))) return;
+        c.stages.splice(i, 1); for (const e of c.entries) if (e.results) delete e.results[s.id];
+        dirty(); app.render();
+      } }, '✕')));
+  });
+  const addStage = (name) => { c.stages.push({ id: stageId(), name }); dirty(); app.render(); };
+  const stagesCard = h('div.contest-block',
+    h('h3', '일정·단계'),
+    c.stages.length ? h('div.records-wrap', h('table.grid.stage-table', h('thead', h('tr', h('th', '단계'), h('th', '시작'), h('th', '끝'), h('th', '메모'), h('th', ''), h('th', ''))), h('tbody', stageRows))) : h('p.muted.small', '접수·예선·본선처럼 단계를 넣으면 날짜를 따라가고, 참가 표에 단계별 결과 칸이 생깁니다.'),
+    h('div.chips', STAGE_PRESETS.filter((p) => !c.stages.some((s) => s.name === p)).map((p) => h('button.chip-btn', { onclick: () => addStage(p) }, `+ ${p}`)),
+      h('button.chip-btn', { onclick: () => addStage('새 단계') }, '+ 직접')));
+
+  // ----- 자료: 링크·파일 -----
+  c.links ||= []; c.files ||= [];
+  const filesBox = h('div.contest-files');
+  const drawFiles = () => fill(filesBox, ...c.files.map((f, i) => {
+    const thumb = h('div.file-thumb', /\.(png|jpe?g|gif|webp)$/i.test(f.file) ? '🖼' : /\.pdf$/i.test(f.file) ? '📄' : '📎');
+    if (/\.(png|jpe?g|gif|webp)$/i.test(f.file)) {
+      store.backend.fileUrl?.(store.year, FILES_FOLDER, f.file).then((url) => { if (url) fill(thumb, h('img', { src: url, alt: f.title || f.file, loading: 'lazy' })); }).catch(() => {});
+    }
+    return h('div.file-item',
+      thumb,
+      h('input', { value: f.title || '', placeholder: '이름 (예: 포스터)', 'aria-label': '파일 이름', oninput: (e) => { f.title = e.target.value; dirty(); } }),
+      h('div.row', { style: { margin: 0, gap: '4px' } },
+        h('button.small', { onclick: async () => {
+          try {
+            const url = await store.backend.fileUrl?.(store.year, FILES_FOLDER, f.file);
+            if (!url) throw new Error('파일을 찾지 못했습니다.');
+            const blob = await (await fetch(url)).blob();
+            downloadBlob(blob, f.file);
+          } catch (e) { toast(e.message, 'error'); }
+        } }, '받기'),
+        h('button.small', { title: '파일 지우기', onclick: async () => {
+          if (!(await confirmDialog('파일 지우기', `${f.title || f.file} 파일을 지울까요?`, '지우기'))) return;
+          try { await store.backend.deleteFile?.(store.year, FILES_FOLDER, f.file); } catch { /* 이미 없음 */ }
+          c.files.splice(i, 1); dirty(); drawFiles();
+        } }, '✕')));
+  }));
+  drawFiles();
+  const upload = async () => {
+    if (!store.backend.putFile) return toast('이 저장소는 파일을 지원하지 않습니다.', 'error');
+    const file = await pickFile('*/*');
+    if (!file) return;
+    const ext = (file.name.match(/\.[^.]+$/)?.[0] || '').toLowerCase();
+    const name = `${safe(c.name)}_${safe(file.name.replace(/\.[^.]+$/, ''))}_${Date.now().toString(36)}${ext}`;
+    toast('파일을 올리는 중…');
+    try {
+      await store.backend.putFile(store.year, FILES_FOLDER, name, file);
+      c.files.push({ title: file.name.replace(/\.[^.]+$/, ''), file: name, uploaded: today() });
+      dirty(); drawFiles(); toast('올렸습니다.', 'ok');
+    } catch (e) { toast(`올리지 못했습니다: ${e.message}`, 'error'); }
+  };
+  const linksBox = h('div.contest-links', c.links.map((l, i) => h('div.link-row',
+    h('input', { value: l.title || '', placeholder: '이름 (예: 공식 사이트)', 'aria-label': '링크 이름', oninput: (e) => { l.title = e.target.value; dirty(); } }),
+    h('input', { type: 'url', value: l.url || '', placeholder: 'https://', 'aria-label': '주소', oninput: (e) => { l.url = e.target.value.trim(); dirty(); } }),
+    /^https?:\/\//.test(l.url || '') ? h('a.chip-btn', { href: l.url, target: '_blank', rel: 'noopener' }, '열기') : h('span'),
+    h('button.icon-btn', { title: '링크 지우기', 'aria-label': '링크 지우기', onclick: () => { c.links.splice(i, 1); dirty(); app.render(); } }, '✕'))));
+  const resCard = h('div.contest-block',
+    h('h3', '자료'),
+    linksBox,
+    filesBox,
+    h('div.row', h('button.small', { onclick: () => { c.links.push({ title: '', url: '' }); dirty(); app.render(); } }, '+ 링크'),
+      h('button.small', { onclick: upload }, '+ 파일 올리기 (포스터·안내문·서식…)')));
+
+  // ----- 참가 (엑셀처럼) -----
+  const idx = store.studentIndex();
+  const studentList = h('datalist#contest-students', store.students().map((s) => h('option', { value: studentLabel(s) })));
+  const addMembers = (e, text) => {
+    const raw = String(text || '').trim();
+    if (!raw) return [];
+    // 쉼표·띄어쓰기로 나눈 학번/이름들 ("20101 20102", "20101 김민준, 이서연" 모두 됨)
+    const refs = raw.split(/[,\s]+/).filter(Boolean).map((x) => resolveRef(x, idx) || x);
+    const found = refs.filter((r) => typeof r !== 'string');
+    // "20101 김민준" 의 이름처럼 앞의 학번으로 이미 찾은 학생 이름은 빠뜨림으로 치지 않는다
+    const miss = refs.filter((r) => typeof r === 'string' && !found.some((s) => s.name === r));
+    for (const s of refs.filter((r) => typeof r !== 'string')) if (!e.members.includes(s.uid)) e.members.push(s.uid);
+    if (miss.length) toast(`학생을 찾지 못했습니다: ${miss.join(', ')} (학번이나 하나뿐인 이름으로 쓰세요)`, 'error');
+    dirty();
+    return miss;
+  };
+  const awardsList = h('datalist#award-list', AWARDS.map((a) => h('option', { value: a })));
+  const entryRows = c.entries.map((e, i) => {
+    e.members ||= []; e.results ||= {};
+    const memberIn = h('input.member-input', { list: 'contest-students', placeholder: '학번·이름 +', 'aria-label': '학생 더하기',
+      onkeydown: (ev) => { if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); const miss = addMembers(e, ev.target.value); ev.target.value = miss.join(' '); app.render(); } },
+      onchange: (ev) => { if (resolveRef(ev.target.value, idx)) { addMembers(e, ev.target.value); app.render(); } } });
+    return h('tr',
+      h('td', h('input', { value: e.team || '', placeholder: '팀 이름 (개인은 비움)', 'aria-label': '팀', oninput: (ev) => { e.team = ev.target.value; dirty(); } })),
+      h('td.members-cell', h('div.member-chips',
+        e.members.map((uid) => h('span.member-chip', label(uid), h('button', { title: '빼기', 'aria-label': `${label(uid)} 빼기`, onclick: () => { e.members = e.members.filter((x) => x !== uid); dirty(); app.render(); } }, '×'))),
+        memberIn)),
+      ...c.stages.map((s) => h('td', h(`select.result-sel${e.results[s.id] ? `.r-${RESULTS.indexOf(e.results[s.id])}` : ''}`, { 'aria-label': `${s.name} 결과`, onchange: (ev) => { if (ev.target.value) e.results[s.id] = ev.target.value; else delete e.results[s.id]; dirty(); app.render(); } },
+        h('option', { value: '' }, '-'), RESULTS.map((r) => h('option', { value: r, selected: e.results[s.id] === r }, r))))),
+      h('td', h('input', { list: 'award-list', value: e.award || '', placeholder: '수상', 'aria-label': '수상', class: e.award ? 'has-award' : '', oninput: (ev) => { e.award = ev.target.value; dirty(); } })),
+      c.completion ? h('td.center', h('input', { type: 'checkbox', checked: !!e.done, 'aria-label': '수료', onchange: (ev) => { e.done = ev.target.checked; if (!e.done) delete e.done; dirty(); } })) : null,
+      h('td', h('input', { value: e.memo || '', placeholder: '메모', 'aria-label': '메모', oninput: (ev) => { e.memo = ev.target.value; dirty(); } })),
+      h('td', h('button.icon-btn', { title: '이 줄 지우기', 'aria-label': '이 줄 지우기', onclick: async () => {
+        if ((e.members.length || e.award) && !(await confirmDialog('참가 지우기', `${e.team || e.members.map(label).join(', ') || '이 줄'}을(를) 지울까요?`, '지우기'))) return;
+        c.entries.splice(i, 1); dirty(); app.render();
+      } }, '✕')));
+  });
+  const members = new Set(c.entries.flatMap((e) => e.members || []));
+  const entriesCard = h('div.contest-block',
+    h('div.card-head', { style: { margin: '18px 0 8px' } }, h('h3', { style: { margin: 0 } }, `참가 (${c.entries.length}줄 · ${members.size}명${awardCount(c) ? ` · 🏆 ${awardCount(c)}` : ''}${c.completion ? ` · 수료 ${c.entries.filter((e) => e.done).length}` : ''})`),
+      h('button.small', { onclick: () => downloadBlob(xlsxBlob(contestSheets(c, label, store.work.students)), `${safe(c.name)}.xlsx`) }, '⬇ 엑셀로 내려받기')),
+    studentList, awardsList,
+    h('div.records-wrap', h('table.grid.entry-grid',
+      h('thead', h('tr', h('th', '팀'), h('th', '학생'), ...c.stages.map((s) => h('th', s.name)), h('th', '수상'), c.completion ? h('th', '수료') : null, h('th', '메모'), h('th', ''))),
+      h('tbody', entryRows))),
+    h('div.row',
+      h('button.small.primary', { onclick: () => { c.entries.push({ id: newId(), team: '', members: [], results: {}, award: '', memo: '' }); dirty(); app.render(); requestAnimationFrame(() => [...document.querySelectorAll('.entry-grid .member-input')].at(-1)?.focus()); } }, '+ 팀·개인 추가'),
+      h('span.muted.small', '학생 칸에 학번이나 이름을 쓰고 Enter (여러 명은 쉼표·띄어쓰기로: 20101 20102)')));
+
+  const st = contestStatus(c, t);
+  const nx = nextEvent(c, t);
+  return h('section.card.contest-detail',
+    h('div.card-head', h('h2', `${c.kind || '대회'} · ${STATUS[st]}`, nx && st !== 'done' ? h(`span.due-btn${ddClass(nx.n)}`, `${nx.label} ${dd(nx.n)}`) : null),
+      h('div.row', { style: { margin: 0, gap: '6px' } },
+        h('button.small', { onclick: () => { app.contestView.sel = ''; app.render(); } }, '닫기'),
+        h('button.small.danger', { onclick: async () => {
+          if (!(await confirmDialog('대회·활동 지우기', `"${c.name}"과 참가 기록을 모두 지울까요? 올린 파일도 지웁니다.`, '지우기'))) return;
+          for (const f of c.files || []) { try { await store.backend.deleteFile?.(store.year, FILES_FOLDER, f.file); } catch { /* 없음 */ } }
+          store.work.contests = store.work.contests.filter((x) => x !== c); dirty(); app.contestView.sel = ''; app.render();
+        } }, '지우기'))),
+    head,
+    h('div.contest-block', h('h3', '개요'), summaryBox),
+    stagesCard,
+    resCard,
+    entriesCard);
+}
+
+/** 모든 대회·활동 → 엑셀 (대회 목록 + 참가 학생) */
+export function exportAll(app) {
+  const { store } = app;
+  const label = (uid) => store.label(uid);
+  const cs = store.work.contests || [];
+  const t = today();
+  const rows = [['이름', '종류', '주최', '시작', '끝', '상태', '단계', '참가 줄', '참가 학생', '수상']];
+  for (const c of cs) {
+    const sp = spanOf(c);
+    rows.push([c.name, c.kind || '', c.host || '', sp.start, sp.end, STATUS[contestStatus(c, t)], (c.stages || []).map((s) => `${s.name}${s.start || s.end ? `(${[s.start, s.end].filter(Boolean).join('~')})` : ''}`).join(', '),
+      String((c.entries || []).length), String(new Set((c.entries || []).flatMap((e) => e.members || [])).size), String(awardCount(c))]);
+  }
+  downloadBlob(xlsxBlob([{ name: '대회·활동 목록', rows }, { name: '참가 학생', rows: [ACTIVITY_HEAD, ...activityRows(cs, store.work.students, label).map(activityRowCells)] }]), `대회·활동_${store.year}학년도.xlsx`);
+}
+
+/** 학생관리용: 학생 한 명의 대회·활동 카드 */
+export function studentActivitiesCard(app, uid) {
+  const { store } = app;
+  const items = [];
+  for (const c of store.work.contests || []) for (const e of c.entries || []) if ((e.members || []).includes(uid)) items.push({ c, e });
+  items.sort((a, b) => (spanOf(b.c).start || '').localeCompare(spanOf(a.c).start || ''));
+  return h('section.card',
+    h('div.card-head', h('h2', `대회·활동 (${items.length})`), h('button.small', { onclick: () => { app.contestView = { ...(app.contestView || {}), sel: '' }; app.tab = 'contests'; app.render(); } }, '대회·활동 메뉴')),
+    items.length ? h('ul.activity-list', items.map(({ c, e }) => {
+      const sp = spanOf(c);
+      return h('li',
+        h('button.link', { onclick: () => openContest(app, c.id) }, c.name), ' ', h('span.muted.small', `${c.kind || ''} · ${[sp.start, sp.end].filter(Boolean).join(' ~ ')}`),
+        h('div.small', [e.team ? `팀 ${e.team}` : '', resultText(c, e), c.completion ? (e.done ? '수료' : '미수료') : ''].filter(Boolean).join(' · '),
+          e.award ? h('strong.award', ` 🏆 ${e.award}`) : null));
+    })) : h('p.muted', '참가한 대회·활동이 없습니다.'));
+}
+

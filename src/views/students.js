@@ -6,6 +6,7 @@ import { resizeImage } from '../lib/photos.js';
 import { migrateRefs } from '../store.js';
 import { classSelect, avatar, scrollToDetail } from './ui.js';
 import { openStudentImport, STUDENT_TEMPLATE } from './import.js';
+import { studentActivitiesCard } from './contests.js';
 import { xlsxBlob } from '../lib/xlsx.js';
 
 function counselList(items, onGo) {
@@ -180,6 +181,7 @@ export function renderStudents(app) {
               } }, '명단에서 삭제')))),
         h('p.muted.small', '학번은 학년도마다 따로 저장됩니다. 새 학년도에 명단을 올릴 때 "이전학번" 열을 넣으면 지난 학년도 기록과 이어집니다.')),
       statusCard(app, st),
+      studentActivitiesCard(app, st.uid),
       h('section.card.private-report',
         h('div.card-head', h('h2', '상담 일지'),
           h('button.small', { onclick: async () => downloadBlob(await exportCounsel(studentLabel(sel), store.counselFor(st.uid)), `상담일지_${studentLabel(sel)}.docx`) }, '⬇ Word')),

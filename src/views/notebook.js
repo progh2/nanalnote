@@ -14,6 +14,8 @@ import { splitSections, renderMd, toggleTodo } from '../lib/notemd.js';
 import { openTag } from './tags.js';
 import { attachStudentSuggest } from './suggest.js';
 import { mentionInline } from './mentions.js';
+import { dayEvents } from '../lib/contests.js';
+import { openContest } from './contests.js';
 
 /** textarea 높이 자동 조절 */
 export function autoGrow(el) {
@@ -46,7 +48,9 @@ export function renderNotebook(app) {
       value: store.scheduleText(date), oninput: (e) => store.setScheduleText(date, e.target.value),
     })),
     isHol ? h('div.specials', h('span.chip.holiday', '🏖 학교 휴업일')) : null,
-    specialsEl);
+    specialsEl,
+    // 대회·활동 일정 (단계 시작·마감)
+    (() => { const ev = dayEvents(store.work.contests, date); return ev.length ? h('div.specials.contest-day', ev.map((x) => h('button.chip.contest-chip', { onclick: () => openContest(app, x.c.id), title: '대회·활동 열기' }, `🏆 ${x.c.name} · ${x.text}`))) : null; })());
 
   // ----- 수업일지 -----
   const sec = s.schoolLevel === 'secondary';

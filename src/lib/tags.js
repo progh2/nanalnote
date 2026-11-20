@@ -35,7 +35,7 @@ export function tagNodes(text, onTag, active = null) {
     : p.text));
 }
 
-export const TYPE_LABEL = { note: '노트', task: '업무', lesson: '수업', counsel: '상담', schedule: '학사', trip: '출장', attendance: '출결', postit: '포스트잇' };
+export const TYPE_LABEL = { note: '노트', task: '업무', lesson: '수업', counsel: '상담', schedule: '학사', trip: '출장', attendance: '출결', postit: '포스트잇', contest: '대회·활동' };
 
 /**
  * 학년도 자료 전체의 글 기록 → [{type, date, text, update?, ...}] (노트는 --- 로 나눈 주제마다 하나)
@@ -63,6 +63,7 @@ export function textEntries(store) {
   for (const t of w.trips) add('trip', t.date, [t.place, t.purpose].filter(Boolean).join(' · '));
   for (const a of w.attendance) add('attendance', a.date, a.note, { label: store.label(a.student), update: field(a, 'note') });
   for (const n of w.notes) add('postit', '', n.text, { update: field(n, 'text') });
+  for (const c of w.contests || []) add('contest', c.start || c.stages?.[0]?.start || '', c.summary, { label: c.name, md: true, contestId: c.id, update: field(c, 'summary') });
   return out;
 }
 

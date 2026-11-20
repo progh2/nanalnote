@@ -677,3 +677,11 @@ section.card:has(table.att-table) { container-type: inline-size; }
 .settings-nav { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; margin-bottom: 4px; scrollbar-width: thin; }
 .settings-nav button { flex: none; border-radius: 999px; padding: 4px 12px; font-size: calc(13px * var(--fs, 1)); background: var(--surface); }
 @media (min-width: 1201px) { .settings-nav { display: none; } }
+
+/* 엑셀 올리기 */
+.error-text { color: var(--danger); font-weight: 600; }
+.warn-text { color: #b45309; }
+.import-view { display: grid; gap: 8px; min-width: min(640px, 80vw); }
+.import-modes { display: grid; gap: 8px; margin-top: 6px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.import-modes label { display: block; line-height: 1.5; }
+.empty-roster { padding: 8px 0; }

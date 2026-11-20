@@ -7,6 +7,7 @@ import { xlsxBlob } from '../lib/xlsx.js';
 import { mentionInline } from './mentions.js';
 import { scrollToDetail } from './ui.js';
 import { attachStudentSuggest } from './suggest.js';
+import { createSheet } from './sheet.js';
 
 const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_').slice(0, 60) || '파일';
 const dd = (n) => (n === 0 ? 'D-day' : n > 0 ? `D-${n}` : `D+${-n}`);
@@ -188,54 +189,46 @@ function detail(app, c) {
     h('div.row', h('button.small', { onclick: () => { c.links.push({ title: '', url: '' }); dirty(); app.render(); } }, '+ 링크'),
       h('button.small', { onclick: upload }, '+ 파일 올리기 (포스터·안내문·서식…)')));
 
-  // ----- 참가 (엑셀처럼) -----
+  // ----- 참가 (스프레드시트처럼: 바로 고치기, 엑셀·구글 시트에서 붙여넣기) -----
   const idx = store.studentIndex();
-  const studentList = h('datalist#contest-students', store.students().map((s) => h('option', { value: studentLabel(s) })));
-  const addMembers = (e, text) => {
-    const raw = String(text || '').trim();
-    if (!raw) return [];
-    // 쉼표·띄어쓰기로 나눈 학번/이름들 ("20101 20102", "20101 김민준, 이서연" 모두 됨)
-    const refs = raw.split(/[,\s]+/).filter(Boolean).map((x) => resolveRef(x, idx) || x);
+  /** "20101 김민준, 20102 이서연" / "20101 20102" / "김민준 이서연" → uid 들 + 못 찾은 것 */
+  const parseMembers = (text) => {
+    const refs = String(text || '').split(/[,\s;/·]+/).filter(Boolean).map((x) => resolveRef(x, idx) || x);
     const found = refs.filter((r) => typeof r !== 'string');
-    // "20101 김민준" 의 이름처럼 앞의 학번으로 이미 찾은 학생 이름은 빠뜨림으로 치지 않는다
-    const miss = refs.filter((r) => typeof r === 'string' && !found.some((s) => s.name === r));
-    for (const s of refs.filter((r) => typeof r !== 'string')) if (!e.members.includes(s.uid)) e.members.push(s.uid);
-    if (miss.length) toast(`학생을 찾지 못했습니다: ${miss.join(', ')} (학번이나 하나뿐인 이름으로 쓰세요)`, 'error');
-    dirty();
-    return miss;
+    const miss = refs.filter((r) => typeof r === 'string' && !found.some((x) => x.name === r));
+    return { uids: [...new Set(found.map((x) => x.uid))], miss };
   };
-  const awardsList = h('datalist#award-list', AWARDS.map((a) => h('option', { value: a })));
-  const entryRows = c.entries.map((e, i) => {
-    e.members ||= []; e.results ||= {};
-    const memberIn = h('input.member-input', { list: 'contest-students', placeholder: '학번·이름 +', 'aria-label': '학생 더하기',
-      onkeydown: (ev) => { if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); const miss = addMembers(e, ev.target.value); ev.target.value = miss.join(' '); app.render(); } },
-      onchange: (ev) => { if (resolveRef(ev.target.value, idx)) { addMembers(e, ev.target.value); app.render(); } } });
-    return h('tr',
-      h('td', h('input', { value: e.team || '', placeholder: '팀 이름 (개인은 비움)', 'aria-label': '팀', oninput: (ev) => { e.team = ev.target.value; dirty(); } })),
-      h('td.members-cell', h('div.member-chips',
-        e.members.map((uid) => h('span.member-chip', label(uid), h('button', { title: '빼기', 'aria-label': `${label(uid)} 빼기`, onclick: () => { e.members = e.members.filter((x) => x !== uid); dirty(); app.render(); } }, '×'))),
-        memberIn)),
-      ...c.stages.map((s) => h('td', h(`select.result-sel${e.results[s.id] ? `.r-${RESULTS.indexOf(e.results[s.id])}` : ''}`, { 'aria-label': `${s.name} 결과`, onchange: (ev) => { if (ev.target.value) e.results[s.id] = ev.target.value; else delete e.results[s.id]; dirty(); app.render(); } },
-        h('option', { value: '' }, '-'), RESULTS.map((r) => h('option', { value: r, selected: e.results[s.id] === r }, r))))),
-      h('td', h('input', { list: 'award-list', value: e.award || '', placeholder: '수상', 'aria-label': '수상', class: e.award ? 'has-award' : '', oninput: (ev) => { e.award = ev.target.value; dirty(); } })),
-      c.completion ? h('td.center', h('input', { type: 'checkbox', checked: !!e.done, 'aria-label': '수료', onchange: (ev) => { e.done = ev.target.checked; if (!e.done) delete e.done; dirty(); } })) : null,
-      h('td', h('input', { value: e.memo || '', placeholder: '메모', 'aria-label': '메모', oninput: (ev) => { e.memo = ev.target.value; dirty(); } })),
-      h('td', h('button.icon-btn', { title: '이 줄 지우기', 'aria-label': '이 줄 지우기', onclick: async () => {
-        if ((e.members.length || e.award) && !(await confirmDialog('참가 지우기', `${e.team || e.members.map(label).join(', ') || '이 줄'}을(를) 지울까요?`, '지우기'))) return;
-        c.entries.splice(i, 1); dirty(); app.render();
-      } }, '✕')));
+  const sumEl = h('h3', { style: { margin: 0 } });
+  const drawSum = () => {
+    const members = new Set(c.entries.flatMap((e) => e.members || []));
+    sumEl.textContent = `참가 (${c.entries.length}줄 · ${members.size}명${awardCount(c) ? ` · 🏆 ${awardCount(c)}` : ''}${c.completion ? ` · 수료 ${c.entries.filter((e) => e.done).length}` : ''})`;
+  };
+  drawSum();
+  const sheet = createSheet({
+    rows: () => c.entries,
+    addRow: () => { const e = { id: newId(), team: '', members: [], results: {}, award: '', memo: '' }; c.entries.push(e); return e; },
+    removeRows: (list) => { c.entries = c.entries.filter((e) => !list.includes(e)); },
+    onChange: () => { dirty(); drawSum(); },
+    snapshot: () => JSON.stringify(c.entries),
+    restore: (snap) => { c.entries = JSON.parse(snap); },
+    ghostText: '여기에 쓰거나 붙여넣으면 새 줄',
+    columns: [
+      { key: 'team', title: '팀', width: 8, get: (e) => e.team || '', set: (e, v) => { e.team = v.trim(); } },
+      { key: 'members', title: '학생 (학번·이름)', width: 16, wrap: true, get: (e) => (e.members || []).map(label).join(', '),
+        set: (e, v) => { const { uids, miss } = parseMembers(v); e.members = uids; return miss.length ? `학생을 찾지 못했습니다: ${miss.join(', ')}` : ''; } },
+      ...c.stages.map((stg) => ({ key: stg.id, title: stg.name, width: 5.5, type: 'list', options: RESULTS,
+        get: (e) => e.results?.[stg.id] || '', set: (e, v) => { e.results ||= {}; if (v.trim()) e.results[stg.id] = v.trim(); else delete e.results[stg.id]; } })),
+      { key: 'award', title: '수상', width: 7, type: 'list', options: AWARDS, get: (e) => e.award || '', set: (e, v) => { e.award = v.trim(); } },
+      ...(c.completion ? [{ key: 'done', title: '수료', width: 3.5, type: 'bool', get: (e) => !!e.done, set: (e, v) => { if (v) e.done = true; else delete e.done; } }] : []),
+      { key: 'memo', title: '메모', width: 12, wrap: true, get: (e) => e.memo || '', set: (e, v) => { e.memo = v; } },
+    ],
   });
-  const members = new Set(c.entries.flatMap((e) => e.members || []));
   const entriesCard = h('div.contest-block',
-    h('div.card-head', { style: { margin: '18px 0 8px' } }, h('h3', { style: { margin: 0 } }, `참가 (${c.entries.length}줄 · ${members.size}명${awardCount(c) ? ` · 🏆 ${awardCount(c)}` : ''}${c.completion ? ` · 수료 ${c.entries.filter((e) => e.done).length}` : ''})`),
-      h('button.small', { onclick: () => downloadBlob(xlsxBlob(contestSheets(c, label, store.work.students)), `${safe(c.name)}.xlsx`) }, '⬇ 엑셀로 내려받기')),
-    studentList, awardsList,
-    h('div.records-wrap', h('table.grid.entry-grid',
-      h('thead', h('tr', h('th', '팀'), h('th', '학생'), ...c.stages.map((s) => h('th', s.name)), h('th', '수상'), c.completion ? h('th', '수료') : null, h('th', '메모'), h('th', ''))),
-      h('tbody', entryRows))),
-    h('div.row',
-      h('button.small.primary', { onclick: () => { c.entries.push({ id: newId(), team: '', members: [], results: {}, award: '', memo: '' }); dirty(); app.render(); requestAnimationFrame(() => [...document.querySelectorAll('.entry-grid .member-input')].at(-1)?.focus()); } }, '+ 팀·개인 추가'),
-      h('span.muted.small', '학생 칸에 학번이나 이름을 쓰고 Enter (여러 명은 쉼표·띄어쓰기로: 20101 20102)')));
+    h('div.card-head', { style: { margin: '18px 0 8px' } }, sumEl,
+      h('div.row', { style: { margin: 0, gap: '6px' } },
+        h('button.small', { onclick: () => downloadBlob(xlsxBlob(contestSheets(c, label, store.work.students)), `${safe(c.name)}.xlsx`) }, '⬇ 엑셀로 내려받기'))),
+    h('p.muted.small.sheet-help', '스프레드시트처럼 칸을 눌러 바로 쓰고, 엑셀·구글 시트에서 복사한 표를 Ctrl+V 로 붙여 넣을 수 있어요. 학생 칸은 "20101 20102"처럼 학번이나 이름을 쉼표·띄어쓰기로. 줄 번호를 눌러 고른 뒤 Delete 로 줄 지우기, Ctrl+Z 되돌리기. ', sheet.statusEl),
+    sheet);
 
   const st = contestStatus(c, t);
   const nx = nextEvent(c, t);

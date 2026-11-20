@@ -7,6 +7,7 @@ import { migrateRefs } from '../store.js';
 import { classSelect, avatar, scrollToDetail } from './ui.js';
 import { openStudentImport, STUDENT_TEMPLATE } from './import.js';
 import { studentActivitiesCard } from './contests.js';
+import { createSheet } from './sheet.js';
 import { xlsxBlob } from '../lib/xlsx.js';
 
 function counselList(items, onGo) {
@@ -61,6 +62,7 @@ async function pastRecords(app, uid, years = 3) {
 
 export function renderStudents(app) {
   const { store } = app;
+  if (app.stuTable) return studentSheet(app);
   app.stuFilter ??= { cls: '', q: '', state: '' };
   const f = app.stuFilter;
   const all = store.students();
@@ -100,6 +102,7 @@ export function renderStudents(app) {
           document.querySelector('.stu-detail input[aria-label="이름"]')?.focus();
         } }, '+ 학생'),
         h('button.small', { title: '엑셀(.xlsx)이나 CSV 명렬표로 여러 명을 한 번에', onclick: () => openStudentImport(app) }, '📥 엑셀로 올리기'),
+        h('button.small', { title: '스프레드시트처럼 바로 고치고, 엑셀·구글 시트에서 복사해 붙여넣기', onclick: () => { app.stuTable = true; app.render(); } }, '📋 표로 편집'),
         h('button.small', { title: '파일 이름에 학번이나 이름이 들어 있으면 자동으로 찾아 붙입니다 (예: 10203_홍길동.jpg)', onclick: async () => {
           const files = await pickFiles('image/*');
           if (!files.length) return;
@@ -348,4 +351,72 @@ async function carryOver(app) {
   if (n) store.markDirty();
   toast(`${n}명을 이어받았습니다. 새 반 배정 명단(CSV)을 올리면 반·번호·학번이 채워집니다.`, 'ok');
   app.render();
+}
+
+// ---------- 표로 편집 (스프레드시트처럼) ----------
+function studentSheet(app) {
+  const { store } = app;
+  const f = (app.stuFilter ??= { cls: '', q: '', state: '' });
+  const d = app.date;
+  // 보는 동안 줄 순서가 바뀌지 않게, 열 때 한 번 정렬해 둔 목록을 쓴다
+  const view = store.students().filter((s) => !f.cls || classKey(s) === f.cls);
+  const digits = (v) => (String(v).match(/\d+/)?.[0] || '');
+  const num = (v) => (digits(v) === '' ? null : +digits(v));
+  const dupNo = (s, no) => no && store.work.students.some((x) => x !== s && x.studentNo === no);
+  // 학번(5자리 10203, 4자리 2105) → 학년·반·번호
+  const fromNo = (no) => { const m = String(no || '').match(/^(\d)(\d{2})(\d{2})$/) || String(no || '').match(/^(\d)(\d)(\d{2})$/); return m ? { grade: +m[1], cls: +m[2], no: +m[3] } : {}; };
+  // 학년·반·번호 칸을 비우면 학번에서 읽은 값으로 (엑셀에서 학번만 있는 표를 붙여 넣을 때)
+  const numOr = (s, k, v) => num(v) ?? fromNo(s.studentNo)[k] ?? null;
+  const countEl = h('span.muted.small');
+  const drawCount = () => { countEl.textContent = `${view.filter((s) => s.name).length}명${f.cls ? ` (${f.cls}반)` : ''}`; };
+  drawCount();
+  const sheet = createSheet({
+    rows: () => view,
+    addRow: () => {
+      const [g, c] = (f.cls || '').split('-').map((x) => +x || null);
+      const s = { id: newId(), uid: newUid(), studentNo: '', grade: g, cls: c, no: null, name: '', photo: '' };
+      store.work.students.push(s); view.push(s);
+      return s;
+    },
+    removeRows: (list) => {
+      store.work.students = store.work.students.filter((s) => !list.includes(s));
+      for (const s of list) view.splice(view.indexOf(s), 1);
+    },
+    onChange: () => { store.markDirty(); drawCount(); },
+    snapshot: () => JSON.stringify({ all: store.work.students, view: view.map((s) => s.uid) }),
+    restore: (snap) => {
+      const o = JSON.parse(snap);
+      store.work.students = o.all;
+      view.splice(0, view.length, ...o.view.map((u) => o.all.find((s) => s.uid === u)).filter(Boolean));
+    },
+    ghostText: '여기에 쓰거나 붙여넣으면 새 학생',
+    readonlyHint: '학적은 학생 화면의 학적 카드에서 고칩니다.',
+    columns: [
+      { key: 'studentNo', title: '학번', width: 5.5, get: (s) => s.studentNo || '', set: (s, v) => {
+        const no = digits(v);
+        if (dupNo(s, no)) return `학번 ${no} 이(가) 이미 있습니다.`;
+        s.studentNo = no;
+        Object.assign(s, fromNo(no)); // 학번에서 학년·반·번호를 다시 읽는다
+        return '';
+      } },
+      { key: 'grade', title: '학년', width: 3, get: (s) => s.grade ?? '', set: (s, v) => { s.grade = numOr(s, 'grade', v); } },
+      { key: 'cls', title: '반', width: 3, get: (s) => s.cls ?? '', set: (s, v) => { s.cls = numOr(s, 'cls', v); } },
+      { key: 'no', title: '번호', width: 3, get: (s) => s.no ?? '', set: (s, v) => { s.no = numOr(s, 'no', v); } },
+      { key: 'name', title: '이름', width: 6, get: (s) => s.name || '', set: (s, v) => { s.name = v.trim(); } },
+      { key: 'gender', title: '성별', width: 3, type: 'list', options: ['남', '여'], get: (s) => s.gender || '', set: (s, v) => {
+        const t = v.trim(); s.gender = /^(남|남자|m)$/i.test(t) ? '남' : /^(여|여자|f)$/i.test(t) ? '여' : t; if (!s.gender) delete s.gender;
+      } },
+      { key: 'phone', title: '전화번호', width: 8, get: (s) => s.phone || '', set: (s, v) => { s.phone = v.trim(); if (!s.phone) delete s.phone; } },
+      { key: 'email', title: '이메일', width: 12, get: (s) => s.email || '', set: (s, v) => { s.email = v.trim(); if (!s.email) delete s.email; } },
+      { key: 'state', title: '학적', width: 5, readonly: true, get: (s) => { const x = statusAt(s, d); return x.state === 'active' ? '' : x.ev?.type || ''; }, set: () => '' },
+    ],
+  });
+  return h('section.card.student-sheet',
+    h('div.card-head', h('h2', '학생 명단 — 표로 편집'), countEl,
+      h('div.row', { style: { margin: 0, gap: '6px' } },
+        store.classList().length ? classSelect(store, f.cls, (v) => { f.cls = v; app.render(); }) : null,
+        h('button.small', { onclick: () => openStudentImport(app) }, '📥 엑셀 파일로 올리기'),
+        h('button.small.primary', { onclick: () => { app.stuTable = false; app.render(); } }, '✓ 다 됐어요 (카드로 보기)'))),
+    h('p.muted.small.sheet-help', '엑셀·구글 시트에서 학번·학년·반·번호·이름… 순서의 칸을 복사해 학번 칸을 고르고 Ctrl+V 하면 한꺼번에 들어갑니다(넘치면 새 학생). 학번을 쓰면 학년·반·번호를 채웁니다. 줄 번호를 눌러 고른 뒤 Delete 로 학생 지우기, Ctrl+Z 되돌리기. ', sheet.statusEl),
+    sheet);
 }

@@ -4,6 +4,7 @@ import { KINDS, TITLES, normPerson, personLabel, sortPeople, mentionedPids, ambi
 import { textEntries, TYPE_LABEL } from '../lib/tags.js';
 import { renderMd } from '../lib/notemd.js';
 import { mentionInline } from './mentions.js';
+import { scrollToDetail } from './ui.js';
 
 /** 기록마다 나온 사람·기관 → { sure: Map(pid → [기록]), maybe: Map(pid → [동명이인이라 누군지 모르는 기록]) } */
 function mentionMap(store) {
@@ -130,7 +131,7 @@ export function renderPeople(app) {
     const shown = people.filter((p) => (!v.kind || p.kind === v.kind)
       && (!q || [p.name, p.title, p.org, p.phone, p.email, p.memo, ...(p.aliases || [])].some((x) => (x || '').includes(q))));
     fill(listBox, shown.length
-      ? h('ul.people-list', shown.map((p) => h(`li${p.id === v.sel ? '.active' : ''}`, { onclick: () => { v.sel = p.id; app.render(); } },
+      ? h('ul.people-list', shown.map((p) => h(`li${p.id === v.sel ? '.active' : ''}`, { onclick: () => { v.sel = p.id; app.render(); scrollToDetail('.people-page > section.card:last-child'); } },
         h('span.people-kind', p.kind === 'org' ? '🏢' : '👤'),
         h('span.people-name', h('strong', p.name || '(이름 없음)'), p.kind === 'person' && p.title ? ` ${p.title}` : ''),
         h('span.muted.small.people-org', homonymIds.has(p.id) ? h('span.homonym-badge', '동명이인') : null, p.org || ''),

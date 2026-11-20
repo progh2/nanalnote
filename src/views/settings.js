@@ -482,7 +482,7 @@ async function importCSV(app, kind) {
 function bulkCard(app) {
   return card('정보 일괄 등록',
     h('p.muted.small', '예제 파일(CSV)을 내려받아 엑셀이나 한셀에서 편집한 뒤 올리세요. 학사일정은 일정이 빈 날짜를 자동으로 건너뜁니다. 학생정보는 학번·학년·반·번호·이름만 넣습니다(민감정보 최소화). 새 학년도에는 "이전학번" 열을 채우면 지난 학년도 기록과 이어집니다. 중·고등학교 시간표에 학반을 적을 때는 엑셀이 날짜로 바꾸지 않도록 1-2 대신 1~2 처럼 적으세요. 시간표 파일에는 등교·점심·저녁 시각과 저녁 방과후 줄도 넣을 수 있습니다.'),
-    h('table.grid', h('tbody', Object.entries(TEMPLATES).map(([k, t]) => h('tr',
+    h('table.grid.bulk-table', h('tbody', Object.entries(TEMPLATES).map(([k, t]) => h('tr',
       h('th', t.name),
       h('td', h('button.small', { onclick: () => downloadBlob(new Blob([toCSV(t.rows(app.store.year))], { type: 'text/csv' }), t.file) }, '예제 파일 받기')),
       h('td', h('button.small.primary', { onclick: () => importCSV(app, k).catch((e) => toast(e.message, 'error')) }, 'CSV 올리기')))))));
@@ -516,8 +516,17 @@ export function renderSettings(app) {
   if (app.error) {
     return h('div.settings', h('section.card.error-card', h('p', app.error)), storageCard(app));
   }
-  return h('div.settings',
+  const grid = h('div.settings',
     h('div.col', storageCard(app), securityCard(app), aiCard(app), yearCard(app)),
     h('div.col', displayCard(app), listsCard(app), bulkCard(app), backupCard(app)),
     h('div.full', timetableCard(app)));
+  // 휴대폰·태블릿: 카드가 길게 이어지므로 위에 바로가기 단추
+  const cards = [...grid.querySelectorAll('section.card')].filter((c) => c.querySelector('h2'));
+  const nav = h('nav.settings-nav', { 'aria-label': '설정 바로가기' }, cards.map((c) => h('button.small', {
+    onclick: () => {
+      const top = c.getBoundingClientRect().top + window.scrollY - (document.getElementById('header')?.offsetHeight || 0) - 8;
+      window.scrollTo({ top, behavior: 'smooth' });
+    },
+  }, c.querySelector('h2').textContent.trim())));
+  return h('div', nav, grid);
 }

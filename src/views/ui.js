@@ -61,3 +61,14 @@ export function timeSelect(value, onChange, label = '시각') {
   for (const el of [ap, hh, mm]) el.addEventListener('change', emit);
   return h('span.time-sel', ap, hh, mm);
 }
+
+/** 좁은 화면(한 줄로 쌓일 때)에서 목록을 고르면 아래 상세로 내려 준다 */
+export function scrollToDetail(sel) {
+  if (window.innerWidth > 900) return;
+  requestAnimationFrame(() => {
+    const el = document.querySelector(sel);
+    if (!el) return;
+    const top = el.getBoundingClientRect().top + window.scrollY - (document.getElementById('header')?.offsetHeight || 0) - 8;
+    window.scrollTo({ top, behavior: 'smooth' });
+  });
+}

@@ -6,6 +6,7 @@ import { renderMd } from '../lib/notemd.js';
 import { mentionedPids, personLabel } from '../lib/people.js';
 import { dday } from '../store.js';
 import { mentionInline, openPerson } from './mentions.js';
+import { scrollToDetail } from './ui.js';
 
 export function openTag(app, tag) { app.tagView = { ...(app.tagView || {}), tag, type: '' }; app.tab = 'tags'; app.render(); }
 
@@ -87,7 +88,7 @@ export function renderTags(app) {
   const tagBtn = ([t, n]) => {
     const c = card(t);
     return h(`button.chip-btn${t === v.tag ? '.active' : ''}${c.status === 'done' ? '.tag-done' : ''}`,
-      { onclick: () => pick(t), title: [STATUS[c.status], c.memo].filter(Boolean).join(' — ') || `#${t}` },
+      { onclick: () => { pick(t); scrollToDetail('.tags-page > section.card:last-child'); }, title: [STATUS[c.status], c.memo].filter(Boolean).join(' — ') || `#${t}` },
       c.pinned ? '📌 ' : '', `#${t} `, h('small', String(n)));
   };
   const search = h('input', { type: 'search', placeholder: '태그 찾기', value: v.q, oninput: (e) => { v.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => app.render(), 250); } });

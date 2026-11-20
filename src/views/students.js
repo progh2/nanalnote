@@ -4,7 +4,7 @@ import { exportCounsel } from '../lib/export.js';
 import { studentLabel, classKey, newUid, normStudent, matchPhotoFile, buildIndex, searchStudents, statusAt, STATE_LABEL, STATUS_EVENTS, EVENT_HAS_GRADE, LEAVING_TYPES, FLAGS } from '../lib/students.js';
 import { resizeImage } from '../lib/photos.js';
 import { migrateRefs } from '../store.js';
-import { classSelect, avatar } from './ui.js';
+import { classSelect, avatar, scrollToDetail } from './ui.js';
 
 function counselList(items, onGo) {
   if (!items.length) return h('p.muted', '기록된 상담 일지가 없습니다.');
@@ -75,7 +75,7 @@ export function renderStudents(app) {
   // ----- 왼쪽: 명단 -----
   const listEl = h('div.stu-list', list.map((s) => {
     const state = stOf(s);
-    return h(`button.stu-card${s === sel ? '.active' : ''}${state !== 'active' ? '.inactive' : ''}`, { onclick: () => { app.selectedStudent = s.uid; app.render(); } },
+    return h(`button.stu-card${s === sel ? '.active' : ''}${state !== 'active' ? '.inactive' : ''}`, { onclick: () => { app.selectedStudent = s.uid; app.render(); scrollToDetail('.stu-detail'); } },
       avatar(app, s, 36), h('span.stu-no', s.studentNo || (s.no ?? '')), h('span.stu-name', s.name || '(이름 없음)'),
       state !== 'active' ? h('span.stu-state', statusAt(s, d).ev?.type || STATE_LABEL[state]) : null,
       s.leaving ? h('span.stu-leaving', { 'aria-hidden': 'true' }, '→') : null,

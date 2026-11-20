@@ -8,7 +8,7 @@ import { bellOf, periodList, periodLabel } from './lib/bell.js';
 import { normPerson, sortPeople, mentionedStudentUids } from './lib/people.js';
 import { tagEntries, tagCounts } from './lib/tags.js';
 
-export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records', 'trips', 'notes', 'docs', 'people', 'tagcards'];
+export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records', 'trips', 'notes', 'docs', 'people', 'tagcards', 'contests'];
 
 export const DEFAULT_SETTINGS = {
   teacherInfo: '',
@@ -319,6 +319,7 @@ export class Store {
       case 'tasks': return !!(x.text || '').trim();
       case 'students': return !!(x.name || '').trim();
       case 'people': return !!(x.name || '').trim();
+      case 'contests': return !!(x.name || '').trim();
       case 'tagcards': return !!x.tag && !!((x.memo || '').trim() || x.start || x.end || x.status || x.pinned);
       case 'attendance': return !!x.student;
       case 'records': return !!(x.title || '').trim();
@@ -421,4 +422,5 @@ export function migrateRefs(data) {
     for (const [k, v] of Object.entries(r.entries || {})) e[toUid(k, idx)] = v;
     r.entries = e;
   }
+  for (const c of data.contests || []) for (const e of c.entries || []) e.members = [...new Set((e.members || []).map((r) => toUid(r, idx)).filter(Boolean))];
 }

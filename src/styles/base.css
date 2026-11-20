@@ -685,3 +685,55 @@ section.card:has(table.att-table) { container-type: inline-size; }
 .import-modes { display: grid; gap: 8px; margin-top: 6px; padding-top: 10px; border-top: 1px dashed var(--border); }
 .import-modes label { display: block; line-height: 1.5; }
 .empty-roster { padding: 8px 0; }
+
+/* 대회·활동 */
+.type-badge.t-contest { background: #fce7f3; color: #be185d; }
+.contest-list { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 4px; }
+.contest-list li { padding: 8px 10px; border-radius: var(--radius); cursor: pointer; border: 1px solid transparent; }
+.contest-list li:hover { background: var(--surface-2); }
+.contest-list li.active { background: var(--highlight); border-color: var(--primary); }
+.contest-list li.done { opacity: .65; }
+.contest-li-top { display: flex; align-items: center; gap: 6px; }
+.contest-li-top strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kind-badge { flex: none; font-size: calc(11px * var(--fs, 1)); font-weight: 800; padding: 1px 7px; border-radius: 999px; background: var(--chip-bg); color: var(--chip-text); }
+.kind-badge.k-0 { background: #fee2e2; color: #b91c1c; }
+.kind-badge.k-1 { background: #ede9fe; color: #6d28d9; }
+.kind-badge.k-2 { background: #dcfce7; color: #15803d; }
+.contest-head { display: grid; gap: 8px; margin-bottom: 6px; }
+input.contest-name { font-size: calc(19px * var(--fs, 1)); font-weight: 800; padding: 8px 10px; }
+.contest-meta { flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.contest-meta input[type=date] { width: auto; }
+.contest-block { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.contest-block > h3 { margin: 0 0 8px; }
+.contest-summary { display: grid; gap: 6px; justify-items: start; }
+.contest-summary textarea { width: 100%; min-height: 70px; line-height: 1.6; }
+.contest-md { width: 100%; padding: 10px 12px; background: var(--surface-2); border-radius: var(--radius); line-height: 1.7; }
+.stage-table input { width: 100%; min-width: 6em; }
+.stage-table input[type=date] { min-width: 9.5em; }
+.nowrap { white-space: nowrap; }
+.link-row { display: grid; grid-template-columns: minmax(8em, 1fr) 2fr auto auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+.contest-files { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin: 6px 0; }
+.file-item { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.file-thumb { height: 110px; display: grid; place-items: center; font-size: 34px; background: var(--surface); border-radius: 6px; overflow: hidden; }
+.file-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.entry-grid { min-width: 640px; }
+.entry-grid td { vertical-align: top; }
+.entry-grid input:not([type=checkbox]), .entry-grid select { width: 100%; min-width: 5em; }
+.members-cell { min-width: 14em; }
+.member-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.member-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 4px 1px 8px; border-radius: 999px; background: var(--chip-bg); color: var(--chip-text); font-size: calc(13px * var(--fs, 1)); white-space: nowrap; }
+.member-chip button { border: 0; background: transparent; padding: 0 4px; min-height: 0 !important; cursor: pointer; color: inherit; }
+.member-chips input.member-input { flex: 1; min-width: 7em !important; width: auto !important; }
+select.result-sel.r-1 { background: #dcfce7; }
+select.result-sel.r-2 { background: #fee2e2; }
+input.has-award { font-weight: 800; color: #b45309; }
+.contest-chip { cursor: pointer; border: 0; background: #fce7f3; color: #9d174d; border-radius: 999px; padding: 2px 10px; font-weight: 600; }
+.activity-list { margin: 0; padding-left: 1.1em; line-height: 1.7; display: grid; gap: 6px; }
+.activity-list .award { color: #b45309; }
+.activity-report th[rowspan] { vertical-align: top; text-align: left; white-space: nowrap; }
+@media (max-width: 560px) { .link-row { grid-template-columns: 1fr auto auto; } .link-row > input[type=url] { grid-column: 1 / -1; grid-row: 2; } }
+@media (min-width: 901px) { .split.contests-page { grid-template-columns: minmax(250px, .7fr) 2.3fr; } }
+.members-cell { min-width: 11em; }
+.entry-grid td:first-child input { min-width: 6em; }
+.reports .row select { width: auto; max-width: 100%; }
+.entry-grid th { white-space: nowrap; }

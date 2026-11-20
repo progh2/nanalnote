@@ -177,10 +177,14 @@ const app = {
         h('button.primary', { onclick: () => this.save(), disabled: s.saving, title: 'Ctrl+S' }, '저장')),
       h('nav.tabs', tabs.map(([k, l]) => h(`button${this.tab === k ? '.active' : ''}`, { onclick: () => this.go(k) }, l))),
     );
+    // 좁은 화면에서 지금 탭이 보이게 가로로 밀어 둔다
+    const act = el.querySelector('nav.tabs button.active');
+    if (act) { const nav = act.parentElement; if (act.offsetLeft < nav.scrollLeft || act.offsetLeft + act.offsetWidth > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = act.offsetLeft - (nav.clientWidth - act.offsetWidth) / 2; }
   },
 
   render() {
     this.renderHeader();
+    watchHeader();
     const main = document.getElementById('main');
     if (!main) return;
     let view;
@@ -200,6 +204,17 @@ const app = {
     document.title = `${APP_NAME} · ${koDate(this.date)}`;
   },
 };
+
+/** 머리줄 높이를 CSS 변수(--head-h)로: 넓은 화면의 왼쪽 목록 고정 위치 등에 쓴다 */
+let headObs = null;
+function watchHeader() {
+  const el = document.getElementById('header');
+  if (!el || headObs) return;
+  const set = () => document.documentElement.style.setProperty('--head-h', `${el.offsetHeight}px`);
+  headObs = new ResizeObserver(set);
+  headObs.observe(el);
+  set();
+}
 
 window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {

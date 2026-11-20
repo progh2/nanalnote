@@ -5,6 +5,8 @@ import { studentLabel, classKey, newUid, normStudent, matchPhotoFile, buildIndex
 import { resizeImage } from '../lib/photos.js';
 import { migrateRefs } from '../store.js';
 import { classSelect, avatar, scrollToDetail } from './ui.js';
+import { openStudentImport, STUDENT_TEMPLATE } from './import.js';
+import { xlsxBlob } from '../lib/xlsx.js';
 
 function counselList(items, onGo) {
   if (!items.length) return h('p.muted', '기록된 상담 일지가 없습니다.');
@@ -96,6 +98,7 @@ export function renderStudents(app) {
           app.selectedStudent = st.uid; app.render();
           document.querySelector('.stu-detail input[aria-label="이름"]')?.focus();
         } }, '+ 학생'),
+        h('button.small', { title: '엑셀(.xlsx)이나 CSV 명렬표로 여러 명을 한 번에', onclick: () => openStudentImport(app) }, '📥 엑셀로 올리기'),
         h('button.small', { title: '파일 이름에 학번이나 이름이 들어 있으면 자동으로 찾아 붙입니다 (예: 10203_홍길동.jpg)', onclick: async () => {
           const files = await pickFiles('image/*');
           if (!files.length) return;
@@ -112,7 +115,10 @@ export function renderStudents(app) {
     h('div.row', store.classList().length ? classSelect(store, f.cls, (v) => { f.cls = v; app.render(); }) : null, search),
     stateChips,
     f.cls ? hrLine(f.cls) : null,
-    all.length ? listEl : h('p.muted', '학생이 없습니다. [+ 학생]으로 추가하거나 설정 > 정보 일괄 등록에서 CSV(학번, 이름 …)로 한 번에 올리세요.'),
+    all.length ? listEl : h('div.empty-roster',
+      h('p.muted', '학생이 없습니다. 학교 명렬표 엑셀 파일을 그대로 올리면 됩니다 — 제목 줄이 있어도 "학번·성명(이름)·성별·연락처" 같은 열을 찾아 읽습니다.'),
+      h('div.row', h('button.primary', { onclick: () => openStudentImport(app) }, '📥 엑셀로 학생 명단 올리기'),
+        h('button.small', { onclick: () => downloadBlob(xlsxBlob([{ name: '학생명단', rows: STUDENT_TEMPLATE }]), '학생명단_예제.xlsx') }, '예제 엑셀 받기'))),
     h('div.row', h('button', { onclick: () => carryOver(app) }, `${store.year - 1}학년도 명단 이어받기`), h('button.primary', { onclick: () => {
       const nos = store.work.students.map((s) => normStudent(s).studentNo).filter(Boolean);
       const dup = nos.filter((n, i) => nos.indexOf(n) !== i);
@@ -202,62 +208,6 @@ export function renderStudents(app) {
         pastBox));
   }
   return h('div.split', left, right);
-}
-
-/** CSV 로 학생 명단 등록. 열: 학번, 학년, 반, 번호, 이름, 이전학번(선택) — 학년/반/번호는 학번에서 자동 계산 가능 */
-export async function importStudentsCSV(app, rows) {
-  const { store } = app;
-  const head = rows[0] || [];
-  const hasHead = head.some((c) => /이름|학번|번호/.test(c));
-  const col = (name) => head.findIndex((c) => c.replace(/\s/g, '') === name);
-  let ci;
-  if (hasHead && col('이름') >= 0) ci = { no: col('학번'), grade: col('학년'), cls: col('반'), num: col('번호'), name: col('이름'), prev: col('이전학번'), gender: col('성별'), email: col('이메일'), phone: Math.max(col('전화번호'), col('전화')) };
-  else ci = head.length >= 2 ? { num: 0, name: 1, no: -1, grade: -1, cls: -1, prev: -1, gender: -1, email: -1, phone: -1 } : null; // 예전 형식: 번호, 이름
-  if (!ci) throw new Error('CSV 형식을 알 수 없습니다. 예제 파일을 참고하세요.');
-  const at = (r, i) => (i >= 0 ? (r[i] || '').trim() : '');
-  const list = (hasHead ? rows.slice(1) : rows).filter((r) => at(r, ci.name)).map((r) => normStudent({
-    studentNo: at(r, ci.no), grade: at(r, ci.grade), cls: at(r, ci.cls), no: at(r, ci.num), name: at(r, ci.name), prevNo: at(r, ci.prev),
-    ...Object.fromEntries(['gender', 'email', 'phone'].filter((k) => at(r, ci[k])).map((k) => [k, at(r, ci[k])])),
-  }));
-  const nos = list.map((x) => x.studentNo).filter(Boolean);
-  const dup = nos.filter((n, i) => nos.indexOf(n) !== i);
-  if (dup.length) throw new Error(`학번이 겹칩니다: ${[...new Set(dup)].join(', ')}`);
-  if (store.work.students.length && !(await confirmDialog('학생 명단 등록', `기존 학생 ${store.work.students.length}명을 새 명단 ${list.length}명으로 바꿀까요? 학번이 같거나, 이어받아 학번이 아직 없는 같은 이름의 학생은 기록(학적·표시 등)이 유지됩니다. 명단에 없는 휴학생은 그대로 남깁니다.`, '바꾸기'))) return null;
-
-  // 지난 학년도와 연결: 이전학번 → 같은 학생(uid), 없으면 지난 학년도에 하나뿐인 같은 이름
-  let prevIdx = null;
-  try {
-    const prev = await store.backend.loadYear(store.year - 1);
-    const ps = { students: prev?.students || [], attendance: [], counsel: [], records: [] };
-    migrateRefs(ps);
-    if (ps.students.length) prevIdx = buildIndex(ps.students);
-  } catch { /* 지난 학년도 없음 */ }
-  const cur = buildIndex(store.work.students);
-  // 이어받기로 들어와 학번이 아직 없는 학생: 이름이 하나뿐이면 새 명단의 같은 이름과 잇는다
-  const noNo = buildIndex(store.work.students.filter((s) => !s.studentNo));
-  const used = new Set();
-  let linked = 0;
-  const next = list.map((x) => {
-    const byName = (ix) => (ix.byName.get(x.name)?.length === 1 ? ix.byName.get(x.name)[0] : null);
-    let same = (x.studentNo && cur.byNo.get(x.studentNo)) || byName(noNo) || (!x.studentNo && byName(cur));
-    if (same && used.has(same.uid)) same = null;
-    if (same) used.add(same.uid);
-    let uid = same?.uid;
-    let from = same;
-    if (!uid && prevIdx) {
-      // 이름으로만 이을 때는 학년이 하나 올라간 경우만 (졸업생과 신입생 동명이인 방지)
-      const byName = prevIdx.byName.get(x.name)?.length === 1 ? prevIdx.byName.get(x.name)[0] : null;
-      const p = (x.prevNo && prevIdx.byNo.get(x.prevNo)) || (byName && (!x.grade || !byName.grade || x.grade === byName.grade + 1) ? byName : null);
-      if (p) { uid = p.uid; linked++; from = p; }
-    }
-    const { prevNo, ...rest } = x;
-    return { id: same?.id || newId(), ...Object.fromEntries(['gender', 'email', 'phone', 'statusLog', 'leaving', 'flags', 'flagMemo'].filter((k) => from?.[k]).map((k) => [k, from[k]])), ...rest, uid: uid || newUid(), photo: same?.photo || '' };
-  });
-  // 새 명단에 없는 휴학생은 남긴다 (복학하면 다시 반 배정)
-  const keep = store.work.students.filter((s) => !used.has(s.uid) && !next.some((n) => n.uid === s.uid) && statusAt(s, app.date).state === 'leave');
-  store.work.students = [...next, ...keep];
-  store.markDirty();
-  return { count: list.length, linked };
 }
 
 // ---------- 학적·전출 예정·표시 ----------

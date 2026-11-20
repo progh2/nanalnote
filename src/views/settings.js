@@ -6,7 +6,8 @@ import { isDesktop, pickFolder, PORTABLE_FOLDER } from '../lib/desktop.js';
 import { COLLECTIONS } from '../store.js';
 import { THEMES } from '../themes.js';
 import { ttCell, courseOf } from '../store.js';
-import { importStudentsCSV } from './students.js';
+import { openStudentImport, readTable, TABLE_ACCEPT } from './import.js';
+import { xlsxBlob } from '../lib/xlsx.js';
 import { bellOf, rawBell, cascadeFrom, addMin, csatTimes, EVENING_BASE } from '../lib/bell.js';
 import { timeSelect } from './ui.js';
 import { vaultEnabled, setupPin, changePin, removeVault, validPin, registerPasskey, removePasskey, hasPasskey, passkeyAvailable } from '../lib/vault.js';
@@ -404,9 +405,11 @@ const TEMPLATES = {
 };
 
 async function importCSV(app, kind) {
-  const file = await pickFile('.csv,text/csv');
+  const file = await pickFile(TABLE_ACCEPT);
   if (!file) return;
-  const rows = parseCSV(await readTextFile(file));
+  // 학생 명단은 미리 보기 창에서 (시트 고르기·더하고 고치기/바꾸기)
+  if (kind === 'students') { await openStudentImport(app, file); return; }
+  const rows = (await readTable(file))[0]?.rows || [];
   const body = rows.slice(/^\d/.test(rows[0]?.[0] || '') ? 0 : 1); // 머리글 행 자동 건너뛰기
   const { store } = app;
   let msg = '';
@@ -428,10 +431,6 @@ async function importCSV(app, kind) {
     }
     store.markDirty();
     msg = (`학사일정 ${n}건 등록${skipped ? ` (${skipped}건 건너뜀: 날짜 형식 오류 또는 다른 학년도)` : ''}`);
-  } else if (kind === 'students') {
-    const r = await importStudentsCSV(app, rows);
-    if (!r) return;
-    msg = `학생 ${r.count}명 등록${r.linked ? ` (지난 학년도 기록과 ${r.linked}명 연결)` : ''}`;
   } else if (kind === 'timetable') {
     // 형식: 교시,시작,끝,월,화,수,목,금 (예전 형식 교시,월,…,금 도 지원)
     // 교시 칸: 숫자(정규 교시) / 등교 / 점심 / 저녁 / 그 밖의 이름(저녁 방과후)
@@ -484,8 +483,8 @@ function bulkCard(app) {
     h('p.muted.small', '예제 파일(CSV)을 내려받아 엑셀이나 한셀에서 편집한 뒤 올리세요. 학사일정은 일정이 빈 날짜를 자동으로 건너뜁니다. 학생정보는 학번·학년·반·번호·이름만 넣습니다(민감정보 최소화). 새 학년도에는 "이전학번" 열을 채우면 지난 학년도 기록과 이어집니다. 중·고등학교 시간표에 학반을 적을 때는 엑셀이 날짜로 바꾸지 않도록 1-2 대신 1~2 처럼 적으세요. 시간표 파일에는 등교·점심·저녁 시각과 저녁 방과후 줄도 넣을 수 있습니다.'),
     h('table.grid.bulk-table', h('tbody', Object.entries(TEMPLATES).map(([k, t]) => h('tr',
       h('th', t.name),
-      h('td', h('button.small', { onclick: () => downloadBlob(new Blob([toCSV(t.rows(app.store.year))], { type: 'text/csv' }), t.file) }, '예제 파일 받기')),
-      h('td', h('button.small.primary', { onclick: () => importCSV(app, k).catch((e) => toast(e.message, 'error')) }, 'CSV 올리기')))))));
+      h('td', h('button.small', { onclick: () => downloadBlob(xlsxBlob([{ name: t.name, rows: t.rows(app.store.year) }]), t.file.replace(/\.csv$/, '.xlsx')) }, '예제 엑셀 받기')),
+      h('td', h('button.small.primary', { onclick: () => importCSV(app, k).catch((e) => toast(e.message, 'error')) }, '엑셀·CSV 올리기')))))));
 }
 
 function backupCard(app) {

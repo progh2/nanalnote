@@ -102,6 +102,6 @@ test('이름 뒤 T·샘·쌤도 선생님으로, 겸임 호칭으로 동명이�
 
 test('기록에서 찾은 이름: 일상 표현은 거르고, 뺀 말은 다시 추천하지 않음', () => {
   const texts = ['수능감독 선생님 명단', '같이 가는 선생님', '이번에는 교장선생님께', '학교에서 선생님', '정다온T 연락', '이수진샘 회의', '박하늘 선생님'];
-  assert.deepEqual(findUnregistered(texts, []).map((x) => `${x.name}:${x.title}`), ['정다온:선생님', '박하늘:선생님', '이수진:선생님']);
-  assert.deepEqual(findUnregistered(texts, [], ['박하늘']).map((x) => x.name), ['정다온', '이수진']);
+  assert.deepEqual(findUnregistered(texts, []).map((x) => `${x.name}:${x.title}`), ['박하늘:선생님', '이수진:선생님', '정다온:선생님']);
+  assert.deepEqual(findUnregistered(texts, [], ['박하늘']).map((x) => x.name), ['이수진', '정다온']);
 });

@@ -8,6 +8,7 @@ import { classSelect, avatar, scrollToDetail, photoDrop } from './ui.js';
 import { openStudentImport, STUDENT_TEMPLATE } from './import.js';
 import { studentActivitiesCard } from './contests.js';
 import { createSheet } from './sheet.js';
+import { openPastImport } from './pastimport.js';
 import { relationsBox } from './relations.js';
 import { normPerson } from '../lib/people.js';
 import { xlsxBlob } from '../lib/xlsx.js';
@@ -132,6 +133,7 @@ export function renderStudents(app) {
         } }, '+ 학생'),
         h('button.small', { title: '엑셀(.xlsx)이나 CSV 명렬표로 여러 명을 한 번에', onclick: () => openStudentImport(app) }, '📥 엑셀로 올리기'),
         h('button.small', { title: '스프레드시트처럼 바로 고치고, 엑셀·구글 시트에서 복사해 붙여넣기', onclick: () => { app.stuTable = true; app.render(); } }, '📋 표로 편집'),
+        h('button.small', { title: '작년 학번·이름·사진 링크 표를 붙여 넣어 지난 학번과 사진을 채우고, 작년 졸업반은 졸업생 명부로', onclick: () => openPastImport(app) }, '🕘 작년 학번·사진'),
         h('button.small', { title: '파일 이름에 학번이나 이름이 들어 있으면 자동으로 찾아 붙입니다 (예: 10203_홍길동.jpg)', onclick: async () => {
           const files = await pickFiles('image/*');
           if (!files.length) return;

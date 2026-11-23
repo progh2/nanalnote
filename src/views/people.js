@@ -275,7 +275,7 @@ export function renderPeople(app) {
           h('li', '이름 두 글자를 쓰면 추천 창이 뜹니다. 알아본 이름을 누르면 그 사람·기관이 나온 기록을 모아 봅니다.'),
           h('li', '동명이인은 "김민수(2학년부) 선생님"처럼 괄호에 소속(또는 다른 이름)을 붙여 쓰세요. 추천 창에서 고르면 자동으로 붙습니다. 누군지 모르는 이름에는 ?가 붙고, 누르면 골라서 고칠 수 있습니다.'),
           h('li', '사업·행사·프로젝트는 #태그로 쓰세요. 예: #방과후 #진로캠프')),
-        h('p.muted.small', '명부는 학년도 폴더의 "사람·기관.md" 파일에 저장됩니다. 새 학년도에는 "지난 학년도 명부 가져오기"로 옮겨 오세요.')));
+        h('p.muted.small', '명부는 학년도 폴더의 "사람·기관.md" 파일에 저장됩니다. 새 학년도에는 "지난 학년도 명부 가져오기"로 옮겨 고은요.')));
   } else {
     const list = (mentions.get(sel.id) || []).slice().sort((a, b) => (b.date || '0').localeCompare(a.date || '0'));
     const maybeList = (maybe.get(sel.id) || []).slice().sort((a, b) => (b.date || '0').localeCompare(a.date || '0'));

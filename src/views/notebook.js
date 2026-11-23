@@ -360,7 +360,7 @@ export function renderNotebook(app) {
   };
   const counselTa = autoGrow(h('textarea.counsel', {
     rows: 6,
-    placeholder: '오늘 있었던 특이사항을 자유롭게 기록하세요.\n· "학번 이름" 또는 (동명이인이 없으면) "이름" 뒤에 한 칸 띄우면 학생으로 인식합니다. 예: "10203 홍길동 학생이 …"\n· 이름 두 글자를 쓰면 학생을 추천하고, "...오" 처럼 ... 뒤에 이름 일부나 학번을 쓰면 찾아 줘요. 빈 줄로 단락을 나누면 각각 별개의 상담 일지가 됩니다.',
+    placeholder: '오늘 있었던 특이사항을 자유롭게 기록하세요.\n· "학번 이름" 또는 (동명이인이 없으면) "이름" 뒤에 한 칸 띄우면 학생으로 인식합니다. 예: "10203 홍길동 학생이 …"\n· 이름 두 글자를 쓰면 학생을 추천하고, "...고" 처럼 ... 뒤에 이름 일부나 학번을 쓰면 찾아 줘요. 빈 줄로 단락을 나누면 각각 별개의 상담 일지가 됩니다.',
     value: store.counselText(date),
     oninput: (e) => { store.setCounselText(date, e.target.value); livePreview(e.target.value); },
     onblur: (e) => drawCounselView(e.target.value),

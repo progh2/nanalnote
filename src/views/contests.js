@@ -8,7 +8,7 @@ import { mentionInline } from './mentions.js';
 import { scrollToDetail } from './ui.js';
 import { attachStudentSuggest } from './suggest.js';
 import { createSheet } from './sheet.js';
-import { summaryBlock, stagesBlock, resourcesBlock, projectsOf } from './projectparts.js';
+import { summaryBlock, stagesBlock, resourcesBlock, projectsOf, sheetLinks } from './projectparts.js';
 
 const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_').slice(0, 60) || '파일';
 const dd = (n) => (n === 0 ? 'D-day' : n > 0 ? `D-${n}` : `D+${-n}`);
@@ -128,6 +128,7 @@ function detail(app, c) {
     sumEl.textContent = `참가 (${c.entries.length}줄 · ${members.size}명${awardCount(c) ? ` · 🏆 ${awardCount(c)}` : ''}${c.completion ? ` · 수료 ${c.entries.filter((e) => e.done).length}` : ''})`;
   };
   drawSum();
+  const memoLinks = sheetLinks(app);
   const sheet = createSheet({
     rows: () => c.entries,
     addRow: () => { const e = { id: newId(), team: '', members: [], results: {}, award: '', memo: '' }; c.entries.push(e); return e; },
@@ -136,6 +137,7 @@ function detail(app, c) {
     snapshot: () => JSON.stringify(c.entries),
     restore: (snap) => { c.entries = JSON.parse(snap); },
     ghostText: '여기에 쓰거나 붙여넣으면 새 줄',
+    attachEditor: (ed) => attachStudentSuggest(ed, () => store.work.students, () => store.work.people, () => store.tagList()),
     columns: [
       { key: 'team', title: '팀', width: 8, get: (e) => e.team || '', set: (e, v) => { e.team = v.trim(); } },
       { key: 'members', title: '학생 (학번·이름)', width: 16, wrap: true, get: (e) => (e.members || []).map(label).join(', '),
@@ -144,7 +146,7 @@ function detail(app, c) {
         get: (e) => e.results?.[stg.id] || '', set: (e, v) => { e.results ||= {}; if (v.trim()) e.results[stg.id] = v.trim(); else delete e.results[stg.id]; } })),
       { key: 'award', title: '수상', width: 7, type: 'list', options: AWARDS, get: (e) => e.award || '', set: (e, v) => { e.award = v.trim(); } },
       ...(c.completion ? [{ key: 'done', title: '수료', width: 3.5, type: 'bool', get: (e) => !!e.done, set: (e, v) => { if (v) e.done = true; else delete e.done; } }] : []),
-      { key: 'memo', title: '메모', width: 12, wrap: true, get: (e) => e.memo || '', set: (e, v) => { e.memo = v; } },
+      { key: 'memo', title: '메모', width: 12, wrap: true, get: (e) => e.memo || '', set: (e, v) => { e.memo = v; }, render: (e) => memoLinks(e.memo) },
     ],
   });
   const entriesCard = h('div.contest-block',

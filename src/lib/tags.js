@@ -78,3 +78,68 @@ export function tagCounts(entries) {
   for (const e of entries) m.set(e.tag, (m.get(e.tag) || 0) + 1);
   return [...m].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'));
 }
+
+// ---------- 태그 이름 바꾸기 (모든 기록에서 함께) ----------
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** 태그 이름으로 쓸 수 있나 → 오류 글 (괜찮으면 '') */
+export function tagNameError(name) {
+  const t = String(name || '').trim().replace(/^#/, '');
+  if (!t) return '새 이름을 쓰세요.';
+  if (!/^[0-9A-Za-z가-힣_][0-9A-Za-z가-힣_-]*$/.test(t)) return '태그 이름에는 한글·영문·숫자·_·- 만 쓸 수 있습니다 (띄어쓰기 없이).';
+  if (/^\d+$/.test(t)) return '숫자만으로는 태그가 되지 않습니다.';
+  return '';
+}
+
+/** 글 속 #old 를 #neu 로 (더 긴 다른 태그 #old학교 는 그대로) → [바뀐 글, 바꾼 수] */
+export function replaceTagIn(text, old, neu) {
+  const re = new RegExp(`(^|[\\s([{,.;:!?'"])#${escRe(old)}(?![0-9A-Za-z가-힣_-])`, 'g');
+  let n = 0;
+  const out = String(text ?? '').replace(re, (m, pre) => { n++; return `${pre}#${neu}`; });
+  return [out, n];
+}
+
+/**
+ * 학년도 자료 전체에서 태그 이름 바꾸기 (data = store.work, drafts = 저장 전 상담 초안)
+ * 새 이름이 이미 있으면 두 태그를 합친다 (태그 카드도 합침)
+ * @param dryRun true 면 세기만
+ * @returns {{ records:number, places:number, merged:boolean }}
+ */
+export function renameTag(data, drafts, old, neu, { dryRun = false } = {}) {
+  old = String(old).replace(/^#/, ''); neu = String(neu).trim().replace(/^#/, '');
+  let records = 0, places = 0;
+  const fix = (obj, key) => {
+    if (!obj || typeof obj[key] !== 'string') return;
+    const [t, n] = replaceTagIn(obj[key], old, neu);
+    if (!n) return;
+    records++; places += n;
+    if (!dryRun) obj[key] = t;
+  };
+  for (const d of data.days || []) fix(d, 'note');
+  for (const t of data.tasks || []) fix(t, 'text');
+  for (const l of data.lessons || []) fix(l, 'content');
+  for (const c of data.counsel || []) fix(c, 'text');
+  for (const k of Object.keys(drafts || {})) fix(drafts, k);
+  for (const s of data.schedule || []) fix(s, 'text');
+  for (const t of data.trips || []) { fix(t, 'place'); fix(t, 'purpose'); }
+  for (const a of data.attendance || []) fix(a, 'note');
+  for (const n of data.notes || []) fix(n, 'text');
+  for (const c of data.contests || []) { fix(c, 'summary'); for (const e of c.entries || []) fix(e, 'memo'); }
+  for (const c of data.tagcards || []) { fix(c, 'memo'); for (const m of c.members || []) fix(m, 'memo'); }
+  for (const p of data.people || []) fix(p, 'memo');
+  // 태그 카드: 이름 바꾸기 또는 합치기
+  const from = (data.tagcards || []).find((c) => c.tag === old);
+  const to = (data.tagcards || []).find((c) => c.tag === neu);
+  const merged = !!(from && to) || (!!to && records > 0);
+  if (!dryRun && from) {
+    if (!to) from.tag = neu;
+    else {
+      // 비어 있는 칸은 채우고, 목록(일정·자료·인물)은 이어 붙이고, 설명은 아래에 덧붙인다
+      for (const k of ['status', 'start', 'end', 'pinned']) if (to[k] == null || to[k] === '') { if (from[k] != null && from[k] !== '') to[k] = from[k]; }
+      if ((from.memo || '').trim()) to.memo = (to.memo || '').trim() ? `${to.memo.trim()}\n\n---\n${from.memo.trim()}` : from.memo;
+      for (const k of ['stages', 'links', 'files', 'members']) if (from[k]?.length) to[k] = [...(to[k] || []), ...from[k]];
+      data.tagcards = data.tagcards.filter((c) => c !== from);
+    }
+  }
+  return { records, places, merged };
+}

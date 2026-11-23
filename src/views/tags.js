@@ -1,11 +1,11 @@
 // 태그 탭: #태그 목록과 태그 카드(설명·기간·상태·고정), 태그가 붙은 기록을 날짜순으로 모아 보기
 // 사업·행사·프로젝트는 #태그로 쓰고, 카드에 설명과 기간을 적어 두면 한눈에 관리할 수 있다.
-import { h, koDate, today, newId } from '../lib/util.js';
+import { h, koDate, today, newId, modal, toast } from '../lib/util.js';
 import { summaryBlock, stagesBlock, resourcesBlock, membersBlock } from './projectparts.js';
 
 export const TAG_FILES = '태그자료';
 const PROJECT_STAGES = ['계획', '신청·공모', '운영', '중간 점검', '결과 보고', '정산'];
-import { tagEntries, tagCounts, TYPE_LABEL } from '../lib/tags.js';
+import { tagEntries, tagCounts, TYPE_LABEL, renameTag, tagNameError } from '../lib/tags.js';
 import { renderMd } from '../lib/notemd.js';
 import { mentionedPids, personLabel } from '../lib/people.js';
 import { dday } from '../store.js';
@@ -79,6 +79,7 @@ function tagCardView(app, tag, all, plain) {
 export function renderTags(app) {
   const { store } = app;
   const v = (app.tagView ||= { tag: '', q: '', type: '', status: '' });
+  v.q ??= ''; v.type ??= ''; v.status ??= ''; // 태그를 눌러 처음 들어온 경우
   const entries = tagEntries(store);
   // 기록에는 없어도 카드를 만든 태그는 목록에 보인다
   const countMap = new Map(tagCounts(entries));
@@ -122,7 +123,7 @@ export function renderTags(app) {
     groups.at(-1).items.push(e);
   }
   const right = h('section.card',
-    h('div.card-head', h('h2', v.tag ? `#${v.tag}` : '태그를 고르세요'), h('span.muted.small', `${mine.length}건 · ${store.year}학년도`)),
+    h('div.card-head', h('h2', v.tag ? `#${v.tag}` : '태그를 고르세요'), h('div.row', { style: { margin: 0, gap: '8px', alignItems: 'center' } }, h('span.muted.small', `${mine.length}건 · ${store.year}학년도`), v.tag ? h('button.small', { onclick: () => renameDialog(app, v.tag) }, '✎ 이름 바꾸기') : null)),
     v.tag ? tagCardView(app, v.tag, mine, plain) : null,
     types.length > 1 ? h('div.chips', h(`button.chip-btn${!v.type ? '.active' : ''}`, { onclick: () => { v.type = ''; app.render(); } }, '전체'),
       types.map((t) => h(`button.chip-btn${v.type === t ? '.active' : ''}`, { onclick: () => { v.type = t; app.render(); } }, TYPE_LABEL[t]))) : null,
@@ -136,4 +137,36 @@ export function renderTags(app) {
           : h('span.tag-text', pl(e.text)),
         e.done ? h('span.muted.small', ' (완료)') : null); })))) : (v.tag ? h('p.muted', '기록이 없습니다.') : null));
   return h('div.split.tags-page', left, right);
+}
+
+/** 태그 이름 바꾸기: 모든 기록의 #태그를 함께 바꾸고, 이미 있는 이름이면 합친다 */
+async function renameDialog(app, old) {
+  const { store } = app;
+  const input = h('input', { value: old, 'aria-label': '새 태그 이름', style: { width: '100%' } });
+  const info = h('p.small');
+  const known = new Set(store.tagList().map(([t]) => t));
+  const check = () => {
+    const neu = input.value.trim().replace(/^#/, '');
+    const err = tagNameError(neu);
+    if (err) { info.className = 'small error-text'; info.textContent = err; return null; }
+    if (neu === old) { info.className = 'small muted'; info.textContent = '새 이름을 쓰세요.'; return null; }
+    const r = renameTag(store.work, store.counselDraft, old, neu, { dryRun: true });
+    info.className = `small${known.has(neu) ? ' warn-text' : ''}`;
+    info.textContent = `기록 ${r.records}개(${r.places}곳)의 #${old} 를 #${neu} 로 바꿉니다.${known.has(neu) ? ` #${neu} 이(가) 이미 있어 두 태그를 합칩니다 (카드의 설명·일정·자료·관련 인물도 합침).` : ''}`;
+    return neu;
+  };
+  input.addEventListener('input', check);
+  check();
+  setTimeout(() => { input.focus(); input.select(); }, 50);
+  const ok = await modal(`#${old} 이름 바꾸기`, h('div.form', h('label', '새 이름', input), info,
+    h('p.muted.small', '노트·업무·수업일지·상담·학사일정·출장·출결 비고·포스트잇·대회 개요와 메모·태그 설명과 인물 메모의 태그를 함께 바꿉니다. #방과후 를 바꿔도 #방과후학교 같은 다른 태그는 그대로입니다.')),
+  [{ label: '취소', value: false }, { label: '바꾸기', value: true, primary: true }]);
+  if (!ok) return;
+  const neu = check();
+  if (!neu) { toast(info.textContent || '바꾸지 않았습니다.', 'error'); return; }
+  const r = renameTag(store.work, store.counselDraft, old, neu);
+  store.markDirty();
+  app.tagView.tag = neu;
+  app.render();
+  toast(`#${old} → #${neu}: 기록 ${r.records}개를 바꿨습니다${r.merged ? ' (태그를 합쳤습니다)' : ''}.`, 'ok');
 }

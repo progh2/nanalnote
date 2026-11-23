@@ -222,6 +222,7 @@ async function showAlumniRecords(app, p) {
 export function renderPeople(app) {
   const { store } = app;
   const v = (app.peopleView ||= { sel: '', q: '', kind: '' });
+  v.q ??= ''; v.kind ??= ''; // 이름을 눌러 처음 들어온 경우 (sel 만 있음)
   const people = sortPeople(store.work.people);
   const { sure: mentions, maybe } = mentionMap(store);
   const homonymIds = new Set(people.filter((p) => homonymsOf(p, people, store.work.relations).length).map((p) => p.id));

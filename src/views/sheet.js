@@ -54,7 +54,9 @@ export function createSheet(o) {
     for (let r = 0; r < nRows(); r++) {
       const row = list[r];
       const tds = cols.map((col, c) => {
-        const td = h(`td${col.readonly ? '.ro' : ''}${col.type === 'bool' ? '.bool' : ''}${col.wrap ? '.wrap' : ''}${!row ? '.ghost' : ''}`, { 'data-r': r, 'data-c': c }, display(col, row) || (!row && c === 0 && o.ghostText ? h('span.muted', o.ghostText) : ''));
+        // col.render(row) 가 있으면 그것으로 (이름·#태그를 누를 수 있게 등)
+        const shown = row && col.render ? col.render(row) : display(col, row);
+        const td = h(`td${col.readonly ? '.ro' : ''}${col.type === 'bool' ? '.bool' : ''}${col.wrap ? '.wrap' : ''}${!row ? '.ghost' : ''}`, { 'data-r': r, 'data-c': c }, (Array.isArray(shown) ? (shown.length ? shown : '') : shown) || (!row && c === 0 && o.ghostText ? h('span.muted', o.ghostText) : ''));
         return td;
       });
       cells.push(tds);
@@ -313,12 +315,20 @@ export function createSheet(o) {
     const r = +td.dataset.r, c = +td.dataset.c;
     if (st.editing && r === st.r && c === st.c) return;
     const wasActive = r === st.r && c === st.c && st.r === st.ar && st.c === st.ac;
+    // 칸 안의 이름·#태그 연결: 이미 고른 칸에서 누르면 따라가고, 처음 누르면 칸만 고른다 (구글 시트의 링크처럼)
+    const link = e.target.closest?.('button.person-link, button.name-link, button.tag-link');
+    st.followLink = !!(link && wasActive && !e.shiftKey);
+    if (st.followLink) return;
     select(r, c, e.shiftKey);
     st.drag = !e.shiftKey;
     // 체크 칸: 이미 고른 칸을 한 번 더 누르면 바꾸기 (손가락 화면은 바로)
     if (cols[c].type === 'bool') { if (wasActive || coarse()) toggleBool(); return; }
     if (coarse()) beginEdit('edit');
   });
+  table.addEventListener('click', (e) => {
+    if (e.target.closest?.('button.person-link, button.name-link, button.tag-link') && !st.followLink) { e.stopPropagation(); e.preventDefault(); }
+    st.followLink = false;
+  }, true);
   table.addEventListener('mouseover', (e) => {
     if (!st.drag || !(e.buttons & 1)) return;
     const td = cellOf(e.target);
@@ -333,6 +343,7 @@ export function createSheet(o) {
     if (cols[+td.dataset.c].type === 'bool') toggleBool(); else beginEdit('edit');
   });
 
+  o.attachEditor?.(editor); // 이름·#태그 추천 등
   render();
   root.refresh = () => { if (!st.editing) render(); };
   root.focusSheet = () => focusEditor();

@@ -142,6 +142,7 @@ export function findRef(store, text) {
 export function membersBlock(app, obj, { title = '관련 인물' } = {}) {
   const { store } = app;
   obj.members ||= [];
+  const linked = sheetLinks(app);
   const sumEl = h('h3', { style: { margin: 0 } });
   const drawSum = () => {
     const s = obj.members.filter((m) => m.ref?.startsWith('s:')).length;
@@ -162,9 +163,13 @@ export function membersBlock(app, obj, { title = '관련 인물' } = {}) {
     snapshot: () => JSON.stringify(obj.members),
     restore: (snap) => { obj.members = JSON.parse(snap); },
     ghostText: '학번·이름을 쓰거나 붙여넣기',
+    attachEditor: (ed) => attachStudentSuggest(ed, () => store.work.students, () => store.work.people, () => store.tagList()),
     readonlyHint: '소속·연락처는 학생관리·사람·기관에서 고칩니다.',
     columns: [
-      { key: 'who', title: '인물 (학생·사람·기관)', width: 13, get: (m) => (m.ref ? refInfo(app, m.ref).name : m.text || ''), set: (m, v) => {
+      { key: 'who', title: '인물 (학생·사람·기관)', width: 13, get: (m) => (m.ref ? refInfo(app, m.ref).name : m.text || ''),
+        // 고른 칸에서 이름을 한 번 더 누르면 그 학생·사람 화면으로
+        render: (m) => { if (!m.ref) return m.text || ''; const i = refInfo(app, m.ref); return i.open ? [h(`button.${m.ref.startsWith('s:') ? 'name-link' : 'person-link'}`, { onclick: (e) => { e.stopPropagation(); i.open(); }, title: '고른 칸에서 한 번 더 누르면 열기' }, i.name)] : i.name; },
+        set: (m, v) => {
         const t = v.trim();
         if (!t) { m.ref = ''; delete m.text; return ''; }
         const ref = findRef(store, t);
@@ -173,7 +178,7 @@ export function membersBlock(app, obj, { title = '관련 인물' } = {}) {
         return `"${t}" — 학생·사람·기관 명부에서 찾지 못해 글자로 적어 두었습니다 (사람·기관에 등록하면 연결됩니다)`;
       } },
       { key: 'role', title: '역할', width: 6, type: 'list', options: MEMBER_ROLES, get: (m) => m.role || '', set: (m, v) => { m.role = v.trim(); } },
-      { key: 'memo', title: '메모', width: 12, wrap: true, get: (m) => m.memo || '', set: (m, v) => { m.memo = v; } },
+      { key: 'memo', title: '메모', width: 12, wrap: true, get: (m) => m.memo || '', set: (m, v) => { m.memo = v; }, render: (m) => linked(m.memo) },
       { key: 'info', title: '소속·연락처', width: 12, readonly: true, get: (m) => info(m.ref), set: () => '' },
     ],
   });
@@ -189,3 +194,9 @@ export function projectsOf(store, ref) {
 }
 
 export { studentLabel };
+
+/** 표 칸의 글을 이름·#태그 연결로 (글이 없으면 빈 배열) */
+export function sheetLinks(app) {
+  const plain = mentionInline(app);
+  return (text) => (String(text || '').trim() ? plain(String(text)) : []);
+}

@@ -1,7 +1,7 @@
 // 학생관리 탭: 학반별 명단(학번·사진) 편집 + 학생별 상담/출결/요록 + 지난 학년도 기록
 import { h, koDate, downloadBlob, confirmDialog, modal, toast, pickFile, newId, fill } from '../lib/util.js';
 import { exportCounsel } from '../lib/export.js';
-import { studentLabel, classKey, newUid, normStudent, matchPhotoFile, buildIndex, searchStudents, statusAt, STATE_LABEL, STATUS_EVENTS, EVENT_HAS_GRADE, LEAVING_TYPES, FLAGS } from '../lib/students.js';
+import { studentLabel, classKey, newUid, normStudent, matchPhotoFile, buildIndex, searchStudents, statusAt, STATE_LABEL, STATUS_EVENTS, EVENT_HAS_GRADE, LEAVING_TYPES, FLAGS, entryYearOf, cleanNo, partsOfNo } from '../lib/students.js';
 import { resizeImage } from '../lib/photos.js';
 import { migrateRefs } from '../store.js';
 import { classSelect, avatar, scrollToDetail } from './ui.js';
@@ -63,30 +63,57 @@ async function pastRecords(app, uid, years = 3) {
 export function renderStudents(app) {
   const { store } = app;
   if (app.stuTable) return studentSheet(app);
-  app.stuFilter ??= { cls: '', q: '', state: '' };
+  app.stuFilter ??= { grade: '', cls: '', q: '', state: '' };
   const f = app.stuFilter;
+  f.grade ??= '';
   const all = store.students();
   const d = app.date;
   const stOf = (s) => statusAt(s, d).state;
+  const isPre = (s) => stOf(s) === 'pre';
+  // 학년: '' 전체(입학 예정 빼고) / 1·2·3 / 'pre' 입학 예정(내년 신입생)
+  const gradeOk = (s) => (f.grade === 'pre' ? isPre(s) : !isPre(s) && (!f.grade || s.grade === +f.grade));
   // 상태 거르기: 기본은 재학·휴학 (떠난 학생은 "떠난 학생"/"전체"에서)
-  const stateOk = (s) => (f.state === 'all' ? true : f.state ? stOf(s) === f.state : stOf(s) !== 'gone');
-  const order = { active: 0, leave: 1, gone: 2 };
-  const list = searchStudents(f.q, all.filter((s) => (!f.cls || classKey(s) === f.cls) && stateOk(s)))
-    .sort((a, b) => order[stOf(a)] - order[stOf(b)]);
+  const stateOk = (s) => f.grade === 'pre' || (f.state === 'all' ? true : f.state ? stOf(s) === f.state : stOf(s) !== 'gone');
+  const list = searchStudents(f.q, all.filter((s) => gradeOk(s) && (!f.cls || classKey(s) === f.cls) && stateOk(s)));
   const hr = (cls) => store.settings.homerooms?.[cls] || {};
   const hrLine = (cls) => { const x = hr(cls); return x.main || x.sub ? h('p.homeroom', `${cls}반 · 담임 ${x.main || '-'} · 부담임 ${x.sub || '-'}`) : null; };
   const sel = all.find((s) => s.uid === app.selectedStudent) || list[0];
 
-  // ----- 왼쪽: 명단 -----
-  const listEl = h('div.stu-list', list.map((s) => {
+  // ----- 왼쪽: 명단 (반별로 묶어서) -----
+  const card = (s) => {
     const state = stOf(s);
     return h(`button.stu-card${s === sel ? '.active' : ''}${state !== 'active' ? '.inactive' : ''}`, { onclick: () => { app.selectedStudent = s.uid; app.render(); scrollToDetail('.stu-detail'); } },
       avatar(app, s, 36), h('span.stu-no', s.studentNo || (s.no ?? '')), h('span.stu-name', s.name || '(이름 없음)'),
-      state !== 'active' ? h('span.stu-state', statusAt(s, d).ev?.type || STATE_LABEL[state]) : null,
+      state !== 'active' && state !== 'pre' ? h('span.stu-state', statusAt(s, d).ev?.type || STATE_LABEL[state]) : null,
       s.leaving ? h('span.stu-leaving', { 'aria-hidden': 'true' }, '→') : null,
       // 교사만 아는 작은 점 (글자 없음)
       s.flags?.length ? h('span.fdots', { 'aria-hidden': 'true' }, s.flags.map((k) => h(`i.fdot.f-${k}`))) : null);
-  }));
+  };
+  const groups = [];
+  for (const s of list) {
+    const k = `${isPre(s) ? 'pre:' : ''}${classKey(s) || '?'}`;
+    if (groups.at(-1)?.k !== k) groups.push({ k, pre: isPre(s), cls: classKey(s), items: [] });
+    groups.at(-1).items.push(s);
+  }
+  const groupHead = (g) => {
+    const dept = store.dept(g.items[0]);
+    const x = hr(g.cls);
+    return h('div.stu-group-head',
+      h('strong', `${g.pre ? `${g.items[0].entryYear}학년도 입학 예정 · ` : ''}${g.cls ? `${g.cls}반` : '반 미정'}`),
+      h('span.muted.small', [dept, `${g.items.length}명`, !g.pre && (x.main || x.sub) ? `담임 ${x.main || '-'}${x.sub ? ` · 부담임 ${x.sub}` : ''}` : ''].filter(Boolean).join(' · ')));
+  };
+  const listEl = h('div.stu-groups', groups.map((g) => h('div.stu-group', groups.length > 1 || g.cls ? groupHead(g) : null, h('div.stu-list', g.items.map(card)))));
+  // 학년·반 고르기
+  const grades = [...new Set(all.filter((s) => !isPre(s) && s.grade).map((s) => s.grade))].sort((a, b) => a - b);
+  const pres = all.filter(isPre);
+  const chip = (on, label, fn, title) => h(`button.chip-btn${on ? '.active' : ''}`, { onclick: fn, title }, label);
+  const gradeChips = h('div.chips.grade-chips',
+    chip(!f.grade, '전체', () => { f.grade = ''; f.cls = ''; app.render(); }),
+    grades.map((g) => chip(f.grade === String(g), `${g}학년`, () => { f.grade = String(g); f.cls = ''; app.render(); })),
+    pres.length ? chip(f.grade === 'pre', `입학 예정 ${pres.length}`, () => { f.grade = 'pre'; f.cls = ''; app.render(); }, `${[...new Set(pres.map((s) => s.entryYear))].join(', ')}학년도 신입생`) : null);
+  const clsOf = f.grade ? [...new Set(all.filter(gradeOk).map(classKey).filter(Boolean))].sort((a, b) => +a.split('-')[1] - +b.split('-')[1]) : [];
+  const clsChips = clsOf.length > 1 ? h('div.chips.cls-chips', chip(!f.cls, '모든 반', () => { f.cls = ''; app.render(); }),
+    clsOf.map((k) => chip(f.cls === k, `${k.split('-')[1]}반`, () => { f.cls = k; app.render(); }))) : null;
   const stateChips = h('div.chips', [['', '재학·휴학'], ['active', '재학'], ['leave', '휴학'], ['gone', '떠난 학생'], ['all', '전체']].map(([k, l]) =>
     h(`button.chip-btn${(f.state || '') === k ? '.active' : ''}`, { onclick: () => { f.state = k; app.render(); } }, l)));
   const search = h('input', { type: 'search', placeholder: '학번·이름 검색', value: f.q, oninput: (e) => { f.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => app.render(), 250); } });
@@ -116,9 +143,10 @@ export function renderStudents(app) {
           toast(`사진 ${ok}장 등록${miss.length ? `, ${miss.length}장은 학생을 찾지 못함: ${miss.slice(0, 3).join(', ')}${miss.length > 3 ? ' …' : ''}` : ''}`, miss.length ? 'error' : 'ok');
           app.render();
         } }, '📷 사진 일괄 등록'))),
-    h('div.row', store.classList().length ? classSelect(store, f.cls, (v) => { f.cls = v; app.render(); }) : null, search),
-    stateChips,
-    f.cls ? hrLine(f.cls) : null,
+    search,
+    gradeChips,
+    clsChips,
+    f.grade === 'pre' ? h('p.muted.small', '내년 신입생(예비소집 등)입니다. 출결 선택에는 나오지 않고, 새 학년도에 "명단 이어받기"로 1학년이 됩니다. 정식 학번을 받으면 학번을 고치세요.') : stateChips,
     all.length ? listEl : h('div.empty-roster',
       h('p.muted', '학생이 없습니다. 학교 명렬표 엑셀 파일을 그대로 올리면 됩니다 — 제목 줄이 있어도 "학번·성명(이름)·성별·연락처" 같은 열을 찾아 읽습니다.'),
       h('div.row', h('button.primary', { onclick: () => openStudentImport(app) }, '📥 엑셀로 학생 명단 올리기'),
@@ -164,6 +192,15 @@ export function renderStudents(app) {
           avatar(app, sel, 96),
           h('div.col', { style: { gap: '8px', flex: 1 } },
             h('div.inline-form', field('학번', 'studentNo', 'text', '7em'), field('학년', 'grade', 'number'), field('반', 'cls', 'number'), field('번호', 'no', 'number')),
+            h('div.inline-form',
+              h('label', '입학 학년도', h('input', { type: 'number', min: 2000, max: 2100, value: st.entryYear ?? '', placeholder: String(entryYearOf(st, store.year) || ''), 'aria-label': '입학 학년도', style: { width: '7.5em' },
+                onchange: (e) => { if (e.target.value) st.entryYear = +e.target.value; else delete st.entryYear; store.markDirty(); app.render(); } })),
+              h('label', '학과', h('input', { list: 'dept-list', value: st.dept || '', placeholder: store.dept({ ...st, dept: '' }) || '학과', 'aria-label': '학과', style: { width: '11em' },
+                oninput: (e) => { st.dept = e.target.value.trim(); if (!st.dept) delete st.dept; store.markDirty(); } })),
+              h('datalist#dept-list', [...new Set(store.deptRules().map((r) => r.name))].map((n) => h('option', { value: n })))),
+            (st.grade || 0) >= 2 || st.pastNos ? h('div.inline-form',
+              [1, 2].filter((g) => g < (st.grade || 0) || st.pastNos?.[g]).map((g) => h('label', `${g}학년 때 학번`, h('input', { value: st.pastNos?.[g] || '', 'aria-label': `${g}학년 때 학번`, style: { width: '6.5em' },
+                oninput: (e) => { st.pastNos ||= {}; const v = e.target.value.trim(); if (v) st.pastNos[g] = v; else { delete st.pastNos[g]; if (!Object.keys(st.pastNos).length) delete st.pastNos; } store.markDirty(); } })))) : null,
             h('div.inline-form', field('이름', 'name', 'text', '10em'),
               h('label', '성별', h('select', { 'aria-label': '성별', onchange: (e) => { st.gender = e.target.value; store.markDirty(); } },
                 ['', '남', '여'].map((g) => h('option', { value: g, selected: (st.gender || '') === g }, g || '-'))))),
@@ -260,7 +297,7 @@ function statusCard(app, st) {
     h('button.icon-btn.small', { title: '이 기록 지우기', 'aria-label': '이 기록 지우기', onclick: async () => {
       if (!(await confirmDialog('학적 기록 지우기', `${e.date} ${e.type} 기록을 지울까요?`, '지우기'))) return;
       st.statusLog = log.filter((_, k) => k !== i); redraw();
-    } }, '✕')))) : h('p.muted.small', '변동 기록이 없습니다 (재학).');
+    } }, '✕')))) : h('p.muted.small', state === 'pre' ? `${st.entryYear}학년도 입학 예정입니다. 입학하면 재학으로 바뀝니다.` : '변동 기록이 없습니다 (재학).');
 
   // 전출 예정
   const lv = st.leaving;
@@ -299,7 +336,7 @@ function statusCard(app, st) {
 
   return h('section.card.status-card',
     h('div.card-head', h('h2', '학적'),
-      h(`span.state-badge.s-${state}`, state === 'active' ? '재학' : state === 'leave' ? '휴학 중' : ev.type, ev ? h('small', ` ${ev.date}~`) : null)),
+      h(`span.state-badge.s-${state}`, state === 'active' ? '재학' : state === 'leave' ? '휴학 중' : state === 'pre' ? `${st.entryYear}학년도 입학 예정` : ev?.type || '', ev ? h('small', ` ${ev.date}~`) : null)),
     history,
     addForm,
     h('p.muted.small', '복학·재입학·전입·학년 변경(승급 등)은 학년을 함께 고를 수 있습니다. 상태는 위에서 보고 있는 날짜 기준입니다.'),
@@ -320,11 +357,13 @@ async function carryOver(app) {
   const top = maxGrade(store);
   const rows = ps.students.filter((s) => !have.has(s.uid)).map((s) => {
     const { state, ev } = statusAt(s, end);
-    const kind = state === 'gone' ? 'gone' : state === 'leave' ? 'leave' : (s.grade || 0) >= top ? 'grad' : 'up';
-    return { s, ev, kind, on: kind === 'up' || kind === 'leave', grade: kind === 'up' ? (s.grade || 0) + 1 : s.grade };
-  }).sort((a, b) => ['up', 'leave', 'grad', 'gone'].indexOf(a.kind) - ['up', 'leave', 'grad', 'gone'].indexOf(b.kind) || (a.s.studentNo || '').localeCompare(b.s.studentNo || ''));
+    // 입학 예정(이번 학년도 신입생)은 1학년으로 들어온다
+    const pre = s.entryYear && s.entryYear >= store.year && state === 'pre';
+    const kind = pre ? 'pre' : state === 'gone' ? 'gone' : state === 'leave' ? 'leave' : (s.grade || 0) >= top ? 'grad' : 'up';
+    return { s, ev, kind, on: kind === 'up' || kind === 'leave' || kind === 'pre', grade: kind === 'up' ? (s.grade || 0) + 1 : kind === 'pre' ? (s.grade || 1) : s.grade };
+  }).sort((a, b) => ['pre', 'up', 'leave', 'grad', 'gone'].indexOf(a.kind) - ['pre', 'up', 'leave', 'grad', 'gone'].indexOf(b.kind) || (a.s.studentNo || '').localeCompare(b.s.studentNo || ''));
   if (!rows.length) return toast('이어받을 학생이 없습니다. (이미 모두 있음)');
-  const KIND = { up: '진급', leave: '휴학 중', grad: '졸업', gone: '떠남' };
+  const KIND = { pre: '신입생', up: '진급', leave: '휴학 중', grad: '졸업', gone: '떠남' };
   const body = h('div.carry',
     h('p.small', '재학 중인 학생은 한 학년 올리고, 휴학생은 같은 학년으로 가져옵니다(학년은 바꿀 수 있음). 졸업·떠난 학생은 기본으로 빼며, 재입학하는 학생은 체크하고 학년을 고르세요. 반·번호·학번은 새 반 배정 명단(CSV)을 올리면 채워집니다.'),
     h('div.carry-list', h('table.carry-table',
@@ -339,8 +378,12 @@ async function carryOver(app) {
   let n = 0;
   for (const r of rows.filter((x) => x.on)) {
     const s = r.s;
-    const st = normStudent({ id: newId(), uid: s.uid, studentNo: '', grade: r.grade, cls: null, no: null, name: s.name, photo: '',
-      ...Object.fromEntries(['gender', 'email', 'phone', 'leaving', 'flags', 'flagMemo'].filter((k) => s[k]).map((k) => [k, s[k]])),
+    // 신입생은 임시 학번·반·번호를 그대로(정식 학번을 받으면 고침), 진급생은 지난 학번을 "○학년 때 학번"에 남긴다
+    const pastNos = { ...(s.pastNos || {}) };
+    if (r.kind !== 'pre' && s.studentNo && s.grade && !/^임시/.test(s.studentNo)) pastNos[s.grade] = s.studentNo;
+    const st = normStudent({ id: newId(), uid: s.uid, studentNo: r.kind === 'pre' ? s.studentNo : '', grade: r.grade, cls: r.kind === 'pre' ? s.cls : null, no: r.kind === 'pre' ? s.no : null, name: s.name, photo: '',
+      entryYear: s.entryYear || (s.grade ? store.year - 1 - s.grade + 1 : undefined), pastNos,
+      ...Object.fromEntries(['gender', 'email', 'phone', 'leaving', 'flags', 'flagMemo', 'dept'].filter((k) => s[k]).map((k) => [k, s[k]])),
       statusLog: [...(s.statusLog || [])] });
     // 떠났던 학생을 다시 데려오면 재입학으로 기록
     if (r.kind === 'gone') st.statusLog = [...(st.statusLog || []), { date: `${store.year}-03-01`, type: '재입학', ...(r.grade ? { grade: r.grade } : {}) }];
@@ -356,25 +399,31 @@ async function carryOver(app) {
 // ---------- 표로 편집 (스프레드시트처럼) ----------
 function studentSheet(app) {
   const { store } = app;
-  const f = (app.stuFilter ??= { cls: '', q: '', state: '' });
+  const f = (app.stuFilter ??= { grade: '', cls: '', q: '', state: '' });
   const d = app.date;
+  const isPre = (s) => statusAt(s, d).state === 'pre';
+  const gradeOk = (s) => (f.grade === 'pre' ? isPre(s) : !f.grade || (!isPre(s) && s.grade === +f.grade));
   // 보는 동안 줄 순서가 바뀌지 않게, 열 때 한 번 정렬해 둔 목록을 쓴다
-  const view = store.students().filter((s) => !f.cls || classKey(s) === f.cls);
+  const view = store.students().filter((s) => gradeOk(s) && (!f.cls || classKey(s) === f.cls));
   const digits = (v) => (String(v).match(/\d+/)?.[0] || '');
   const num = (v) => (digits(v) === '' ? null : +digits(v));
   const dupNo = (s, no) => no && store.work.students.some((x) => x !== s && x.studentNo === no);
-  // 학번(5자리 10203, 4자리 2105) → 학년·반·번호
-  const fromNo = (no) => { const m = String(no || '').match(/^(\d)(\d{2})(\d{2})$/) || String(no || '').match(/^(\d)(\d)(\d{2})$/); return m ? { grade: +m[1], cls: +m[2], no: +m[3] } : {}; };
   // 학년·반·번호 칸을 비우면 학번에서 읽은 값으로 (엑셀에서 학번만 있는 표를 붙여 넣을 때)
-  const numOr = (s, k, v) => num(v) ?? fromNo(s.studentNo)[k] ?? null;
+  const numOr = (s, k, v) => num(v) ?? partsOfNo(s.studentNo)?.[k] ?? null;
   const countEl = h('span.muted.small');
-  const drawCount = () => { countEl.textContent = `${view.filter((s) => s.name).length}명${f.cls ? ` (${f.cls}반)` : ''}`; };
+  const drawCount = () => { countEl.textContent = `${view.filter((s) => s.name).length}명${f.grade === 'pre' ? ' (입학 예정)' : f.grade ? ` (${f.grade}학년${f.cls ? ` ${f.cls.split('-')[1]}반` : ''})` : ''}`; };
   drawCount();
+  const past = (g) => ({ key: `past${g}`, title: `${g}학년 때 학번`, width: 5.5, get: (s) => s.pastNos?.[g] || '', set: (s, v) => {
+    const no = cleanNo(v);
+    s.pastNos ||= {};
+    if (no) s.pastNos[g] = no; else { delete s.pastNos[g]; if (!Object.keys(s.pastNos).length) delete s.pastNos; }
+  } });
   const sheet = createSheet({
     rows: () => view,
     addRow: () => {
       const [g, c] = (f.cls || '').split('-').map((x) => +x || null);
-      const s = { id: newId(), uid: newUid(), studentNo: '', grade: g, cls: c, no: null, name: '', photo: '' };
+      const s = { id: newId(), uid: newUid(), studentNo: '', grade: g || (f.grade && f.grade !== 'pre' ? +f.grade : f.grade === 'pre' ? 1 : null), cls: c, no: null, name: '', photo: '' };
+      if (f.grade === 'pre') s.entryYear = store.year + 1; // 입학 예정에서 새로 쓰면 내년 신입생
       store.work.students.push(s); view.push(s);
       return s;
     },
@@ -389,14 +438,14 @@ function studentSheet(app) {
       store.work.students = o.all;
       view.splice(0, view.length, ...o.view.map((u) => o.all.find((s) => s.uid === u)).filter(Boolean));
     },
-    ghostText: '여기에 쓰거나 붙여넣으면 새 학생',
+    ghostText: f.grade === 'pre' ? '여기에 쓰거나 붙여넣으면 새 신입생' : '여기에 쓰거나 붙여넣으면 새 학생',
     readonlyHint: '학적은 학생 화면의 학적 카드에서 고칩니다.',
     columns: [
-      { key: 'studentNo', title: '학번', width: 5.5, get: (s) => s.studentNo || '', set: (s, v) => {
-        const no = digits(v);
+      { key: 'studentNo', title: '학번', width: 6, get: (s) => s.studentNo || '', set: (s, v) => {
+        const no = cleanNo(v); // "임시1101" 처럼 임시 학번도
         if (dupNo(s, no)) return `학번 ${no} 이(가) 이미 있습니다.`;
         s.studentNo = no;
-        Object.assign(s, fromNo(no)); // 학번에서 학년·반·번호를 다시 읽는다
+        Object.assign(s, partsOfNo(no) || {}); // 학번에서 학년·반·번호를 다시 읽는다
         return '';
       } },
       { key: 'grade', title: '학년', width: 3, get: (s) => s.grade ?? '', set: (s, v) => { s.grade = numOr(s, 'grade', v); } },
@@ -406,17 +455,39 @@ function studentSheet(app) {
       { key: 'gender', title: '성별', width: 3, type: 'list', options: ['남', '여'], get: (s) => s.gender || '', set: (s, v) => {
         const t = v.trim(); s.gender = /^(남|남자|m)$/i.test(t) ? '남' : /^(여|여자|f)$/i.test(t) ? '여' : t; if (!s.gender) delete s.gender;
       } },
+      { key: 'entryYear', title: '입학 학년도', width: 5, get: (s) => s.entryYear ?? '', set: (s, v) => {
+        const y = num(v);
+        if (y && (y < 1990 || y > 2100)) return `입학 학년도는 2027 처럼 네 자리로 씁니다: ${v}`;
+        if (y) s.entryYear = y; else if (f.grade === 'pre') s.entryYear = store.year + 1; else delete s.entryYear;
+        return '';
+      } },
+      // 학과: 비우면 설정의 학과 규칙(입학 학년도·반)으로 채운 값이 보인다
+      { key: 'dept', title: '학과', width: 10, type: 'list', options: [...new Set(store.deptRules().map((r) => r.name))], get: (s) => store.dept(s), set: (s, v) => {
+        const t = v.trim();
+        if (!t || t === store.dept({ ...s, dept: '' })) delete s.dept; else s.dept = t;
+      } },
+      past(1), past(2),
       { key: 'phone', title: '전화번호', width: 8, get: (s) => s.phone || '', set: (s, v) => { s.phone = v.trim(); if (!s.phone) delete s.phone; } },
       { key: 'email', title: '이메일', width: 12, get: (s) => s.email || '', set: (s, v) => { s.email = v.trim(); if (!s.email) delete s.email; } },
-      { key: 'state', title: '학적', width: 5, readonly: true, get: (s) => { const x = statusAt(s, d); return x.state === 'active' ? '' : x.ev?.type || ''; }, set: () => '' },
+      { key: 'state', title: '학적', width: 5, readonly: true, get: (s) => { const x = statusAt(s, d); return x.state === 'active' ? '' : x.state === 'pre' ? '입학 예정' : x.ev?.type || ''; }, set: () => '' },
     ],
   });
+  const grades = [...new Set(store.work.students.filter((s) => !isPre(s) && s.grade).map((s) => s.grade))].sort((a, b) => a - b);
+  const chip = (on, label, fn) => h(`button.chip-btn${on ? '.active' : ''}`, { onclick: fn }, label);
+  const clsOf = f.grade ? [...new Set(store.work.students.filter(gradeOk).map(classKey).filter(Boolean))].sort((a, b) => +a.split('-')[1] - +b.split('-')[1]) : [];
   return h('section.card.student-sheet',
     h('div.card-head', h('h2', '학생 명단 — 표로 편집'), countEl,
       h('div.row', { style: { margin: 0, gap: '6px' } },
-        store.classList().length ? classSelect(store, f.cls, (v) => { f.cls = v; app.render(); }) : null,
         h('button.small', { onclick: () => openStudentImport(app) }, '📥 엑셀 파일로 올리기'),
         h('button.small.primary', { onclick: () => { app.stuTable = false; app.render(); } }, '✓ 다 됐어요 (카드로 보기)'))),
-    h('p.muted.small.sheet-help', '엑셀·구글 시트에서 학번·학년·반·번호·이름… 순서의 칸을 복사해 학번 칸을 고르고 Ctrl+V 하면 한꺼번에 들어갑니다(넘치면 새 학생). 학번을 쓰면 학년·반·번호를 채웁니다. 줄 번호를 눌러 고른 뒤 Delete 로 학생 지우기, Ctrl+Z 되돌리기. ', sheet.statusEl),
+    h('div.chips.grade-chips',
+      chip(!f.grade, '전체', () => { f.grade = ''; f.cls = ''; app.render(); }),
+      grades.map((g) => chip(f.grade === String(g), `${g}학년`, () => { f.grade = String(g); f.cls = ''; app.render(); })),
+      chip(f.grade === 'pre', `${store.year + 1}학년도 입학 예정`, () => { f.grade = 'pre'; f.cls = ''; app.render(); })),
+    clsOf.length > 1 ? h('div.chips.cls-chips', chip(!f.cls, '모든 반', () => { f.cls = ''; app.render(); }), clsOf.map((k) => chip(f.cls === k, `${k.split('-')[1]}반`, () => { f.cls = k; app.render(); }))) : null,
+    h('p.muted.small.sheet-help', f.grade === 'pre'
+      ? `내년(${store.year + 1}학년도) 신입생을 넣는 곳입니다. 학번은 "임시1101"처럼 쓰면 학년·반·번호를 채우고, 정식 학번을 받으면 고치면 됩니다. 입학 학년도는 ${store.year + 1} 로 들어갑니다. `
+      : '엑셀·구글 시트에서 학번·학년·반·번호·이름… 순서의 칸을 복사해 학번 칸을 고르고 Ctrl+V 하면 한꺼번에 들어갑니다(넘치면 새 학생). 학번을 쓰면 학년·반·번호를 채우고, 학과는 설정의 학과 규칙으로 채웁니다. 줄 번호를 눌러 고른 뒤 Delete 로 학생 지우기, Ctrl+Z 되돌리기. ',
+    sheet.statusEl),
     sheet);
 }

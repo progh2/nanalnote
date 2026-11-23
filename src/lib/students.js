@@ -2,10 +2,25 @@
 // - 학생 레코드는 학년도마다 따로 있다: { id, uid, studentNo(학번), grade, cls, no, name, photo }
 // - uid 는 학년도가 바뀌어도 유지되는 학생 고유 ID (지난 학년도 기록 연결용). 학번은 해마다 바뀐다.
 // - 상담·출결·요록은 uid 로 학생을 가리킨다. 파일에는 사람이 읽을 수 있는 "학번 이름" 으로 쓰고, 읽을 때 다시 uid 로 바꾼다.
+// - 더 있는 칸: entryYear(입학 학년도), dept(학과, 비우면 설정의 학과 규칙으로), pastNos({1:'1학년 때 학번', 2:'2학년 때 학번'})
+// - 신입생(입학 예정)은 "임시1101" 처럼 임시 학번을 쓰다가 정식 학번을 받는다.
 
 export const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const newUid = () => `s_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
+/** 학번 글자 다듬기: 숫자만, 앞의 "임시"는 살린다 ("임시 1101" → "임시1101") */
+export function cleanNo(v) {
+  const t = String(v ?? '').trim();
+  const d = t.match(/\d+/)?.[0] || '';
+  return d && /^임시/.test(t) ? `임시${d}` : d;
+}
+/** 학번 → 학년·반·번호 (5자리 10203, 4자리 2105, 임시1101 도) */
+export function partsOfNo(no) {
+  const d = String(no ?? '').replace(/^임시/, '');
+  const m = d.match(/^(\d)(\d{2})(\d{2})$/) || d.match(/^(\d)(\d)(\d{2})$/);
+  return m ? { grade: +m[1], cls: +m[2], no: +m[3] } : null;
+}
 
 /** 학번 ↔ 학년/반/번호 보완 (5자리 학번: 학년1 + 반2 + 번호2, 예: 10203) */
 export function normStudent(s) {
@@ -13,11 +28,21 @@ export function normStudent(s) {
   out.studentNo = String(out.studentNo ?? '').trim();
   const num = (v) => (v === '' || v == null || isNaN(+v) ? null : +v);
   out.grade = num(out.grade); out.cls = num(out.cls); out.no = num(out.no);
-  // 5자리(학년1+반2+번호2, 예: 10203) 또는 4자리(학년1+반1+번호2, 예: 2105)
-  const m = out.studentNo.match(/^(\d)(\d{2})(\d{2})$/) || out.studentNo.match(/^(\d)(\d)(\d{2})$/);
+  const ey = num(out.entryYear);
+  if (ey && ey > 1900) out.entryYear = ey; else delete out.entryYear;
+  out.dept = String(out.dept ?? '').trim();
+  if (!out.dept) delete out.dept;
+  if (out.pastNos && typeof out.pastNos === 'object') {
+    const p = {};
+    for (const [g, v] of Object.entries(out.pastNos)) { const c = cleanNo(v); if (c && +g >= 1) p[+g] = c; }
+    if (Object.keys(p).length) out.pastNos = p; else delete out.pastNos;
+  } else delete out.pastNos;
+  // 5자리(학년1+반2+번호2, 예: 10203) 또는 4자리(학년1+반1+번호2, 예: 2105), 앞에 "임시" 가 붙어도
+  const pn = partsOfNo(out.studentNo);
+  const m = pn ? [null, pn.grade, pn.cls, pn.no] : null;
   if (m) {
     out.grade ??= +m[1]; out.cls ??= +m[2]; out.no ??= +m[3];
-  } else if (!out.studentNo && out.grade && out.cls && out.no != null) {
+  } else if (!out.studentNo && !out.entryYear && out.grade && out.cls && out.no != null) {
     out.studentNo = `${out.grade}${String(out.cls).padStart(2, '0')}${String(out.no).padStart(2, '0')}`;
   }
   out.name = String(out.name ?? '').trim();
@@ -44,7 +69,7 @@ export const STATUS_EVENTS = ['전입', '휴학', '복학', '재입학', '학년
 export const EVENT_HAS_GRADE = new Set(['전입', '복학', '재입학', '학년 변경']);
 const LEAVE_EVENTS = new Set(['휴학']);
 const GONE_EVENTS = new Set(['자퇴', '전출', '퇴학']);
-export const STATE_LABEL = { active: '재학', leave: '휴학', gone: '떠남' };
+export const STATE_LABEL = { active: '재학', leave: '휴학', gone: '떠남', pre: '입학 예정' };
 /** 전출 예정 종류 → 날짜가 되면 학적에 넣을 변동 */
 export const LEAVING_TYPES = { 전학: '전출', 자퇴: '자퇴', 퇴학: '퇴학', 기타: '기타' };
 /** 티 나지 않는 표시: 화면에는 글자 없이 작은 점, 파일에는 기호로 */
@@ -52,6 +77,12 @@ export const FLAGS = [['good', '우수', '◆'], ['watch', '관심', '●']];
 
 /** date 기준 학적 상태 → { state: active|leave|gone, ev: 마지막 변동(기타 제외) } */
 export function statusAt(st, date) {
+  // 입학 학년도가 아직 안 된 학생 (예비소집·내년 신입생)
+  if (st?.entryYear && date) {
+    const [y, m] = date.split('-').map(Number);
+    const sy = m >= 3 ? y : y - 1;
+    if (st.entryYear > sy) return { state: 'pre', ev: null };
+  }
   let ev = null;
   for (const e of st?.statusLog || []) if (e.date <= date && e.type !== '기타') ev = e;
   const state = !ev ? 'active' : LEAVE_EVENTS.has(ev.type) ? 'leave' : GONE_EVENTS.has(ev.type) ? 'gone' : 'active';
@@ -90,8 +121,38 @@ export const textToFlags = (text) => FLAGS.filter(([, , sym]) => String(text || 
 export const classKey = (s) => (s?.grade && s?.cls ? `${s.grade}-${s.cls}` : '');
 export const studentLabel = (s) => (s ? (s.studentNo ? `${s.studentNo} ${s.name}` : s.name) : '');
 
-export function sortStudents(list) {
-  return [...list].sort((a, b) => (a.grade ?? 99) - (b.grade ?? 99) || (a.cls ?? 99) - (b.cls ?? 99) || (a.no ?? 999) - (b.no ?? 999) || String(a.name).localeCompare(String(b.name), 'ko'));
+/** 학년-반-번호 순. year 를 주면 입학 예정(내년 신입생)은 맨 뒤로 */
+export function sortStudents(list, year = 0) {
+  const pre = (s) => (year && s.entryYear > year ? 1 : 0);
+  return [...list].sort((a, b) => pre(a) - pre(b) || (a.grade ?? 99) - (b.grade ?? 99) || (a.cls ?? 99) - (b.cls ?? 99) || (a.no ?? 999) - (b.no ?? 999) || String(a.name).localeCompare(String(b.name), 'ko'));
+}
+
+// ---------- 입학 학년도·학과 ----------
+/** 입학 학년도: 적어 둔 값, 없으면 지금 학년도와 학년으로 어림 (2026학년도 2학년 → 2025) */
+export const entryYearOf = (s, year) => s?.entryYear || (year && s?.grade ? year - s.grade + 1 : null);
+
+/**
+ * 학과 규칙 글 → [{from, to, c1, c2, name}]
+ * 한 줄에 하나: "2024~2026 1~4반 뉴미디어소프트웨어과", "2027~ 5~6반 지능형디자인과", "2025 3반 ○○과"
+ */
+export function parseDeptRules(text) {
+  const out = [];
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const m = line.trim().match(/^(\d{4})\s*(?:학년도|년)?\s*(?:([~\-～])\s*(\d{4})?)?\s*(?:학년도|년)?\s*(?:입학생?)?\s*[,·]?\s*(\d{1,2})\s*(?:반)?\s*(?:[~\-～]\s*(\d{1,2}))?\s*반\s*[:：]?\s*(.+)$/);
+    if (!m) continue;
+    const from = +m[1], to = m[3] ? +m[3] : m[2] ? 9999 : from;
+    const c1 = +m[4], c2 = m[5] ? +m[5] : c1;
+    out.push({ from, to, c1: Math.min(c1, c2), c2: Math.max(c1, c2), name: m[6].trim() });
+  }
+  return out;
+}
+
+/** 학과: 적어 둔 값, 없으면 규칙(입학 학년도·반)으로 */
+export function deptOf(s, rules, year) {
+  if (s?.dept) return s.dept;
+  const ey = entryYearOf(s, year);
+  if (!ey || !s?.cls) return '';
+  return rules.find((r) => ey >= r.from && ey <= r.to && s.cls >= r.c1 && s.cls <= r.c2)?.name || '';
 }
 
 /** 학반 목록 (정렬) */
@@ -117,9 +178,9 @@ export function resolveRef(ref, idx) {
   const r = String(ref ?? '').trim();
   if (!r) return null;
   if (idx.byUid.has(r)) return idx.byUid.get(r);
-  let m = r.match(/^(\d{3,})\s*(.*)$/);
+  let m = r.match(/^((?:임시)?\d{3,})\s*(.*)$/);
   if (m && idx.byNo.has(m[1])) return idx.byNo.get(m[1]);
-  m = r.match(/^(.+?)\s*\((\d{3,})\)$/);
+  m = r.match(/^(.+?)\s*\(((?:임시)?\d{3,})\)$/);
   if (m && idx.byNo.has(m[2])) return idx.byNo.get(m[2]);
   const same = idx.byName.get(r);
   if (same?.length === 1) return same[0];

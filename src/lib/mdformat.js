@@ -6,7 +6,7 @@
 //   {학년도}학년도/학사일정.md     - 2026-03-02: 입학식
 //   {학년도}학년도/업무일지.md     - [x] 할 일 (작성 2026-03-02, 완료 2026-03-04)
 //   {학년도}학년도/학급요록.md     ## 제목 / - 등록: / - 완료: / | 학생 | 내용 |
-//   {학년도}학년도/사람·기관.md    | 구분 | 이름 | 호칭 | 소속 | 전화 | 이메일 | 다른 이름 | 메모 |
+//   {학년도}학년도/사람·기관.md    | 구분 | 이름 | 호칭 | 교원 | 학교급 | 교과 | 소속 | 전화 | 이메일 | 다른 이름 | 메모 |
 //   {학년도}학년도/태그.md         | 태그 | 상태 | 시작 | 끝 | 고정 | 설명 |
 //   {학년도}학년도/대회·활동.md    ## 대회 이름 / - 종류·주최·기간·링크·파일 / ### 개요 / ### 일정 표 / ### 참가 표
 //   {학년도}학년도/일지/YYYY-MM-DD.md   하루치 수업일지·학생출결·상담일지
@@ -158,8 +158,9 @@ export function serialize(year, input) {
     files.set(`${dir}/${FILES.students}`, [header('학생명단'),
       '> 학번은 학년도마다 바뀝니다. ID 는 여러 학년도에 걸쳐 같은 학생을 잇는 값이니 지우지 마세요.',
       '> 학적: "날짜 변동(학년) - 메모" 를 ; 로 이어 씁니다. 표시: ◆ ● (교사용 표시)', '',
-      table(['학번', '학년', '반', '번호', '이름', '성별', '이메일', '전화번호', '사진', 'ID', '학적', '전출예정', '표시', '비고'],
-        st.map((x) => [x.studentNo || '', x.grade ?? '', x.cls ?? '', x.no ?? '', x.name, x.gender || '', x.email || '', x.phone || '', x.photo || '', x.uid || '',
+      table(['학번', '학년', '반', '번호', '이름', '성별', '이메일', '전화번호', '입학학년도', '학과', '1학년학번', '2학년학번', '사진', 'ID', '학적', '전출예정', '표시', '비고'],
+        st.map((x) => [x.studentNo || '', x.grade ?? '', x.cls ?? '', x.no ?? '', x.name, x.gender || '', x.email || '', x.phone || '',
+          x.entryYear ?? '', x.dept || '', x.pastNos?.[1] || '', x.pastNos?.[2] || '', x.photo || '', x.uid || '',
           logToText(x.statusLog), leavingToText(x.leaving), flagsToText(x.flags), x.flagMemo || ''])), ''].join('\n'));
   }
 
@@ -205,8 +206,8 @@ export function serialize(year, input) {
   if (data.people.length) {
     files.set(`${dir}/${FILES.people}`, [header('사람·기관'),
       '> 글 속의 "김민수 선생님", "교육청에" 같은 이름을 알아보는 명부입니다. 다른 이름은 쉼표로 나눕니다.', '',
-      table(['구분', '이름', '호칭', '소속', '전화', '이메일', '다른 이름', '메모'],
-        sortPeople(data.people).map((x) => [KINDS[x.kind] || '사람', x.name, x.title || '', x.org || '', x.phone || '', x.email || '', (x.aliases || []).join(', '), x.memo || ''])), ''].join('\n'));
+      table(['구분', '이름', '호칭', '교원', '학교급', '교과', '소속', '전화', '이메일', '다른 이름', '메모'],
+        sortPeople(data.people).map((x) => [KINDS[x.kind] || '사람', x.name, x.title || '', x.teacher ? 'O' : '', x.level || '', x.subject || '', x.org || '', x.phone || '', x.email || '', (x.aliases || []).join(', '), x.memo || ''])), ''].join('\n'));
   }
 
   // 대회·활동
@@ -328,7 +329,8 @@ export function parse(year, files, makeId) {
   if (pp != null) {
     for (const r of parseTableObjects(pp.split('\n'))) {
       if (!(r['이름'] || '').trim()) continue;
-      data.people.push(normPerson({ id: makeId(), kind: r['구분'] === '기관' ? 'org' : 'person', name: r['이름'], title: r['호칭'], org: r['소속'], phone: r['전화'], email: r['이메일'], aliases: r['다른 이름'], memo: r['메모'] }));
+      data.people.push(normPerson({ id: makeId(), kind: r['구분'] === '기관' ? 'org' : 'person', name: r['이름'], title: r['호칭'], org: r['소속'], phone: r['전화'], email: r['이메일'], aliases: r['다른 이름'], memo: r['메모'],
+        teacher: /^(o|예|y|yes|true|✓)$/i.test((r['교원'] || '').trim()), level: (r['학교급'] || '').trim(), subject: r['교과'] }));
     }
   }
 
@@ -471,7 +473,11 @@ export function parse(year, files, makeId) {
       const name = (r['이름'] || '').trim();
       if (!name) continue;
       const st = { id: makeId(), uid: (r.ID || '').trim() || newUid(), studentNo: (r['학번'] || '').trim(), grade: num(r['학년']), cls: num(r['반']), no: num(r['번호']), name, photo: (r['사진'] || '').trim() };
-      for (const [k, col] of [['gender', '성별'], ['email', '이메일'], ['phone', '전화번호']]) if ((r[col] || '').trim()) st[k] = r[col].trim();
+      for (const [k, col] of [['gender', '성별'], ['email', '이메일'], ['phone', '전화번호'], ['dept', '학과']]) if ((r[col] || '').trim()) st[k] = r[col].trim();
+      if (/^\d{4}$/.test((r['입학학년도'] || '').trim())) st.entryYear = +r['입학학년도'].trim();
+      const past = {};
+      for (const g of [1, 2, 3]) if ((r[`${g}학년학번`] || '').trim()) past[g] = r[`${g}학년학번`].trim();
+      if (Object.keys(past).length) st.pastNos = past;
       const log = textToLog(r['학적']);
       if (log.length) st.statusLog = log;
       const lv = textToLeaving(r['전출예정']);

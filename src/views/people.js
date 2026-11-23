@@ -1,6 +1,6 @@
 // 사람·기관 탭: 명부(선생님·장학사·외부 강사·교육청·대학·업체…)와, 그 이름이 나온 기록 모아 보기
 import { h, koDate, newId, modal, toast, confirmDialog, fill } from '../lib/util.js';
-import { KINDS, TITLES, normPerson, personLabel, sortPeople, mentionedPids, ambiguousPids, findUnregistered, parsePeopleLines, nameGroups, namesOf, distinctQual } from '../lib/people.js';
+import { KINDS, TITLES, LEVELS, normPerson, personLabel, sortPeople, mentionedPids, ambiguousPids, findUnregistered, parsePeopleLines, nameGroups, namesOf, distinctQual, teacherInfo } from '../lib/people.js';
 import { textEntries, TYPE_LABEL } from '../lib/tags.js';
 import { renderMd } from '../lib/notemd.js';
 import { mentionInline } from './mentions.js';
@@ -90,9 +90,13 @@ function editor(app, p, onChange) {
   const titles = h('datalist#title-list', TITLES.filter((t) => t.length > 1).map((t) => h('option', { value: t })));
   return h('div.person-edit',
     h('div.chips', Object.entries(KINDS).map(([k, label]) => h(`button.chip-btn${p.kind === k ? '.active' : ''}`, { onclick: () => { p.kind = k; store.markDirty(); app.render(); } }, label))),
+    isOrg ? null : h('div.row.teacher-row', { style: { gap: '8px', margin: 0 } },
+      h('label.check', h('input', { type: 'checkbox', checked: !!p.teacher, onchange: (e) => { if (e.target.checked) p.teacher = true; else { delete p.teacher; delete p.level; } store.markDirty(); app.render(); } }), ' 선생님(교원)'),
+      p.teacher ? h('div.chips', { style: { margin: 0 } }, LEVELS.map((l) => h(`button.chip-btn${p.level === l ? '.active' : ''}`, { onclick: () => { if (p.level === l) delete p.level; else p.level = l; store.markDirty(); app.render(); } }, l))) : null,
+      p.teacher ? h('input', { value: p.subject || '', placeholder: '교과 (예: 정보, 국어)', 'aria-label': '교과', style: { width: '10em' }, oninput: (e) => { p.subject = e.target.value; store.markDirty(); } }) : null),
     h('div.grid2',
       field(isOrg ? '기관 이름' : '이름', 'name', { placeholder: isOrg ? '예: 경기도교육청' : '예: 김민수' }),
-      isOrg ? field('담당 부서·담당자', 'org', { placeholder: '예: 교육과정과 장학사 박○○' }) : field('호칭·직위', 'title', { list: 'title-list', placeholder: '예: 선생님, 장학사, 주무관' }),
+      isOrg ? field('담당 부서·담당자', 'org', { placeholder: '예: 교육과정과 장학사 박○○' }) : field('호칭·직위 (겸임은 쉼표로)', 'title', { list: 'title-list', placeholder: '예: 부장, 선생님' }),
       isOrg ? null : field('소속', 'org', { placeholder: '예: 2학년부, ○○중학교, ○○대학교' }),
       field('전화', 'phone', { type: 'tel', placeholder: '010-0000-0000' }),
       field('이메일', 'email', { type: 'email' }),
@@ -134,13 +138,14 @@ export function renderPeople(app) {
       ? h('ul.people-list', shown.map((p) => h(`li${p.id === v.sel ? '.active' : ''}`, { onclick: () => { v.sel = p.id; app.render(); scrollToDetail('.people-page > section.card:last-child'); } },
         h('span.people-kind', p.kind === 'org' ? '🏢' : '👤'),
         h('span.people-name', h('strong', p.name || '(이름 없음)'), p.kind === 'person' && p.title ? ` ${p.title}` : ''),
-        h('span.muted.small.people-org', homonymIds.has(p.id) ? h('span.homonym-badge', '동명이인') : null, p.org || ''),
+        h('span.muted.small.people-org', homonymIds.has(p.id) ? h('span.homonym-badge', '동명이인') : null, [teacherInfo(p), p.org].filter(Boolean).join(' · ')),
         mentions.get(p.id)?.length ? h('span.badge', { title: '나온 기록 수' }, String(mentions.get(p.id).length)) : null)))
       : h('p.muted', people.length ? '찾는 이름이 없습니다.' : '아직 명부가 비어 있습니다. "+ 사람", "여러 명 붙여넣기"로 넣거나, 아래 "기록에서 찾은 이름"을 눌러 보세요.'));
   };
   drawList();
   const search = h('input', { type: 'search', placeholder: '이름·소속·전화로 찾기', value: v.q, oninput: (e) => { v.q = e.target.value; drawList(); } });
-  const missing = findUnregistered(textEntries(store).map((e) => e.text), people).slice(0, 12);
+  const ignore = store.settings.peopleIgnore || [];
+  const missing = findUnregistered(textEntries(store).map((e) => e.text), people, ignore).slice(0, 12);
   const left = h('section.card.people-list-card',
     h('div.card-head', h('h2', `사람·기관 (${people.length})`),
       h('div.row', { style: { margin: 0, gap: '6px' } },
@@ -153,12 +158,16 @@ export function renderPeople(app) {
     h('div.row', { style: { gap: '6px', flexWrap: 'wrap' } },
       h('button.small', { onclick: () => bulkAdd(app) }, '여러 명 붙여넣기'),
       h('button.small', { onclick: () => importPrevYear(app) }, `${store.year - 1}학년도 명부 가져오기`)),
-    missing.length ? h('div.people-missing',
-      h('div.small', h('strong', '기록에서 찾은 이름'), h('span.muted', ' — 눌러서 명부에 넣기')),
-      h('div.chips', missing.map((m) => h('button.chip-btn', {
-        title: `기록에 ${m.count}번 나옴`,
-        onclick: () => { addPerson(app, { kind: 'person', name: m.name, title: m.title.replace(/님$/, '') === '선생' ? '선생님' : m.title }); app.render(); },
-      }, `+ ${m.name} ${m.title} `, h('small', String(m.count)))))) : null);
+    missing.length || ignore.length ? h('div.people-missing',
+      h('div.small', h('strong', '기록에서 찾은 이름'), h('span.muted', ' — 눌러서 명부에 넣기, ✕ 는 이름이 아니니 추천에서 빼기')),
+      h('div.chips', missing.map((m) => h('span.suggest-chip',
+        h('button.chip-btn', {
+          title: `기록에 ${m.count}번 나옴`,
+          onclick: () => { addPerson(app, { kind: 'person', name: m.name, title: m.title.replace(/님$/, '') === '선생' ? '선생님' : m.title, teacher: /선생|교장|교감|부장|수석/.test(m.title) }); app.render(); },
+        }, `+ ${m.name} ${m.title} `, h('small', String(m.count))),
+        h('button.icon-btn.chip-x', { title: `"${m.name}"은(는) 이름이 아님 — 추천에서 빼기`, 'aria-label': `${m.name} 추천에서 빼기`, onclick: () => { store.updateSettings({ peopleIgnore: [...new Set([...ignore, m.name])] }); app.render(); } }, '✕')))),
+      ignore.length ? h('details.ignore-list', h('summary.small.muted', `추천에서 뺀 말 ${ignore.length}개`),
+        h('div.chips', ignore.map((w) => h('button.chip-btn', { title: '다시 추천하기', onclick: () => { store.updateSettings({ peopleIgnore: ignore.filter((x) => x !== w) }); app.render(); } }, `${w} ↺`)))) : null) : null);
 
   // ----- 오른쪽: 고르기 / 고치기 + 기록 -----
   let right;

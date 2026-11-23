@@ -64,7 +64,7 @@ export function searchAll(store, q, { limit = 60 } = {}) {
   const allSt = searchStudents(q, w.students);
   const students = [...allSt, ...w.students.filter((s) => !allSt.includes(s) && nameHit([s.name || '']))].slice(0, 8);
   const people = sortPeople(w.people).filter((p) => nameHit(namesOf(p))
-    || matchesAll([...namesOf(p), p.title, p.org, p.phone, p.email, p.memo].join(' '), terms)).slice(0, 8);
+    || matchesAll([...namesOf(p), p.title, p.org, p.phone, p.email, p.memo, p.subject, p.level, p.teacher ? '선생님 교사' : ''].join(' '), terms)).slice(0, 8);
   const tags = tagCounts(tagEntries(store)).filter(([t]) => matchesAll(t, terms)).slice(0, 10);
   const all = textEntries(store).filter((e) => matchesAll(`${e.label || ''} ${e.text}`, terms))
     .sort((a, b) => (b.date || '0').localeCompare(a.date || '0'));

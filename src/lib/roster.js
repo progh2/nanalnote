@@ -1,5 +1,5 @@
 // 학생 명단 올리기 (엑셀·CSV): 머리줄 찾기 → 학생 목록으로 → 지금 명단에 더하고 고치기 / 바꾸기
-import { normStudent, buildIndex, newUid, statusAt } from './students.js';
+import { normStudent, buildIndex, newUid, statusAt, cleanNo } from './students.js';
 
 // 열 이름(띄어쓰기 무시) → 필드. 학교 서식마다 이름이 달라서 여러 가지를 받는다
 export const COLUMNS = {
@@ -12,8 +12,12 @@ export const COLUMNS = {
   gender: ['성별'],
   email: ['이메일', 'e-mail', 'email', '전자우편', '메일'],
   phone: ['전화번호', '전화', '휴대전화', '휴대폰', '핸드폰', '연락처', '학생연락처', '휴대전화번호', '학생전화번호'],
+  entryYear: ['입학학년도', '입학년도', '입학연도', '입학'],
+  dept: ['학과', '과', '학과명'],
+  past1: ['1학년학번', '1학년때학번'],
+  past2: ['2학년학번', '2학년때학번'],
 };
-export const FIELD_LABEL = { studentNo: '학번', grade: '학년', cls: '반', no: '번호', name: '이름', prevNo: '이전학번', gender: '성별', email: '이메일', phone: '전화번호' };
+export const FIELD_LABEL = { studentNo: '학번', grade: '학년', cls: '반', no: '번호', name: '이름', prevNo: '이전학번', gender: '성별', email: '이메일', phone: '전화번호', entryYear: '입학 학년도', dept: '학과', past1: '1학년 학번', past2: '2학년 학번' };
 
 const clean = (s) => String(s ?? '').replace(/\s/g, '').toLowerCase();
 const digits = (s) => { const m = String(s ?? '').match(/\d+/); return m ? m[0] : ''; };
@@ -51,8 +55,14 @@ export function parseStudentRows(rows) {
   for (const r of rows.slice(hi + 1)) {
     const name = at(r, 'name');
     if (!name || COLUMNS.name.includes(clean(name))) { if (r.some(Boolean)) skipped++; continue; } // 빈 줄·반복된 머리줄
+    const past = {};
+    if (cleanNo(at(r, 'past1'))) past[1] = cleanNo(at(r, 'past1'));
+    if (cleanNo(at(r, 'past2'))) past[2] = cleanNo(at(r, 'past2'));
     const st = normStudent({
-      studentNo: digits(at(r, 'studentNo')), grade: digits(at(r, 'grade')), cls: digits(at(r, 'cls')), no: digits(at(r, 'no')), name,
+      studentNo: cleanNo(at(r, 'studentNo')), grade: digits(at(r, 'grade')), cls: digits(at(r, 'cls')), no: digits(at(r, 'no')), name,
+      ...(/^\d{4}$/.test(digits(at(r, 'entryYear'))) ? { entryYear: digits(at(r, 'entryYear')) } : {}),
+      ...(at(r, 'dept') ? { dept: at(r, 'dept') } : {}),
+      ...(Object.keys(past).length ? { pastNos: past } : {}),
       ...(at(r, 'gender') ? { gender: gender(at(r, 'gender')) } : {}),
       ...(at(r, 'email') ? { email: at(r, 'email') } : {}),
       ...(at(r, 'phone') ? { phone: at(r, 'phone') } : {}),
@@ -67,7 +77,7 @@ export function parseStudentRows(rows) {
   return { list, header: hi, found, skipped, dupNos };
 }
 
-const KEEP = ['gender', 'email', 'phone', 'statusLog', 'leaving', 'flags', 'flagMemo'];
+const KEEP = ['gender', 'email', 'phone', 'statusLog', 'leaving', 'flags', 'flagMemo', 'entryYear', 'dept', 'pastNos'];
 
 /**
  * 지금 명단에 올린 목록을 반영

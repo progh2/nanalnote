@@ -3,7 +3,7 @@
 
 import { clone, newId, isTempId } from './lib/util.js';
 import { splitParagraphs } from './lib/counsel.js';
-import { normStudent, sortStudents, buildIndex, toUid, labelOf, mentionedUids, classKeys, newUid } from './lib/students.js';
+import { normStudent, sortStudents, buildIndex, toUid, labelOf, mentionedUids, classKeys, newUid, parseDeptRules, deptOf } from './lib/students.js';
 import { bellOf, periodList, periodLabel } from './lib/bell.js';
 import { normPerson, sortPeople, mentionedStudentUids } from './lib/people.js';
 import { tagEntries, tagCounts } from './lib/tags.js';
@@ -130,7 +130,10 @@ export class Store {
   periodLabel(p) { return periodLabel(this.settings, p); }
 
   /** 정렬된 학생 목록 (학년-반-번호 순) */
-  students() { return sortStudents(this.work.students); }
+  students() { return sortStudents(this.work.students, this.year); }
+  /** 학과 규칙 (설정 > 학과) */
+  deptRules() { return parseDeptRules(this.settings.deptRules || ''); }
+  dept(s) { return deptOf(s, this.deptRules(), this.year); }
   studentIndex() { return buildIndex(this.work.students); }
   /** uid(또는 옛 이름 참조) → "학번 이름" */
   label(ref) { return labelOf(ref, this.studentIndex()); }

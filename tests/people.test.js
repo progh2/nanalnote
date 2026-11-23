@@ -79,3 +79,29 @@ test('동명이인 고르기 → 글을 구분된 이름으로 고친다', () =>
   const same = [normPerson({ id: 'a', name: '이하나', title: '선생님' }), normPerson({ id: 'b', name: '이하나', title: '선생님' })];
   assert.equal(qualifiedText('이하나 선생님', '이하나', same[0], same), '');
 });
+
+// ---------- 겸임 호칭, T·샘·쌤, 추천 거르기 ----------
+const { titlesOf, teacherInfo } = await import('../src/lib/people.js');
+
+test('호칭 여러 개(겸임)와 교원 정보', () => {
+  const p = normPerson({ name: '정다온', title: '부장, 선생님 ,교무부장', teacher: true, level: '중등', subject: '정보' });
+  assert.equal(p.title, '부장, 선생님, 교무부장');
+  assert.deepEqual(titlesOf(p), ['부장', '선생님', '교무부장']);
+  assert.equal(teacherInfo(p), '중등 · 정보');
+  assert.equal(normPerson({ name: '가', level: '중등' }).level, undefined); // 교원이 아니면 학교급 없음
+});
+
+test('이름 뒤 T·샘·쌤도 선생님으로, 겸임 호칭으로 동명이인 구분', () => {
+  const ps = [normPerson({ id: 'a', name: '정다온', title: '선생님' })];
+  const pk2 = (text, list = ps) => tokenizeMentions(text, [], list).filter((t) => t.pid || t.amb).map((t) => `${t.text}=${t.pid || '?'}`);
+  assert.deepEqual(pk2('정다온T가 말하길, 정다온샘이랑 정다온 쌤께'), ['정다온T=a', '정다온샘=a', '정다온 쌤=a']);
+  assert.deepEqual(pk2('정다온TV'), []); // TV 는 호칭이 아님
+  const twins = [normPerson({ id: 'x', name: '박지영', title: '부장, 선생님' }), normPerson({ id: 'y', name: '박지영', title: '선생님' })];
+  assert.deepEqual(pk2('박지영 부장님과 박지영 선생님', twins), ['박지영 부장님=x', '박지영 선생님=?']);
+});
+
+test('기록에서 찾은 이름: 일상 표현은 거르고, 뺀 말은 다시 추천하지 않음', () => {
+  const texts = ['수능감독 선생님 명단', '같이 가는 선생님', '이번에는 교장선생님께', '학교에서 선생님', '정다온T 연락', '이수진샘 회의', '박하늘 선생님'];
+  assert.deepEqual(findUnregistered(texts, []).map((x) => `${x.name}:${x.title}`), ['정다온:선생님', '박하늘:선생님', '이수진:선생님']);
+  assert.deepEqual(findUnregistered(texts, [], ['박하늘']).map((x) => x.name), ['정다온', '이수진']);
+});

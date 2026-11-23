@@ -24,7 +24,8 @@ const sample = {
       dinner: { enabled: true, start: '17:20', end: '18:10' }, evening: [{ label: '야자1', start: '18:20', end: '19:40' }, { label: '방과후2', start: '', end: '' }],
       lessonLen: 50, breakLen: 10, csat: { lunch: { start: '11:30', end: '12:20' }, p4: { start: '12:20', end: '13:10' } } },
     courses: ['정보', { name: '인공지능 기초', short: 'AI' }], rooms: ['컴퓨터실'], classes: ['1-2'], homerooms: { '1-2': { main: '김담임', sub: '박부담' } } } }],
-  students: [{ id: 'b', uid: 'U1', studentNo: '10201', grade: 1, cls: 2, no: 1, name: '이몽룡', photo: '10201_이몽룡.jpg', gender: '남', email: 'a@b.kr', phone: '010-1234-5678' }, { id: 'c', uid: 'U2', studentNo: '10202', grade: 1, cls: 2, no: 2, name: '성춘향', photo: '',
+  students: [{ id: 'b2', uid: 'U9', studentNo: '임시1101', grade: 1, cls: 1, no: 1, name: '신입생', photo: '', entryYear: 2027, pastNos: { 1: '10101', 2: '20105' } },
+    { id: 'b', uid: 'U1', studentNo: '10201', grade: 1, cls: 2, no: 1, name: '이몽룡', photo: '10201_이몽룡.jpg', gender: '남', email: 'a@b.kr', phone: '010-1234-5678', entryYear: 2026, dept: '뉴미디어소프트웨어과' }, { id: 'c', uid: 'U2', studentNo: '10202', grade: 1, cls: 2, no: 2, name: '성춘향', photo: '',
     statusLog: [{ date: '2026-04-01', type: '휴학', memo: '질병 | 장기 입원' }, { date: '2026-09-01', type: '복학', grade: 1 }, { date: '2026-12-01', type: '학년 변경', grade: 2 }],
     leaving: { type: '전학', date: '2027-01-15', memo: '이사' }, flags: ['good', 'watch'], flagMemo: '수학 영재\n교우 관계 살피기' }],
   schedule: [{ id: 'd', date: '2026-03-02', text: '입학식\n시업식' }, { id: 'd2', date: '2026-05-04', text: '재량휴업일', holiday: true }, { id: 'd3', date: '2026-11-05', text: '', csat: true }],
@@ -43,7 +44,7 @@ const sample = {
   trips: [{ id: 't', date: '2026-03-02', time: '13:00~17:00', place: '교육청', purpose: '정보교육 연수 · 1일차' }, { id: 't2', date: '2026-03-02', time: '', place: '', purpose: '' }],
   // 명부 파일은 사람(이름순) → 기관(이름순) 으로 쓴다
   people: [
-    { id: 'p1', kind: 'person', name: '김민수', title: '선생님', org: '2학년부', phone: '010-1234-5678', email: 'kim@example.com', aliases: ['김쌤'], memo: '정보 | 방과후 담당' },
+    { id: 'p1', kind: 'person', name: '김민수', title: '부장, 선생님', org: '2학년부', phone: '010-1234-5678', email: 'kim@example.com', aliases: ['김쌤'], memo: '정보 | 방과후 담당', teacher: true, level: '중등', subject: '정보' },
     { id: 'p2', kind: 'org', name: '경기도교육청', title: '', org: '', phone: '031-000-0000', email: '', aliases: ['교육청', '도교육청'], memo: '' },
   ],
   // 대회·활동: 시작일 순
@@ -72,7 +73,7 @@ test('마크다운 왕복 변환이 손실 없이 동일', () => {
   const got = strip(back);
   got.counsel[1].students = [];
   assert.deepEqual(got, exp);
-  assert.ok(files.get('/2026학년도/학생명단.md').includes('| 10201 | 1 | 2 | 1 | 이몽룡 | 남 | a@b.kr | 010-1234-5678 | 10201_이몽룡.jpg | U1 |'));
+  assert.ok(files.get('/2026학년도/학생명단.md').includes('| 10201 | 1 | 2 | 1 | 이몽룡 | 남 | a@b.kr | 010-1234-5678 | 2026 | 뉴미디어소프트웨어과 |  |  | 10201_이몽룡.jpg | U1 |'));
   assert.ok(files.get('/2026학년도/학사일정.md').includes('- 2026-05-04: [휴업] 재량휴업일'));
   assert.ok(files.get('/2026학년도/학사일정.md').includes('- 2026-11-05: [수능대비]\n'));
   assert.ok(files.get('/2026학년도/일지/2026-03-02.md').includes('- 10202 성춘향 · 지각'));

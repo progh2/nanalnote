@@ -765,3 +765,15 @@ textarea.sheet-editor { position: absolute; z-index: 4; margin: 0; padding: 5px 
 .sheet-help { margin: 0 0 6px; }
 @media (pointer: coarse) { .sheet-table th, .sheet-table td { height: 40px; padding: 8px; } }
 @media (max-width: 720px) { .student-sheet .card-head > .row, .contest-block .card-head > .row { flex: 1 1 100%; min-width: 0; flex-wrap: wrap !important; } }
+.suggest-chip { display: inline-flex; align-items: center; }
+.suggest-chip .chip-btn { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.suggest-chip .chip-x { border: 1px solid var(--border); border-left: 0; border-radius: 0 999px 999px 0; padding: 4px 8px; background: var(--surface); color: var(--muted); }
+.ignore-list { margin-top: 6px; }
+.ignore-list summary { cursor: pointer; }
+.teacher-row { align-items: center; flex-wrap: wrap; }
+.stu-groups { display: grid; gap: 10px; max-height: 64vh; overflow: auto; padding-right: 2px; }
+.split .stu-groups { max-height: none; overflow: visible; }
+.stu-group .stu-list { max-height: none; overflow: visible; }
+.stu-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 4px 2px; border-bottom: 1px solid var(--border); margin-bottom: 6px; position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.grade-chips, .cls-chips { margin: 6px 0 0; }
+.cls-chips .chip-btn { padding: 2px 10px; }

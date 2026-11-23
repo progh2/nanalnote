@@ -8,6 +8,7 @@ import { THEMES } from '../themes.js';
 import { ttCell, courseOf } from '../store.js';
 import { openStudentImport, readTable, TABLE_ACCEPT } from './import.js';
 import { xlsxBlob } from '../lib/xlsx.js';
+import { parseDeptRules } from '../lib/students.js';
 import { bellOf, rawBell, cascadeFrom, addMin, csatTimes, EVENING_BASE } from '../lib/bell.js';
 import { timeSelect } from './ui.js';
 import { vaultEnabled, setupPin, changePin, removeVault, validPin, registerPasskey, removePasskey, hasPasskey, passkeyAvailable } from '../lib/vault.js';
@@ -267,15 +268,29 @@ function listsCard(app) {
         h('td', h('input', { value: x.main, placeholder: '담임 선생님', 'aria-label': `${cls} 담임`, oninput: (e) => (x.main = e.target.value) })),
         h('td', h('input', { value: x.sub, placeholder: '부담임 선생님', 'aria-label': `${cls} 부담임`, oninput: (e) => (x.sub = e.target.value) })));
     }))));
+  // 학과 규칙
+  const DEPT_EXAMPLE = '2024~2026 1~4반 뉴미디어소프트웨어과\n2024~2026 5~6반 뉴미디어디자인과\n2027~ 1~4반 지능형소프트웨어과\n2027~ 5~6반 지능형디자인과';
+  const deptPreview = h('div.dept-preview.small');
+  const drawDept = () => {
+    const rules = parseDeptRules(deptTa.value);
+    const bad = deptTa.value.split('\n').filter((l) => l.trim() && !parseDeptRules(l).length);
+    fill(deptPreview, rules.length ? h('ul', rules.map((x) => h('li', `${x.from}${x.to === x.from ? '' : x.to === 9999 ? '학년도 이후' : `~${x.to}`} 입학 · ${x.c1 === x.c2 ? x.c1 : `${x.c1}~${x.c2}`}반 → `, h('strong', x.name)))) : null,
+      bad.length ? h('p.error-text', `알아듣지 못한 줄: ${bad.join(' / ')}`) : null);
+  };
+  const deptTa = h('textarea', { rows: 4, value: s.deptRules || '', placeholder: DEPT_EXAMPLE, 'aria-label': '학과 규칙', oninput: () => drawDept() });
+  drawDept();
   return card('내 수업 · 교실 · 학반',
     h('p.muted.small', '여기 넣은 목록은 시간표와 수업일지에서 골라 쓸 수 있습니다. 수업명 뒤에 "| 축약"을 붙이면 교사수첩에 짧게 표시됩니다. 학반은 학생 명단의 학년·반에서도 자동으로 모입니다.'),
     h('div.lists-grid', c, r, k),
     h('h3', '학반별 담임 · 부담임'),
     store.classList().length ? hrTable : h('p.muted.small', '담당 학반을 넣거나 학생 명단을 등록하면 학반별로 담임·부담임을 적을 수 있습니다.'),
+    h('h3', '학과 (입학 학년도 · 반별)'),
+    h('p.muted.small', '한 줄에 하나씩 "입학 학년도 반 학과"로 적으면 학생의 학과를 자동으로 채웁니다. 학생마다 직접 적은 학과가 있으면 그것을 씁니다. 입학 학년도를 적지 않은 학생은 지금 학년으로 어림합니다(2학년 → 작년 입학).'),
+    deptTa, h('div.row', { style: { margin: '4px 0' } }, h('button.small', { onclick: () => { deptTa.value = DEPT_EXAMPLE; drawDept(); } }, '예시대로 채우기'), h('span.muted.small', '— 채운 뒤 [목록 저장]')), deptPreview,
     h('div.row', h('button.primary', { onclick: async () => {
       const courses = lines(c).map((x) => { const [name, short] = x.split(/\s*\|\s*/); return short ? { name, short } : name; });
       const hrs = Object.fromEntries(Object.entries(homerooms).filter(([, x]) => x.main.trim() || x.sub.trim()).map(([kk, x]) => [kk, { main: x.main.trim(), sub: x.sub.trim() }]));
-      store.updateSettings({ courses, rooms: lines(r), classes: lines(k), homerooms: hrs });
+      store.updateSettings({ courses, rooms: lines(r), classes: lines(k), homerooms: hrs, deptRules: deptTa.value.trim() });
       await app.save(); app.render();
     } }, '목록 저장')));
 }

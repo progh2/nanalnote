@@ -39,3 +39,38 @@ test('정리: 학적은 날짜순, 빈 표시는 지움', () => {
   assert.equal(n.flags, undefined);
   assert.equal(n.flagMemo, undefined);
 });
+
+// ---------- 입학 예정·임시 학번·학과 ----------
+const { parseDeptRules, deptOf, entryYearOf, cleanNo, partsOfNo, sortStudents, buildIndex, resolveRef } = await import('../src/lib/students.js');
+const RULES = `2024~2026 1~4반 뉴미디어소프트웨어과
+2024~2026 5~6반 뉴미디어디자인과
+2027~ 1~4반 지능형소프트웨어과
+2027~ 5~6반 지능형디자인과`;
+
+test('학과 규칙: 입학 학년도(없으면 학년으로 어림)와 반으로', () => {
+  const rules = parseDeptRules(RULES);
+  assert.equal(rules.length, 4);
+  assert.deepEqual(rules[2], { from: 2027, to: 9999, c1: 1, c2: 4, name: '지능형소프트웨어과' });
+  assert.equal(deptOf({ grade: 3, cls: 2 }, rules, 2026), '뉴미디어소프트웨어과'); // 2024 입학
+  assert.equal(deptOf({ grade: 1, cls: 6 }, rules, 2026), '뉴미디어디자인과');
+  assert.equal(deptOf({ grade: 1, cls: 5, entryYear: 2027 }, rules, 2026), '지능형디자인과');
+  assert.equal(deptOf({ grade: 2, cls: 3, dept: '직접 쓴 과' }, rules, 2026), '직접 쓴 과');
+  assert.equal(deptOf({ grade: 1, cls: 9 }, rules, 2026), '');
+  assert.equal(entryYearOf({ grade: 2 }, 2026), 2025);
+  assert.deepEqual(parseDeptRules('2025 3반 : 한 학년도 한 반\n잘못된 줄'), [{ from: 2025, to: 2025, c1: 3, c2: 3, name: '한 학년도 한 반' }]);
+});
+
+test('임시 학번과 입학 예정 상태', () => {
+  assert.equal(cleanNo(' 임시 1101 '), '임시1101');
+  assert.equal(cleanNo('20101번'), '20101');
+  assert.deepEqual(partsOfNo('임시1101'), { grade: 1, cls: 1, no: 1 });
+  const n = normStudent({ studentNo: '임시1203', name: '신입', entryYear: 2027 });
+  assert.deepEqual([n.grade, n.cls, n.no], [1, 2, 3]);
+  assert.equal(statusAt(n, '2026-11-26').state, 'pre');
+  assert.equal(statusAt(n, '2027-03-02').state, 'active');
+  const list = sortStudents([n, normStudent({ studentNo: '10101', name: '재학' })], 2026);
+  assert.deepEqual(list.map((s) => s.name), ['재학', '신입']); // 입학 예정은 뒤로
+  const idx = buildIndex([n]);
+  assert.equal(resolveRef('임시1203', idx)?.name, '신입');
+  assert.equal(resolveRef('임시1203 신입', idx)?.name, '신입');
+});

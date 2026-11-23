@@ -5,6 +5,7 @@ import { textEntries, TYPE_LABEL } from '../lib/tags.js';
 import { renderMd } from '../lib/notemd.js';
 import { mentionInline } from './mentions.js';
 import { relationsBox } from './relations.js';
+import { selvesOf } from '../lib/relations.js';
 import { resizeImage, readClipboardImage, PHOTO_SIZE, LOGO_SIZE } from '../lib/photos.js';
 import { migrateRefs } from '../store.js';
 import { scrollToDetail, photoDrop, personAvatar } from './ui.js';
@@ -23,14 +24,16 @@ function mentionMap(store) {
 }
 
 /** 이 사람과 이름(또는 다른 이름)이 겹치는 다른 사람·기관 */
-function homonymsOf(p, people) {
+function homonymsOf(p, people, relations = []) {
   const g = nameGroups(people);
-  return [...new Set(namesOf(p).flatMap((n) => (g.get(n) || []).filter((o) => o !== p)))];
+  // "본인"으로 이어진 같은 사람의 다른 기록(졸업생 ↔ 선생님)은 동명이인이 아니다
+  const selves = new Set(selvesOf(relations, `p:${p.uid}`));
+  return [...new Set(namesOf(p).flatMap((n) => (g.get(n) || []).filter((o) => o !== p && !selves.has(`p:${o.uid}`))))];
 }
 
 /** 동명이인 안내: 어떻게 구분해 쓰면 되는지 */
-function homonymNote(p, people) {
-  const others = homonymsOf(p, people);
+function homonymNote(p, people, relations = []) {
+  const others = homonymsOf(p, people, relations);
   if (!others.length) return null;
   const g = nameGroups(people).get(p.name) || [p];
   const q = distinctQual(p, p.name, g);
@@ -216,7 +219,7 @@ export function renderPeople(app) {
   const v = (app.peopleView ||= { sel: '', q: '', kind: '' });
   const people = sortPeople(store.work.people);
   const { sure: mentions, maybe } = mentionMap(store);
-  const homonymIds = new Set(people.filter((p) => homonymsOf(p, people).length).map((p) => p.id));
+  const homonymIds = new Set(people.filter((p) => homonymsOf(p, people, store.work.relations).length).map((p) => p.id));
   if (v.sel) v.sel = store.currentId(v.sel);
   const sel = people.find((p) => p.id === v.sel) || null;
 
@@ -229,7 +232,9 @@ export function renderPeople(app) {
     fill(listBox, shown.length
       ? h('ul.people-list', shown.map((p) => h(`li${p.id === v.sel ? '.active' : ''}`, { onclick: () => { v.sel = p.id; app.render(); scrollToDetail('.people-page > section.card:last-child'); } },
         h('span.people-kind', personAvatar(app, p, 28)),
-        h('span.people-name', h('strong', p.name || '(이름 없음)'), p.kind === 'person' && p.title ? ` ${p.title}` : p.kind === 'alumni' ? ` ${p.gradYear ? `${p.gradYear} 졸업` : '졸업생'}` : ''),
+        h('span.people-name', h('strong', p.name || '(이름 없음)'),
+          // 같은 사람의 졸업생 기록이 이어져 있으면 🎓 (졸업생이 지금 선생님인 경우 등)
+          p.kind === 'person' && selvesOf(store.work.relations, `p:${p.uid}`).some((r) => store.work.people.some((x) => x.kind === 'alumni' && `p:${x.uid}` === r)) ? h('span.self-alum', { title: '이 학교 졸업생' }, ' 🎓') : null, p.kind === 'person' && p.title ? ` ${p.title}` : p.kind === 'alumni' ? ` ${p.gradYear ? `${p.gradYear} 졸업` : '졸업생'}` : ''),
         h('span.muted.small.people-org', homonymIds.has(p.id) ? h('span.homonym-badge', '동명이인') : null, [teacherInfo(p), p.org].filter(Boolean).join(' · ')),
         mentions.get(p.id)?.length ? h('span.badge', { title: '나온 기록 수' }, String(mentions.get(p.id).length)) : null)))
       : h('p.muted', people.length ? '찾는 이름이 없습니다.' : '아직 명부가 비어 있습니다. "+ 사람", "여러 명 붙여넣기"로 넣거나, 아래 "기록에서 찾은 이름"을 눌러 보세요.'));
@@ -311,7 +316,7 @@ export function renderPeople(app) {
         const t = document.querySelector('.people-page .person-title');
         if (t) t.textContent = `${sel.kind === 'org' ? '🏢' : '👤'} ${personLabel(sel)}`;
       }),
-      homonymNote(sel, people),
+      homonymNote(sel, people, store.work.relations),
       maybeList.length ? h('div.people-maybe',
         h('h3.people-rec-head', `누군지 정해지지 않은 기록 (${maybeList.length})`),
         h('p.muted.small', '동명이인이라 누구인지 정하지 못한 기록입니다. 물음표(?)가 붙은 이름을 눌러 고르면 글이 "이름(소속)"으로 고쳐집니다.'),

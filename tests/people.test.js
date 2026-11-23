@@ -105,3 +105,9 @@ test('기록에서 찾은 이름: 일상 표현은 거르고, 뺀 말은 다시 
   assert.deepEqual(findUnregistered(texts, []).map((x) => `${x.name}:${x.title}`), ['박하늘:선생님', '이수진:선생님', '정다온:선생님']);
   assert.deepEqual(findUnregistered(texts, [], ['박하늘']).map((x) => x.name), ['이수진', '정다온']);
 });
+
+test('졸업생이 지금 선생님: "○○ 선생님"은 선생님 기록, "○○(2015졸업)"은 졸업생 기록', () => {
+  const ps = [normPerson({ id: 't', name: '정다온', title: '선생님' }), normPerson({ id: 'a', kind: 'alumni', name: '정다온', gradYear: 2015 })];
+  const pk3 = (text) => tokenizeMentions(text, [], ps).filter((x) => x.pid || x.amb).map((x) => `${x.text}=${x.pid || `?${x.amb.join(',')}`}`);
+  assert.deepEqual(pk3('정다온 선생님께, 정다온(2015졸업) 시절 사진, 정다온이'), ['정다온 선생님=t', '정다온(2015졸업)=a', '정다온=?t,a']);
+});

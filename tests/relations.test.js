@@ -26,3 +26,14 @@ test('한쪽에서 적은 관계가 양쪽에 보인다', () => {
   assert.deepEqual(relationsOf(rels, 's:sis', gender).map((x) => `${x.label}:${x.other}`), ['남동생:s:kid']);
   assert.equal(hasRelation(rels, 'p:dad', 's:kid', '아버지'), true);
 });
+
+test('본인: 같은 사람의 다른 기록 (졸업생 ↔ 지금 선생님), 양쪽 모두 본인, 거꾸로 중복 막기', async () => {
+  const { selvesOf } = await import('../src/lib/relations.js');
+  const rels = [{ a: 'p:alum', b: 'p:teacher', kind: '본인' }];
+  assert.deepEqual(relationsOf(rels, 'p:teacher').map((x) => `${x.label}:${x.other}`), ['본인:p:alum']);
+  assert.deepEqual(relationsOf(rels, 'p:alum').map((x) => `${x.label}:${x.other}`), ['본인:p:teacher']);
+  assert.equal(hasRelation(rels, 'p:teacher', 'p:alum', '본인'), true);
+  assert.equal(hasRelation(rels, 'p:teacher', 'p:alum', '아버지'), false);
+  assert.deepEqual(selvesOf(rels, 'p:teacher'), ['p:alum']);
+  assert.equal(inverseKind('본인'), '본인');
+});

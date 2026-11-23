@@ -1,14 +1,17 @@
 // 학생·사람 사이의 관계 (가족·담임 등)
 // 레코드: { id, a: 's:학생uid' | 'p:사람uid', b: …, kind, memo }  — "a 는 b 의 kind" (예: 정다온 은 김민준 의 아버지)
 // 한쪽에서 적으면 다른 쪽에서도 거꾸로 보인다 (김민준 쪽: 아버지 정다온 / 정다온 쪽: 아들 김민준)
+// "본인" 은 같은 사람의 다른 기록을 잇는다 (졸업생 기록 ↔ 지금 선생님 기록) — 양쪽 모두 "본인"
 
-export const REL_KINDS = ['아버지', '어머니', '보호자', '아들', '딸', '자녀', '형', '오빠', '언니', '누나', '남동생', '여동생', '형제자매', '담임', '지도교사', '학생', '친척', '기타'];
+export const REL_KINDS = ['본인', '아버지', '어머니', '보호자', '아들', '딸', '자녀', '형', '오빠', '언니', '누나', '남동생', '여동생', '형제자매', '담임', '지도교사', '학생', '친척', '기타'];
 
 const PARENT = new Set(['아버지', '어머니', '보호자', '부모']);
 const CHILD = new Set(['아들', '딸', '자녀']);
 const OLDER = new Set(['형', '오빠', '언니', '누나']);
 const YOUNGER = new Set(['남동생', '여동생', '동생']);
 const TEACHER = new Set(['담임', '지도교사']);
+// 거꾸로 해도 같은 관계 (본인: 같은 사람의 다른 기록 — 졸업생이 지금 선생님인 경우 등)
+const SYMMETRIC = new Set(['본인', '형제자매', '친척']);
 
 /** a 가 b 의 kind 일 때, b 는 a 의 무엇인가 (ga = a 성별, gb = b 성별: '남'|'여'|'') */
 export function inverseKind(kind, ga = '', gb = '') {
@@ -43,4 +46,7 @@ export function relationsOf(relations, x, genderOf = () => '') {
 }
 
 /** 같은 관계가 이미 있나 (방향·종류까지 같으면) */
-export const hasRelation = (relations, a, b, kind) => (relations || []).some((r) => r.a === a && r.b === b && r.kind === kind);
+export const hasRelation = (relations, a, b, kind) => (relations || []).some((r) => r.kind === kind && ((r.a === a && r.b === b) || (SYMMETRIC.has(kind) && r.a === b && r.b === a)));
+
+/** 같은 사람의 다른 기록 (예: 졸업생 기록 ↔ 지금 선생님 기록) → ref 목록 */
+export const selvesOf = (relations, x) => (relations || []).filter((r) => r.kind === '본인' && (r.a === x || r.b === x)).map((r) => (r.a === x ? r.b : r.a));

@@ -112,7 +112,8 @@ function compiled(people, students) {
   const add = (re, target, len, name) => { if (seen.has(re)) return; seen.add(re); pats.push({ re, len, name, ...target }); };
   for (const [n, group] of groups) {
     const N = escapeRe(n);
-    const persons = group.filter((p) => p.kind !== 'org');
+    // 호칭(선생님·장학사…)이 붙는 건 사람만 — 졸업생 기록은 호칭으로 알아보지 않는다 (졸업생이 지금 선생님이어도 "○○ 선생님"은 선생님 기록)
+    const persons = group.filter((p) => p.kind === 'person');
     for (const p of group) {
       const quals = qualsOf(p, n).filter((q) => group.every((o) => o === p || !qualsOf(o, n).includes(q)));
       if (quals.length) add(`${N} ?\\((?:${quals.map(escapeRe).join('|')})\\)(?: ?${TITLE_RE})?`, { pid: p.id }, 300 + n.length, n);
@@ -126,7 +127,7 @@ function compiled(people, students) {
         }
       }
     }
-    if (persons.length) add(`${N} ?${TITLE_RE}`, persons.length === 1 && group.length === 1 ? { pid: persons[0].id } : { amb: group.map((p) => p.id) }, 100 + n.length, n);
+    if (persons.length) add(`${N} ?${TITLE_RE}`, persons.length === 1 ? { pid: persons[0].id } : { amb: persons.map((p) => p.id) }, 100 + n.length, n);
     const bareOk = group.length > 1 || group[0].kind === 'org' || !studentNames.has(n);
     if (bareOk && !(group.length > 1 && studentNames.has(n))) add(N, group.length === 1 ? { pid: group[0].id } : { amb: group.map((p) => p.id) }, n.length, n);
   }

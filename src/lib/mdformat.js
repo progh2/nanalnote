@@ -4,7 +4,7 @@
 //   {학년도}학년도/설정.md        교원정보·학교급·기본 시간표
 //   {학년도}학년도/학생명단.md     | 번호 | 이름 |
 //   {학년도}학년도/학사일정.md     - 2026-03-02: 입학식
-//   {학년도}학년도/업무일지.md     - [x] 할 일 (작성 2026-03-02, 완료 2026-03-04)
+//   {학년도}학년도/업무일지.md     - [x] 할 일 (작성 2026-03-02, 완료 2026-03-04)  /  그 아래 "    > 결과 메모"
 //   {학년도}학년도/학급요록.md     ## 제목 / - 등록: / - 완료: / | 학생 | 내용 |
 //   {학년도}학년도/사람·기관.md    | 구분 | 이름 | 호칭 | 교원 | 학교급 | 교과 | 소속 | 전화 | 이메일 | 다른 이름 | 메모 |
 //   {학년도}학년도/태그.md         ## #태그 / - 상태·기간·고정·링크·파일 / ### 설명 / ### 일정 표 / ### 관련 인물 표
@@ -176,7 +176,9 @@ export function serialize(year, input) {
     const pl = { A: '(A) ', B: '(B) ', C: '(C) ', Z: '(언젠가) ' };
     files.set(`${dir}/${FILES.tasks}`, [header('업무일지'),
       '> 앞의 (A)(B)(C)(언젠가)는 중요도입니다.', '',
-      ...tk.map((t) => `- [${t.doneDate ? 'x' : ' '}] ${t.priority ? pl[t.priority] || '' : ''}${oneLine(t.text)} (작성 ${t.created}${t.due ? `, 마감 ${t.due}` : ''}${t.doneDate ? `, 완료 ${t.doneDate}` : ''}${t.order != null ? `, 순서 ${t.order}` : ''})`), ''].join('\n'));
+      ...tk.flatMap((t) => [`- [${t.doneDate ? 'x' : ' '}] ${t.priority ? pl[t.priority] || '' : ''}${oneLine(t.text)} (작성 ${t.created}${t.due ? `, 마감 ${t.due}` : ''}${t.doneDate ? `, 완료 ${t.doneDate}` : ''}${t.order != null ? `, 순서 ${t.order}` : ''})`,
+        // 결과·진행 메모: 업무 아래 들여쓴 인용으로
+        ...((t.result || '').trim() ? t.result.replace(/\s+$/, '').split('\n').map((l) => `    > ${l}`) : [])]), ''].join('\n'));
   }
 
   // 학급요록
@@ -592,9 +594,13 @@ export function parse(year, files, makeId) {
   // 업무일지
   const tk = get(FILES.tasks);
   if (tk != null) {
+    let last = null;
     for (const line of tk.split('\n')) {
+      // 업무 아래 들여쓴 "> …" 줄은 그 업무의 결과·진행 메모
+      const rm = line.match(/^\s{2,}>\s?(.*)$/);
+      if (rm && last) { last.result = last.result == null ? rm[1] : `${last.result}\n${rm[1]}`; continue; }
       const m = line.match(/^\s*[-*]\s*\[([ xX])\]\s*(.*)$/);
-      if (!m) continue;
+      if (!m) { if (line.trim()) last = null; continue; }
       let text = m[2], created = null, done = null;
       let due = null;
       let order = null, priority = null;
@@ -611,6 +617,7 @@ export function parse(year, files, makeId) {
       if (priority) t.priority = priority;
       if (order != null) t.order = order;
       data.tasks.push(t);
+      last = t;
     }
   }
 

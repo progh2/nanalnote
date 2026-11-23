@@ -50,6 +50,8 @@ export function textEntries(store) {
     for (const s of splitSections(d.note)) add('note', d.date, s.text, { md: true, update: (fn) => { d.note = d.note.replace(s.text, () => fn(s.text)); } });
   }
   for (const t of w.tasks) add('task', t.created, t.text, { done: !!t.doneDate, due: t.due || '', id: t.id, update: field(t, 'text') });
+  // 업무 결과·진행 메모 (완료 날짜 기준)
+  for (const t of w.tasks) add('task', t.doneDate || t.created, t.result, { done: !!t.doneDate, id: t.id, label: `결과: ${String(t.text || '').slice(0, 30)}`, md: true, update: field(t, 'result') });
   for (const l of w.lessons) add('lesson', l.date, l.content, { label: [store.periodLabel(l.period), l.subject, l.cls].filter(Boolean).join(' '), update: field(l, 'content') });
   const drafts = new Set(Object.keys(store.counselDraft || {}));
   // 상담: 저장된 단락은 그 날 초안(전체 글)으로 바꿔 고친다 → 저장할 때 학생 연결도 다시 계산
@@ -116,7 +118,7 @@ export function renameTag(data, drafts, old, neu, { dryRun = false } = {}) {
     if (!dryRun) obj[key] = t;
   };
   for (const d of data.days || []) fix(d, 'note');
-  for (const t of data.tasks || []) fix(t, 'text');
+  for (const t of data.tasks || []) { fix(t, 'text'); fix(t, 'result'); }
   for (const l of data.lessons || []) fix(l, 'content');
   for (const c of data.counsel || []) fix(c, 'text');
   for (const k of Object.keys(drafts || {})) fix(drafts, k);

@@ -7,11 +7,12 @@ import { classSelect } from './ui.js';
 import { activityRows, ACTIVITY_HEAD, activityRowCells, spanOf, KINDS } from '../lib/contests.js';
 import { xlsxBlob } from '../lib/xlsx.js';
 import { openContest } from './contests.js';
+import { mentionInline } from './mentions.js';
 
-const TABS = [['calendar', '캘린더'], ['attendance', '학생출결'], ['lessons', '수업일지'], ['counsel', '상담일지'], ['records', '학급요록'], ['trips', '출장'], ['activities', '학생 활동'], ['range', '기간지정 다운로드']];
+const TABS = [['calendar', '캘린더'], ['attendance', '학생출결'], ['lessons', '수업일지'], ['counsel', '상담일지'], ['records', '학급요록'], ['trips', '출장'], ['tasks', '업무일지'], ['activities', '학생 활동'], ['range', '기간지정 다운로드']];
 
 export function renderReports(app) {
-  const views = { calendar, attendance, lessons, counsel, records, trips, activities, range };
+  const views = { calendar, attendance, lessons, counsel, records, trips, tasks, activities, range };
   return h('div.reports',
     h('nav.subtabs', TABS.map(([k, l]) => h(`button${app.reportTab === k ? '.active' : ''}`, { onclick: () => { app.reportTab = k; app.render(); } }, l))),
     views[app.reportTab](app));
@@ -318,5 +319,57 @@ function activities(app) {
       dateRangeInputs(st, draw),
       h('label.check.small', h('input', { type: 'checkbox', checked: st.award, onchange: (e) => { st.award = e.target.checked; draw(); } }), ' 수상만'),
       h('label.check.small', h('input', { type: 'checkbox', checked: st.all, onchange: (e) => { st.all = e.target.checked; draw(); } }), ' 기록 없는 학생도')),
+    wrap);
+}
+
+// ---------- 업무일지 (완료한 일과 결과·진행 메모) ----------
+function tasks(app) {
+  const { store } = app;
+  const yr = yearRange(store.year);
+  app.taskRange ||= { start: yr.start, end: yr.end, mode: 'done', q: '' };
+  const st = app.taskRange;
+  const PL = { A: 'A', B: 'B', C: 'C', Z: '언젠가' };
+  const wrap = h('div');
+  const draw = () => {
+    const q = st.q.trim();
+    const list = store.work.tasks.filter((t) => {
+      const d = st.mode === 'done' ? t.doneDate : t.created;
+      if (st.mode === 'done' && !t.doneDate) return false;
+      if (st.mode === 'open' && t.doneDate) return false;
+      if (st.mode !== 'open' && (!d || d < st.start || d > st.end)) return false;
+      if (st.mode === 'memo' && !(t.result || '').trim()) return false;
+      return !q || `${t.text} ${t.result || ''}`.includes(q);
+    }).sort((a, b) => (b.doneDate || b.created).localeCompare(a.doneDate || a.created));
+    wrap.rows = list;
+    const plain = mentionInline(app);
+    fill(wrap,
+      h('p.muted.small', `${list.length}건 — 결과·진행 메모를 여기서도 고칠 수 있습니다 (교사수첩에서는 완료한 다음 날부터 업무가 보이지 않아요).`),
+      list.length ? h('div.task-report', list.map((t) => {
+        const ta = h('textarea', { rows: 2, value: t.result || '', placeholder: '결과·진행 메모', 'aria-label': '결과·진행 메모',
+          oninput: (e) => { t.result = e.target.value; if (!t.result.trim()) delete t.result; store.markDirty(); } });
+        requestAnimationFrame(() => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight + 2}px`; });
+        ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight + 2}px`; });
+        return h('div.task-report-item',
+          h('div.task-report-head',
+            h(`span.prio-badge.p-${t.priority || 'B'}`, PL[t.priority] || 'B'),
+            h('strong', plain(t.text)),
+            h('span.muted.small', ` 작성 ${t.created}${t.due ? ` · 마감 ${t.due}` : ''}`),
+            t.doneDate ? h('button.link.small', { onclick: () => goto(app, t.doneDate) }, ` ✓ ${t.doneDate} 완료`) : h('span.small.warn-text', ' 진행 중')),
+          ta);
+      })) : h('p.muted', '해당하는 업무가 없습니다.'));
+  };
+  draw();
+  const search = h('input', { type: 'search', placeholder: '업무·메모 찾기', value: st.q, style: { width: '12em' }, oninput: (e) => { st.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(draw, 250); } });
+  return h('section.card',
+    h('div.card-head', h('h2', '업무일지 · 결과 메모'),
+      h('button.small', { onclick: () => {
+        const rows = [['완료일', '중요도', '업무', '작성일', '마감일', '결과·진행 메모'], ...wrap.rows.map((t) => [t.doneDate || '', PL[t.priority] || 'B', t.text, t.created, t.due || '', t.result || ''])];
+        downloadBlob(xlsxBlob([{ name: '업무일지', rows }]), `업무일지_${st.mode === 'open' ? '진행중' : `${st.start}_${st.end}`}.xlsx`);
+      } }, '⬇ 엑셀')),
+    h('div.row',
+      h('div.chips', { style: { margin: 0 } }, [['done', '완료한 일'], ['memo', '메모 있는 일'], ['open', '진행 중'], ['all', '전체']].map(([k, l]) =>
+        h(`button.chip-btn${st.mode === k ? '.active' : ''}`, { onclick: () => { st.mode = k; app.render(); } }, l))),
+      st.mode !== 'open' ? dateRangeInputs(st, draw) : null,
+      search),
     wrap);
 }

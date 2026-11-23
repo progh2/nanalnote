@@ -143,7 +143,10 @@ export function renderNotebook(app) {
     const allDone = tasks.length > 0 && tasks.every((t) => t.doneDate === date);
     const row = (t) => {
       const check = h('input', { type: 'checkbox', checked: t?.doneDate === date, disabled: !t, 'aria-label': '완료',
-        onchange: (e) => { t.doneDate = e.target.checked ? date : null; rowEl.classList.toggle('done', e.target.checked); store.markDirty(); } });
+        onchange: (e) => {
+          t.doneDate = e.target.checked ? date : null; rowEl.classList.toggle('done', e.target.checked); store.markDirty();
+          drawNote(); // 완료하면 결과 메모 단추가 또렷해진다
+        } });
       const input = h('input.task-text', {
         value: t?.text || '', placeholder: t ? '' : '할 일을 입력하세요 (Enter: 다음 줄)',
         oninput: (e) => {
@@ -155,6 +158,7 @@ export function renderNotebook(app) {
             check.disabled = false;
             input.placeholder = '';
             drawDue();
+            drawNote();
             activate();
             taskList.append(row(null));
           } else t.text = e.target.value;
@@ -192,7 +196,33 @@ export function renderNotebook(app) {
       } }, PRIORITIES.map(([k, l]) => h('option', { value: k }, l)));
       const paintPrio = () => { const p = t ? priorityOf(t) : 'Z'; prio.value = p; prio.disabled = !t; prio.className = `prio p-${p}${t ? '' : ' ghost-prio'}`; };
       paintPrio();
-      const rowEl = h(`div.task-row${t?.doneDate === date ? '.done' : ''}`, prio, check, input, dueWrap);
+      // 결과·진행 메모: 💬 를 누르면 업무 아래에 메모 칸 (완료한 업무의 진행 결과 등)
+      const noteBtn = h('button.icon-btn.task-note-btn', { type: 'button', title: '결과·진행 메모', 'aria-label': '결과·진행 메모', onclick: () => {
+        if (!t) return;
+        const open = app.taskNoteOpen ||= new Set();
+        if (open.has(t.id)) open.delete(t.id); else open.add(t.id);
+        drawNote(true);
+      } }, '💬');
+      const noteBox = h('div.task-note');
+      const drawNote = (focus = false) => {
+        if (!t) { noteBtn.hidden = true; fill(noteBox); return; }
+        const has = !!(t.result || '').trim();
+        const open = app.taskNoteOpen?.has(t.id);
+        noteBtn.hidden = false;
+        noteBtn.className = `icon-btn task-note-btn${has ? ' has' : ''}${t.doneDate ? ' done' : ''}${open ? ' open' : ''}`;
+        if (open) {
+          const ta = autoGrow(h('textarea', { rows: 2, value: t.result || '', placeholder: '결과·진행 메모 — 어떻게 했는지, 결과, 다음에 할 일… (#태그·이름도 알아봐요)', 'aria-label': '결과·진행 메모',
+            oninput: (e) => { t.result = e.target.value; if (!t.result.trim()) delete t.result; store.markDirty(); } }));
+          attachStudentSuggest(ta, () => store.work.students, () => store.work.people, () => store.tagList());
+          fill(noteBox, ta);
+          if (focus) requestAnimationFrame(() => ta.focus());
+        } else if (has) {
+          fill(noteBox, h('button.task-note-preview', { type: 'button', title: '메모 열기', onclick: () => { (app.taskNoteOpen ||= new Set()).add(t.id); drawNote(true); } },
+            '💬 ', t.result.trim().split('\n')[0].slice(0, 80)));
+        } else fill(noteBox);
+      };
+      drawNote();
+      const rowEl = h(`div.task-row${t?.doneDate === date ? '.done' : ''}`, prio, check, input, dueWrap, noteBtn, noteBox);
       // 업무가 생기면(처음부터 있거나, 빈 줄에 입력을 시작하면) 순서 바꾸기·중요도를 켠다
       function activate() {
         rowEl.dataset.id = t.id;
@@ -252,7 +282,7 @@ export function renderNotebook(app) {
     };
     rowEl.addEventListener('contextmenu', (e) => { if (timer || dragging) e.preventDefault(); });
     rowEl.addEventListener('pointerdown', (e) => {
-      if (!getTask() || e.button > 0 || e.target.closest('button, select, input[type=checkbox], input[type=date]')) return;
+      if (!getTask() || e.button > 0 || e.target.closest('button, select, textarea, input[type=checkbox], input[type=date]')) return;
       start = { x: e.clientX, y: e.clientY };
       cancel(); detach();
       document.addEventListener('pointermove', onMove, { passive: false });
@@ -452,10 +482,8 @@ export function renderNotebook(app) {
 
   return h('div.notebook',
     h('div.print-only.print-title', `교사수첩 ${date}`),
-    // 중·고는 수업명·학반·교실 칸이 많아 수업일지를 전체 폭으로
-    sec
-      ? [h('div.nb-grid', h('div.col', scheduleCard, attCard), h('div.col', taskCard, tripCard)), lessonCard]
-      : h('div.nb-grid', h('div.col', scheduleCard, lessonCard), h('div.col', taskCard, attCard, tripCard)),
+    // 넓은 화면: 왼쪽 학사일정·수업일지·학생출결, 오른쪽 업무일지·출장 (좁은 화면은 이 순서로 한 줄)
+    h(`div.nb-grid.nb-main${sec ? '.sec' : ''}`, h('div.col', scheduleCard, lessonCard, attCard), h('div.col', taskCard, tripCard)),
     noteCard,
     privacy,
     recCard,

@@ -31,7 +31,7 @@ const sample = {
   schedule: [{ id: 'd', date: '2026-03-02', text: '입학식\n시업식' }, { id: 'd2', date: '2026-05-04', text: '재량휴업일', holiday: true }, { id: 'd3', date: '2026-11-05', text: '', csat: true }],
   days: [{ id: 'e', date: '2026-03-02', updatedAt: '2026-03-02T07:00:00.000Z', note: '교무회의 #회의\n## 줄 시작 샵도 보존' }],
   lessons: [{ id: 'f', date: '2026-03-02', period: 1, subject: '정보', cls: '1-2', room: '컴퓨터실', content: '받아쓰기\n# 제목처럼 보이는 줄\n- 목록' }, { id: 'g', date: '2026-03-02', period: 3, subject: '', cls: '', room: '', content: '' }, { id: 'g3', date: '2026-03-02', period: 4, subject: '', cls: '2-1', room: '', content: '' }, { id: 'g2', date: '2026-03-02', period: 11, subject: '자습', cls: '', room: '', content: '수학 질문 받음' }],
-  tasks: [{ id: 'h', text: '가정통신문 (2장)', created: '2026-03-02', doneDate: '2026-03-04', due: '2026-03-06', priority: 'A', order: 10 }, { id: 'i', text: '회의', created: '2026-03-03', doneDate: null }],
+  tasks: [{ id: 'h', text: '가정통신문 (2장)', created: '2026-03-02', doneDate: '2026-03-04', due: '2026-03-06', priority: 'A', order: 10, result: '회수율 92% #가정통신\n> 미회수 3명은 다음 주\n\n- [ ] 이건 메모 속 글' }, { id: 'i', text: '회의', created: '2026-03-03', doneDate: null }],
   attendance: [{ id: 'j', date: '2026-03-02', student: 'U2', type: '지각', reason: '질병', note: '병원 · 진료' },
     { id: 'j2', date: '2026-03-02', student: 'U1', type: '결석', reason: '질병', note: '독감A형', periods: [3, 4], subject: '인공지능 기초', cls: '1-2' }],
   counsel: [{ id: 'k', date: '2026-03-02', order: 0, text: '10201 이몽룡 울었다.\n달래줌', students: ['U1'] }, { id: 'l', date: '2026-03-02', order: 1, text: '## 성춘향 지각', students: [] }],

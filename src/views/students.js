@@ -1,13 +1,15 @@
 // 학생관리 탭: 학반별 명단(학번·사진) 편집 + 학생별 상담/출결/요록 + 지난 학년도 기록
 import { h, koDate, downloadBlob, confirmDialog, modal, toast, pickFile, newId, fill } from '../lib/util.js';
 import { exportCounsel } from '../lib/export.js';
-import { studentLabel, classKey, newUid, normStudent, matchPhotoFile, buildIndex, searchStudents, statusAt, STATE_LABEL, STATUS_EVENTS, EVENT_HAS_GRADE, LEAVING_TYPES, FLAGS, entryYearOf, cleanNo, partsOfNo } from '../lib/students.js';
-import { resizeImage } from '../lib/photos.js';
+import { studentLabel, classKey, newUid, normStudent, matchPhotoFile, buildIndex, searchStudents, statusAt, STATE_LABEL, STATUS_EVENTS, EVENT_HAS_GRADE, LEAVING_TYPES, FLAGS, entryYearOf, cleanNo, partsOfNo, deptOf } from '../lib/students.js';
+import { resizeImage, readClipboardImage } from '../lib/photos.js';
 import { migrateRefs } from '../store.js';
-import { classSelect, avatar, scrollToDetail } from './ui.js';
+import { classSelect, avatar, scrollToDetail, photoDrop } from './ui.js';
 import { openStudentImport, STUDENT_TEMPLATE } from './import.js';
 import { studentActivitiesCard } from './contests.js';
 import { createSheet } from './sheet.js';
+import { relationsBox } from './relations.js';
+import { normPerson } from '../lib/people.js';
 import { xlsxBlob } from '../lib/xlsx.js';
 
 function counselList(items, onGo) {
@@ -189,7 +191,9 @@ export function renderStudents(app) {
     right = h('div.col.stu-detail',
       h('section.card',
         h('div.stu-head',
-          avatar(app, sel, 96),
+          photoDrop(app, avatar(app, sel, 96), async (file) => {
+            try { toast('사진을 줄여서 넣는 중…'); await uploadPhoto(app, st, file); await app.save({ silent: true }); app.render(); toast('사진을 넣었습니다.', 'ok'); } catch (e) { toast(e.message, 'error'); }
+          }, `${sel.name} 사진`),
           h('div.col', { style: { gap: '8px', flex: 1 } },
             h('div.inline-form', field('학번', 'studentNo', 'text', '7em'), field('학년', 'grade', 'number'), field('반', 'cls', 'number'), field('번호', 'no', 'number')),
             h('div.inline-form',
@@ -212,6 +216,9 @@ export function renderStudents(app) {
                 if (!file) return;
                 try { await uploadPhoto(app, st, file); await app.save(); app.render(); } catch (e) { toast(e.message, 'error'); }
               } }, sel.photo ? '사진 바꾸기' : '사진 올리기'),
+              h('button.small', { title: '복사(캡처)한 사진을 넣기 — 사진 칸을 누르고 Ctrl+V 해도 됩니다', onclick: async () => {
+                try { const file = await readClipboardImage(); await uploadPhoto(app, st, file); await app.save({ silent: true }); app.render(); toast('사진을 넣었습니다.', 'ok'); } catch (e) { toast(e.message, 'error'); }
+              } }, '📋 붙여넣기'),
               sel.photo ? h('button.small', { onclick: async () => {
                 await store.backend.deletePhoto?.(store.year, st); st.photo = ''; store.markDirty(); await app.save(); app.render();
               } }, '사진 지우기') : null,
@@ -221,6 +228,7 @@ export function renderStudents(app) {
               } }, '명단에서 삭제')))),
         h('p.muted.small', '학번은 학년도마다 따로 저장됩니다. 새 학년도에 명단을 올릴 때 "이전학번" 열을 넣으면 지난 학년도 기록과 이어집니다.')),
       statusCard(app, st),
+      h('section.card', relationsBox(app, `s:${st.uid}`)),
       studentActivitiesCard(app, st.uid),
       h('section.card.private-report',
         h('div.card-head', h('h2', '상담 일지'),
@@ -373,8 +381,24 @@ async function carryOver(app) {
         h('td', r.s.studentNo || ''), h('td', r.s.name),
         h('td', KIND[r.kind], r.ev && r.kind !== 'up' ? h('span.muted.small', ` ${r.ev.type} ${r.ev.date}`) : null),
         h('td', gradeSelect(store, r.grade, (v) => { r.grade = v; }))))))));
+  // 졸업하는 학생은 졸업생 명부(사람·기관 > 졸업생)로 옮길 수 있다 → 재학 때 기록과 이어짐
+  const grads = rows.filter((r) => r.kind === 'grad');
+  const already = new Set(store.work.people.filter((p) => p.kind === 'alumni' && p.stuUid).map((p) => p.stuUid));
+  const toAlumni = { on: true };
+  if (grads.length) body.append(h('label.check.carry-alumni', h('input', { type: 'checkbox', checked: true, onchange: (e) => { toAlumni.on = e.target.checked; } }),
+    ` 졸업하는 ${grads.length}명을 졸업생 명부에 넣기 (사람·기관 > 졸업생, "...." 로 찾기)`));
   const ok = await modal(`${store.year - 1}학년도 명단 이어받기`, body, [{ label: '취소', value: false }, { label: '가져오기', value: true, primary: true }]);
   if (!ok) return;
+  let alumni = 0;
+  if (toAlumni.on) {
+    const rules = store.deptRules();
+    for (const r of grads.filter((x) => !x.on && !already.has(x.s.uid))) {
+      const s = r.s;
+      store.work.people.push(normPerson({ id: newId(), kind: 'alumni', name: s.name, gradYear: store.year - 1, studentNo: s.studentNo, dept: deptOf(s, rules, store.year - 1),
+        gender: s.gender, phone: s.phone, email: s.email, stuUid: s.uid }));
+      alumni++;
+    }
+  }
   let n = 0;
   for (const r of rows.filter((x) => x.on)) {
     const s = r.s;
@@ -391,8 +415,21 @@ async function carryOver(app) {
     store.work.students.push(st);
     n++;
   }
-  if (n) store.markDirty();
-  toast(`${n}명을 이어받았습니다. 새 반 배정 명단(CSV)을 올리면 반·번호·학번이 채워집니다.`, 'ok');
+  // 관계도 이어받기 (졸업한 학생 쪽은 졸업생 명부로)
+  store.work.relations ||= [];
+  const alumOf = new Map(store.work.people.filter((p) => p.kind === 'alumni' && p.stuUid).map((p) => [p.stuUid, `p:${p.uid}`]));
+  const sNow = new Set(store.work.students.map((x) => x.uid));
+  const pNow = new Set(store.work.people.map((x) => x.uid));
+  const fix = (ref) => { const [t, id] = ref.split(/:(.*)/); if (t === 's') return sNow.has(id) ? ref : alumOf.get(id) || null; if (t === 'p') return pNow.has(id) ? ref : null; return null; };
+  const haveRel = new Set(store.work.relations.map((r) => `${r.a}|${r.b}|${r.kind}`));
+  let rels = 0;
+  for (const r of prev?.relations || []) {
+    const a = fix(r.a), b = fix(r.b);
+    if (!a || !b || haveRel.has(`${a}|${b}|${r.kind}`)) continue;
+    store.work.relations.push({ ...r, id: newId(), a, b }); rels++;
+  }
+  if (n || alumni || rels) store.markDirty();
+  toast(`${n}명을 이어받았습니다${alumni ? `, 졸업생 ${alumni}명을 졸업생 명부에 넣었습니다` : ''}${rels ? `, 관계 ${rels}개` : ''}. 새 반 배정 명단을 올리면 반·번호·학번이 채워집니다.`, 'ok');
   app.render();
 }
 

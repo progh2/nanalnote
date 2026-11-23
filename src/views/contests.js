@@ -37,6 +37,7 @@ export function renderContests(app) {
     .sort((a, b) => order[contestStatus(a, t)] - order[contestStatus(b, t)]
       || (nextEvent(a, t)?.date || spanOf(a).end || '9999').localeCompare(nextEvent(b, t)?.date || spanOf(b).end || '9999')
       || a.name.localeCompare(b.name, 'ko'));
+  if (v.sel) v.sel = store.currentId(v.sel);
   const sel = list.find((c) => c.id === v.sel) || null;
 
   const add = () => {
@@ -87,9 +88,10 @@ function detail(app, c) {
   const label = (uid) => store.label(uid);
   c.stages ||= []; c.entries ||= [];
 
-  // ----- 기본 정보 -----
-  const head = h('div.contest-head',
-    h('input.contest-name', { value: c.name, 'aria-label': '대회·활동 이름', placeholder: '이름 (예: 2026 SW 공모전)', oninput: (e) => { c.name = e.target.value; dirty(); }, onchange: () => app.render() }),
+  // ----- 기본 정보 ----- (이름을 고치면 목록에 반영하되, 포커스가 이 영역을 떠날 때 다시 그린다)
+  let namePending = false;
+  const head = h('div.contest-head', { onfocusout: (e) => { if (namePending && !head.contains(e.relatedTarget)) { namePending = false; setTimeout(() => app.render(), 0); } } },
+    h('input.contest-name', { value: c.name, 'aria-label': '대회·활동 이름', placeholder: '이름 (예: 2026 SW 공모전)', oninput: (e) => { c.name = e.target.value; dirty(); }, onchange: () => { namePending = true; } }),
     h('div.row', { style: { gap: '6px' } },
       h('div.chips', { style: { margin: 0 } }, KINDS.map((k) => h(`button.chip-btn${c.kind === k ? '.active' : ''}`, { onclick: () => { c.kind = k; dirty(); app.render(); } }, k))),
       h('label.check.small', h('input', { type: 'checkbox', checked: !!c.completion, onchange: (e) => { c.completion = e.target.checked; dirty(); app.render(); } }), ' 수료 관리')),

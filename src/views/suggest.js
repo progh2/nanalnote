@@ -11,16 +11,19 @@ function candidates(students, people) {
   const studentNames = new Set(students.map((s) => s.name));
   const groups = nameGroups(people);
   return [
-    ...sortStudents(students).map((s) => ({ key: `s:${s.uid || s.id}`, names: [s.name], find: `${s.studentNo || ''} ${s.name}`, insert: studentLabel(s), main: studentLabel(s), sub: classKey(s) ? `${classKey(s)}반` : '' })),
+    ...sortStudents(students).map((s) => ({ key: `s:${s.uid || s.id}`, group: 'student', names: [s.name], find: `${s.studentNo || ''} ${s.name}`, insert: studentLabel(s), main: studentLabel(s), sub: classKey(s) ? `${classKey(s)}반` : '' })),
     ...sortPeople(people).filter((p) => p.name).map((p) => {
       const group = groups.get(p.name) || [p];
       // 동명이인이면 "김민수(2학년부)" 처럼 구분말을 붙여 넣는다
-      const q = p.kind === 'person' && group.length > 1 ? distinctQual(p, p.name, group) : '';
+      const alum = p.kind === 'alumni';
+      const q = p.kind !== 'org' && group.length > 1 ? distinctQual(p, p.name, group) : '';
       return {
-        key: `p:${p.id}`, names: namesOf(p), find: [...namesOf(p), p.org || ''].join(' '),
-        // 같은 이름 학생이 있으면 호칭까지 넣어야 사람으로 알아본다
-        insert: q ? `${p.name}(${q})` : p.kind === 'person' && studentNames.has(p.name) ? personLabel(p) || `${p.name} 선생님` : p.name,
-        main: personLabel(p), sub: [KINDS[p.kind], p.org, group.length > 1 ? '동명이인' : ''].filter(Boolean).join(' · '),
+        key: `p:${p.id}`, group: alum ? 'alumni' : 'people', names: namesOf(p),
+        find: [...namesOf(p), p.org || '', alum ? `${p.gradYear || ''} ${p.studentNo || ''} ${p.dept || ''}` : ''].join(' '),
+        // 같은 이름 학생이 있으면 호칭(졸업생은 졸업 학년도)까지 넣어야 알아본다
+        insert: q ? `${p.name}(${q})` : alum && (studentNames.has(p.name) || group.length > 1) && p.gradYear ? `${p.name}(${p.gradYear}졸업)`
+          : p.kind === 'person' && studentNames.has(p.name) ? personLabel(p) || `${p.name} 선생님` : p.name,
+        main: personLabel(p), sub: [KINDS[p.kind], alum ? p.studentNo : '', p.org, group.length > 1 ? '동명이인' : ''].filter(Boolean).join(' · '),
       };
     }),
   ];
@@ -66,11 +69,13 @@ function context(ta, cands) {
   const pos = ta.selectionStart;
   if (pos !== ta.selectionEnd) return null;
   const before = ta.value.slice(0, pos);
-  let m = before.match(/\.\.\.([0-9가-힣A-Za-z]*)$/);
+  // 점 세 개 ... 학생, 네 개 .... 졸업생, 다섯 개 ..... 사람·기관
+  let m = before.match(/(?:^|[^.])(\.{3,5})([0-9가-힣A-Za-z]*)$/);
   if (m) {
-    const q = m[1];
-    const list = cands.filter((c) => !q || (/^\d+$/.test(q) ? c.find.startsWith(q) : c.find.includes(q)));
-    return { start: pos - m[0].length, end: pos, q, list, mode: 'search' };
+    const dots = m[1].length, q = m[2];
+    const group = { 3: 'student', 4: 'alumni', 5: 'people' }[dots];
+    const list = cands.filter((c) => c.group === group && (!q || (/^\d+$/.test(q) ? c.find.startsWith(q) || c.find.includes(` ${q}`) : c.find.includes(q))));
+    return { start: pos - dots - q.length, end: pos, q, list, mode: 'search', group };
   }
   m = before.match(/(^|[^0-9가-힣A-Za-z])([가-힣]{2,})$/);
   if (m) {
@@ -78,7 +83,7 @@ function context(ta, cands) {
     const start = pos - q.length;
     if (/\d{3,}\s*$/.test(before.slice(0, start))) return null; // 이미 "학번 이름" 으로 쓴 경우
     // 이미 다 쓴 이름 하나뿐이면 굳이 띄우지 않는다
-    const list = cands.filter((c) => c.names.some((n) => n.startsWith(q)));
+    const list = cands.filter((c) => c.group !== 'alumni' && c.names.some((n) => n.startsWith(q))); // 졸업생은 .... 로
     if (list.length === 1 && list[0].names.includes(q) && list[0].insert === q) return null;
     return list.length ? { start, end: pos, q, list, mode: 'prefix' } : null;
   }
@@ -117,7 +122,7 @@ export function attachStudentSuggest(ta, getStudents, getPeople = () => [], getT
     idx = Math.min(idx, items.length - 1);
     if (!menu) { menu = h('div.suggest', { role: 'listbox' }); document.body.append(menu); openMenus.add(replace); }
     fill(menu, 
-      h('div.suggest-head', ctx.mode === 'tag' ? '태그 추천 — 새 태그면 그대로 쓰세요' : ctx.mode === 'search' ? (ctx.q ? `"${ctx.q}" 찾기` : '찾기 — 이름 일부나 학번을 쓰세요') : '이름 추천'),
+      h('div.suggest-head', ctx.mode === 'tag' ? '태그 추천 — 새 태그면 그대로 쓰세요' : ctx.mode === 'search' ? `${{ student: '학생', alumni: '졸업생', people: '사람·기관' }[ctx.group]} 찾기${ctx.q ? ` — "${ctx.q}"` : ' — 이름 일부나 학번을 쓰세요'}` : '이름 추천'),
       ...items.map((c, i) => h(`div.suggest-item${i === idx ? '.active' : ''}`, {
         role: 'option',
         onmousedown: (e) => { e.preventDefault(); pick(c); }, // 칸의 포커스를 잃기 전에 고른다

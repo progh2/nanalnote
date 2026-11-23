@@ -19,7 +19,7 @@ import { koDate } from './util.js';
 import { bellOf, rawBell, periodLabel, parsePeriodLabel, fmtRange, EVENING_BASE } from './bell.js';
 
 export const yearDir = (year) => `/${year}학년도`;
-export const FILES = { settings: '설정.md', students: '학생명단.md', schedule: '학사일정.md', tasks: '업무일지.md', records: '학급요록.md', notes: '포스트잇.md', docs: '학사일정자료.md', people: '사람·기관.md', tagcards: '태그.md', contests: '대회·활동.md' };
+export const FILES = { settings: '설정.md', students: '학생명단.md', schedule: '학사일정.md', tasks: '업무일지.md', records: '학급요록.md', notes: '포스트잇.md', docs: '학사일정자료.md', people: '사람·기관.md', tagcards: '태그.md', contests: '대회·활동.md', relations: '관계.md' };
 const DAY_COLS = new Set(['days', 'lessons', 'attendance', 'counsel', 'trips']);
 
 /** 항목이 저장되는 파일 경로 */
@@ -113,7 +113,7 @@ const trimBlank = (lines) => {
 
 // ---------- 직렬화 ----------
 export function serialize(year, input) {
-  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [], tagcards: [], contests: [], ...input };
+  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [], tagcards: [], contests: [], relations: [], ...input };
   const files = new Map();
   const dir = yearDir(year);
   const header = (t) => `# ${t} (${year}학년도)\n\n> 나날노트가 관리하는 파일입니다. 형식을 지키면 직접 고쳐도 됩니다.\n`;
@@ -206,8 +206,22 @@ export function serialize(year, input) {
   if (data.people.length) {
     files.set(`${dir}/${FILES.people}`, [header('사람·기관'),
       '> 글 속의 "김민수 선생님", "교육청에" 같은 이름을 알아보는 명부입니다. 다른 이름은 쉼표로 나눕니다.', '',
-      table(['구분', '이름', '호칭', '교원', '학교급', '교과', '소속', '전화', '이메일', '다른 이름', '메모'],
-        sortPeople(data.people).map((x) => [KINDS[x.kind] || '사람', x.name, x.title || '', x.teacher ? 'O' : '', x.level || '', x.subject || '', x.org || '', x.phone || '', x.email || '', (x.aliases || []).join(', '), x.memo || ''])), ''].join('\n'));
+      table(['구분', '이름', '호칭', '교원', '학교급', '교과', '성별', '소속', '전화', '이메일', '다른 이름', '메모', '졸업학년도', '학번', '학과', '사진', 'ID', '학생ID'],
+        sortPeople(data.people).map((x) => [KINDS[x.kind] || '사람', x.name, x.title || '', x.teacher ? 'O' : '', x.level || '', x.subject || '', x.gender || '', x.org || '', x.phone || '', x.email || '', (x.aliases || []).join(', '), x.memo || '',
+          x.gradYear ?? '', x.studentNo || '', x.dept || '', x.photo || '', x.uid || '', x.stuUid || ''])), ''].join('\n'));
+  }
+
+  // 관계 (가족·담임 등): "사람 은 상대 의 관계"
+  if (data.relations.length) {
+    const sIdx = buildIndex(data.students);
+    const who = (ref) => {
+      const [t, id] = String(ref || '').split(/:(.*)/);
+      if (t === 's') { const st = sIdx.byUid.get(id); return st ? labelOf(st.uid, sIdx) : id; }
+      if (t === 'p') { const x = data.people.find((y) => y.uid === id); return x ? x.name : id; }
+      return String(ref || '');
+    };
+    files.set(`${dir}/${FILES.relations}`, [header('관계'), '> "사람 은 상대 의 관계" 로 읽습니다 (예: 정다온 은 20101 김민준 의 아버지). ID 는 지우지 마세요.', '',
+      table(['사람', '관계', '상대', '메모', '사람 ID', '상대 ID'], data.relations.map((r) => [who(r.a), r.kind, who(r.b), r.memo || '', r.a, r.b])), ''].join('\n'));
   }
 
   // 대회·활동
@@ -306,7 +320,7 @@ export function parse(year, files, makeId) {
     for (const [p, t] of files) if (p.toLowerCase() === `${dir}/${name}`.toLowerCase()) return t;
     return null;
   };
-  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [], tagcards: [], contests: [] };
+  const data = { settings: [], students: [], schedule: [], days: [], lessons: [], tasks: [], attendance: [], counsel: [], records: [], trips: [], notes: [], docs: [], people: [], tagcards: [], contests: [], relations: [] };
 
   // 포스트잇
   const nt = get(FILES.notes);
@@ -329,8 +343,22 @@ export function parse(year, files, makeId) {
   if (pp != null) {
     for (const r of parseTableObjects(pp.split('\n'))) {
       if (!(r['이름'] || '').trim()) continue;
-      data.people.push(normPerson({ id: makeId(), kind: r['구분'] === '기관' ? 'org' : 'person', name: r['이름'], title: r['호칭'], org: r['소속'], phone: r['전화'], email: r['이메일'], aliases: r['다른 이름'], memo: r['메모'],
-        teacher: /^(o|예|y|yes|true|✓)$/i.test((r['교원'] || '').trim()), level: (r['학교급'] || '').trim(), subject: r['교과'] }));
+      const kind = r['구분'] === '기관' ? 'org' : r['구분'] === '졸업생' ? 'alumni' : 'person';
+      data.people.push(normPerson({ id: makeId(), kind, name: r['이름'], title: r['호칭'], org: r['소속'], phone: r['전화'], email: r['이메일'], aliases: r['다른 이름'], memo: r['메모'],
+        teacher: /^(o|예|y|yes|true|✓)$/i.test((r['교원'] || '').trim()), level: (r['학교급'] || '').trim(), subject: r['교과'], gender: (r['성별'] || '').trim(),
+        gradYear: r['졸업학년도'], studentNo: r['학번'], dept: r['학과'], photo: r['사진'], uid: r['ID'], stuUid: r['학생ID'] }));
+    }
+  }
+
+  // 관계 (ID 가 없으면 이름으로 — migrateRefs 가 학생 이름을 uid 로 바꾼다)
+  const rel = get(FILES.relations);
+  if (rel != null) {
+    for (const r of parseTableObjects(rel.split('\n'))) {
+      const kind = (r['관계'] || '').trim();
+      if (!kind) continue;
+      const ref = (id, label) => ((id || '').trim() || (label ? `name:${label.trim()}` : ''));
+      const a = ref(r['사람 ID'], r['사람']), b = ref(r['상대 ID'], r['상대']);
+      if (a && b) data.relations.push({ id: makeId(), a, b, kind, ...((r['메모'] || '').trim() ? { memo: r['메모'].trim() } : {}) });
     }
   }
 

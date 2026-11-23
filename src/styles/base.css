@@ -777,3 +777,25 @@ textarea.sheet-editor { position: absolute; z-index: 4; margin: 0; padding: 5px 
 .stu-group-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 4px 2px; border-bottom: 1px solid var(--border); margin-bottom: 6px; position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .grade-chips, .cls-chips { margin: 6px 0 0; }
 .cls-chips .chip-btn { padding: 2px 10px; }
+
+/* 사진 칸 (붙여넣기·끌어다 놓기) */
+.photo-drop { cursor: copy; outline: none; position: relative; }
+.photo-drop:focus-visible, .photo-drop:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent); }
+.photo-drop.drag { box-shadow: 0 0 0 3px var(--primary); }
+.avatar.logo { border-radius: 10px; background: var(--surface-2); }
+.avatar.logo img { object-fit: contain; }
+/* 가족·관계 */
+.rel-box h3 { margin: 0 0 8px; }
+.rel-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
+.rel-kind { display: inline-block; min-width: 4.5em; font-weight: 800; color: var(--accent); }
+.rel-add { flex-wrap: wrap; gap: 6px; align-items: center; }
+.rel-add select { width: auto; }
+.person-top { display: flex; gap: 14px; align-items: flex-start; }
+.person-photo { display: flex; flex-direction: column; gap: 6px; align-items: center; flex: none; }
+.people-kind .avatar { font-size: 11px; }
+.rel-wrap { padding-top: 10px; border-top: 1px dashed var(--border); }
+.alum-year { margin-bottom: 12px; }
+.alum-year ul { margin: 4px 0; padding-left: 1.2em; line-height: 1.6; }
+@media (max-width: 560px) { .person-top { flex-direction: column; align-items: stretch; } .person-photo { flex-direction: row; } }
+.rel-add input { width: auto; flex: 1 1 11em; min-width: 9em; }
+.carry-alumni { display: block; margin-top: 10px; }

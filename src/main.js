@@ -17,6 +17,7 @@ import { renderSchedule, renderContacts } from './views/schedule.js';
 import { renderTags } from './views/tags.js';
 import { renderPeople } from './views/people.js';
 import { openSearch } from './views/search.js';
+import { imageFromTransfer } from './lib/photos.js';
 import { renderContests } from './views/contests.js';
 import { renderAbout } from './views/about.js';
 import { APP_NAME, APP_SUB } from './brand.js';
@@ -197,6 +198,7 @@ const app = {
         h('div.row', h('button.primary', { onclick: () => this.loadYear(schoolYearOf(this.date)) }, '다시 시도'),
           h('button', { onclick: () => this.go('settings') }, '설정으로 이동')));
     } else {
+      this.pasteImage = null; // 사진 칸이 있는 화면이 다시 걸어 둔다
       const views = { notebook: renderNotebook, schedule: renderSchedule, contacts: renderContacts, tags: renderTags, students: renderStudents, people: renderPeople, contests: renderContests, reports: renderReports, settings: renderSettings, about: renderAbout };
       view = views[this.tab](this);
     }
@@ -229,6 +231,14 @@ window.addEventListener('keydown', (e) => {
     if (app.store?.year && !document.querySelector('.lock-screen, .modal-overlay')) { e.preventDefault(); openSearch(app); }
   } else if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); app.setDate(addDays(app.date, -1)); }
   else if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); app.setDate(addDays(app.date, 1)); }
+});
+
+// 사진 붙여넣기: 학생·사람 화면에서 글 쓰는 칸이 아닌 곳에서 Ctrl+V 하면 지금 보고 있는 학생·사람의 사진으로
+document.addEventListener('paste', (e) => {
+  if (!app.pasteImage || e.defaultPrevented) return;
+  if (e.target.closest?.('input, textarea, [contenteditable], .sheet')) return;
+  const f = imageFromTransfer(e.clipboardData);
+  if (f) { e.preventDefault(); app.pasteImage(f); }
 });
 
 window.addEventListener('beforeunload', (e) => {

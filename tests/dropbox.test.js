@@ -44,9 +44,12 @@ const sample = {
   trips: [{ id: 't', date: '2026-03-02', time: '13:00~17:00', place: '교육청', purpose: '정보교육 연수 · 1일차' }, { id: 't2', date: '2026-03-02', time: '', place: '', purpose: '' }],
   // 명부 파일은 사람(이름순) → 기관(이름순) 으로 쓴다
   people: [
-    { id: 'p1', kind: 'person', name: '김민수', title: '부장, 선생님', org: '2학년부', phone: '010-1234-5678', email: 'kim@example.com', aliases: ['김쌤'], memo: '정보 | 방과후 담당', teacher: true, level: '중등', subject: '정보' },
-    { id: 'p2', kind: 'org', name: '경기도교육청', title: '', org: '', phone: '031-000-0000', email: '', aliases: ['교육청', '도교육청'], memo: '' },
+    { id: 'p1', uid: 'p_kim', kind: 'person', name: '김민수', gender: '남', photo: 'p_kim.jpg', title: '부장, 선생님', org: '2학년부', phone: '010-1234-5678', email: 'kim@example.com', aliases: ['김쌤'], memo: '정보 | 방과후 담당', teacher: true, level: '중등', subject: '정보' },
+    { id: 'p3', uid: 'p_alum', kind: 'alumni', name: '박선배', title: '', org: '○○대학교 컴퓨터공학과', phone: '', email: '', aliases: [], memo: '', gradYear: 2024, studentNo: '30105', dept: '뉴미디어소프트웨어과', stuUid: 'U0' },
+    { id: 'p2', uid: 'p_edu', kind: 'org', name: '경기도교육청', title: '', org: '', phone: '031-000-0000', email: '', aliases: ['교육청', '도교육청'], memo: '' },
   ],
+  // 관계: 김민수(사람)는 이몽룡의 아버지, 성춘향은 이몽룡의 누나
+  relations: [{ id: 'r1', a: 'p:p_kim', b: 's:U1', kind: '아버지' }, { id: 'r2', a: 's:U2', b: 's:U1', kind: '기타', memo: '사촌 | 같은 반' }],
   // 대회·활동: 시작일 순
   contests: [
     { id: 'ct1', name: 'SW 공모전 | 2026', kind: '공모전', host: '과학기술정보통신부', start: '2026-05-01', end: '2026-11-20', completion: true,

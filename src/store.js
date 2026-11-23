@@ -3,12 +3,12 @@
 
 import { clone, newId, isTempId } from './lib/util.js';
 import { splitParagraphs } from './lib/counsel.js';
-import { normStudent, sortStudents, buildIndex, toUid, labelOf, mentionedUids, classKeys, newUid, parseDeptRules, deptOf } from './lib/students.js';
+import { normStudent, sortStudents, buildIndex, toUid, labelOf, mentionedUids, classKeys, newUid, parseDeptRules, deptOf, resolveRef } from './lib/students.js';
 import { bellOf, periodList, periodLabel } from './lib/bell.js';
 import { normPerson, sortPeople, mentionedStudentUids } from './lib/people.js';
 import { tagEntries, tagCounts } from './lib/tags.js';
 
-export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records', 'trips', 'notes', 'docs', 'people', 'tagcards', 'contests'];
+export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records', 'trips', 'notes', 'docs', 'people', 'tagcards', 'contests', 'relations'];
 
 export const DEFAULT_SETTINGS = {
   teacherInfo: '',
@@ -78,6 +78,14 @@ export class Store {
     this.dirty = false;
     this.saving = false;
     this.listeners = new Set();
+    this.renamed = new Map();
+  }
+
+  /** 저장하면서 바뀐 id 를 따라가기 (고른 항목을 들고 있는 화면용) */
+  currentId(id) {
+    let x = id;
+    for (let i = 0; i < 5 && this.renamed.has(x); i++) x = this.renamed.get(x);
+    return x;
   }
 
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
@@ -323,6 +331,7 @@ export class Store {
       case 'students': return !!(x.name || '').trim();
       case 'people': return !!(x.name || '').trim();
       case 'contests': return !!(x.name || '').trim();
+      case 'relations': return !!(x.a && x.b && x.kind);
       case 'tagcards': return !!x.tag && !!((x.memo || '').trim() || x.start || x.end || x.status || x.pinned);
       case 'attendance': return !!x.student;
       case 'records': return !!(x.title || '').trim();
@@ -390,6 +399,7 @@ export class Store {
         if (newIdVal !== op.item.id) {
           const w = this.work[op.col].find((x) => x.id === op.item.id);
           if (w) w.id = newIdVal;
+          this.renamed.set(op.item.id, newIdVal); // 화면이 들고 있던 임시 id → 저장된 id
         }
         const saved = { ...op.item, id: newIdVal };
         const idx = this.base[op.col].findIndex((x) => x.id === newIdVal);
@@ -426,4 +436,14 @@ export function migrateRefs(data) {
     r.entries = e;
   }
   for (const c of data.contests || []) for (const e of c.entries || []) e.members = [...new Set((e.members || []).map((r) => toUid(r, idx)).filter(Boolean))];
+  // 관계: 손으로 쓴 이름("name:20101 김민준", "name:정다온")을 학생·사람 ID 로
+  for (const r of data.relations || []) {
+    for (const k of ['a', 'b']) {
+      if (!String(r[k]).startsWith('name:')) continue;
+      const label = r[k].slice(5);
+      const st = resolveRef(label, idx);
+      const p = !st && (data.people || []).find((x) => x.name === label || `${x.name} ${x.title || ''}`.trim() === label);
+      if (st) r[k] = `s:${st.uid}`; else if (p) r[k] = `p:${p.uid}`;
+    }
+  }
 }

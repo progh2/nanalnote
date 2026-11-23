@@ -1,5 +1,7 @@
 // 여러 화면에서 쓰는 작은 UI 조각
 import { h, fill } from '../lib/util.js';
+import { imageFromTransfer } from '../lib/photos.js';
+import { PHOTO_FOLDER } from '../lib/people.js';
 import { studentLabel, classKey, isActiveOn } from '../lib/students.js';
 
 /** 학반별로 묶인 학생 선택 상자 (값 = uid) */
@@ -71,4 +73,32 @@ export function scrollToDetail(sel) {
     const top = el.getBoundingClientRect().top + window.scrollY - (document.getElementById('header')?.offsetHeight || 0) - 8;
     window.scrollTo({ top, behavior: 'smooth' });
   });
+}
+
+/**
+ * 사진 칸: 누르고 Ctrl+V, 끌어다 놓기로 그림을 받는다 (onFile(file))
+ * 칸 밖에서도 붙여넣기가 되도록 app.pasteImage 를 걸어 둔다 (글 쓰는 칸이 아닐 때)
+ */
+export function photoDrop(app, el, onFile, label = '사진') {
+  el.tabIndex = 0;
+  el.classList.add('photo-drop');
+  el.title = `${label}: 눌러서 고른 뒤 Ctrl+V 로 붙여넣기, 또는 그림을 끌어다 놓기`;
+  el.setAttribute('aria-label', el.title);
+  const take = (dt, e) => { const f = imageFromTransfer(dt); if (f) { e.preventDefault(); onFile(f); } };
+  el.addEventListener('paste', (e) => take(e.clipboardData, e));
+  el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drag'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drag'));
+  el.addEventListener('drop', (e) => { el.classList.remove('drag'); take(e.dataTransfer, e); });
+  app.pasteImage = onFile;
+  return el;
+}
+
+/** 사람·기관 사진(로고) */
+export function personAvatar(app, p, size = 44) {
+  const org = p?.kind === 'org';
+  const el = h(`span.avatar${org ? '.logo' : ''}`, { style: { width: `${size}px`, height: `${org ? size : Math.round(size * 1.25)}px` } }, org ? '🏢' : (p?.name || '?').slice(-2));
+  if (p?.photo && app.store.backend.fileUrl) {
+    app.store.backend.fileUrl(app.store.year, PHOTO_FOLDER, p.photo).then((url) => { if (url) fill(el, h('img', { src: url, alt: p.name })); }).catch(() => {});
+  }
+  return el;
 }

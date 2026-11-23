@@ -7,7 +7,9 @@
 //   이름·호칭 뒤에 조사가 붙어도 된다 ("교육청에", "김민수 선생님께")
 import { tokenizeStudents, escapeRe, BEFORE, AFTER } from './students.js';
 
-export const KINDS = { person: '사람', org: '기관' };
+export const KINDS = { person: '사람', org: '기관', alumni: '졸업생' };
+export const PHOTO_FOLDER = '사람·기관사진';
+export const newPersonUid = () => `p_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 // 긴 것부터 맞춰야 "교장선생님"이 "교장"으로 잘리지 않는다
 // 'T' 는 "정다온T" 처럼 이름에 붙여 쓰는 선생님 줄임
@@ -20,7 +22,18 @@ const str = (v) => String(v ?? '').trim();
 
 export function normPerson(p) {
   const out = { ...p };
-  out.kind = p.kind === 'org' ? 'org' : 'person';
+  out.kind = KINDS[p.kind] ? p.kind : 'person';
+  out.uid = str(p.uid) || newPersonUid(); // 여러 학년도에 걸쳐 같은 사람 (사진·관계가 이 값을 가리킴)
+  out.photo = str(p.photo);
+  if (!out.photo) delete out.photo;
+  out.gender = ['남', '여'].includes(p.gender) ? p.gender : '';
+  if (!out.gender || out.kind === 'org') delete out.gender;
+  // 졸업생: 졸업 학년도, 졸업 당시 학번·학과, 재학 때 학생 ID(지난 기록 잇기)
+  if (out.kind === 'alumni') {
+    const gy = +String(p.gradYear ?? '').match(/\d{4}/)?.[0] || 0;
+    if (gy) out.gradYear = gy; else delete out.gradYear;
+    for (const k of ['studentNo', 'dept', 'stuUid']) { out[k] = str(p[k]); if (!out[k]) delete out[k]; }
+  } else { delete out.gradYear; delete out.studentNo; delete out.dept; delete out.stuUid; }
   for (const k of ['name', 'org', 'phone', 'email', 'memo', 'subject']) out[k] = str(p[k]);
   // 호칭·직위: 쉼표로 여러 개 (겸임) → "부장, 선생님"
   out.title = titlesOf(p).join(', ');
@@ -38,14 +51,19 @@ export const LEVELS = ['초등', '중등'];
 /** 호칭·직위 목록 */
 export const titlesOf = (p) => [...new Set(String(p?.title ?? '').split(/[,，、/]/).map(str).filter(Boolean))];
 /** 화면에 보일 이름: "김민수 선생님"(첫 호칭), "경기도교육청" */
-export const personLabel = (p) => (p ? [p.name, p.kind === 'org' ? '' : titlesOf(p)[0] || (p.teacher ? '선생님' : '')].filter(Boolean).join(' ') : '');
+export const personLabel = (p) => {
+  if (!p) return '';
+  if (p.kind === 'alumni') return `${p.name}${p.gradYear ? ` (${p.gradYear} 졸업)` : ' (졸업생)'}`;
+  return [p.name, p.kind === 'org' ? '' : titlesOf(p)[0] || (p.teacher ? '선생님' : '')].filter(Boolean).join(' ');
+};
 /** 교원 정보 한 줄: "중등 · 정보" */
 export const teacherInfo = (p) => (p?.teacher ? [p.level, p.subject].filter(Boolean).join(' · ') || '교원' : '');
 /** 이름 + 다른 이름 (두 글자 이상) */
 export const namesOf = (p) => [p.name, ...(p.aliases || [])].map(str).filter((n) => n.length >= 2);
 
 export function sortPeople(list) {
-  return [...list].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'org' ? 1 : -1) || String(a.name).localeCompare(String(b.name), 'ko'));
+  const o = { person: 0, alumni: 1, org: 2 };
+  return [...list].sort((a, b) => (o[a.kind] ?? 0) - (o[b.kind] ?? 0) || (b.kind === 'alumni' ? (b.gradYear || 0) - (a.gradYear || 0) : 0) || String(a.name).localeCompare(String(b.name), 'ko'));
 }
 
 // ---------- 동명이인 ----------
@@ -57,7 +75,8 @@ export function nameGroups(people) {
 }
 
 /** 괄호 안에 넣어 구분할 말: 소속, 다른 이름 */
-const qualsOf = (p, n) => [p.org, ...(p.aliases || [])].map(str).filter((q) => q && q !== n);
+// 졸업생은 "김민준(2025졸업)", "김민준(2025졸)" 처럼 졸업 학년도로도 구분
+const qualsOf = (p, n) => [p.org, ...(p.aliases || []), ...(p.kind === 'alumni' && p.gradYear ? [`${p.gradYear}졸업`, `${p.gradYear}졸`] : [])].map(str).filter((q) => q && q !== n);
 const titleBase = (t) => str(t).replace(/님$/, '');
 
 /** 같은 이름 묶음 안에서 이 사람만 가진 구분말 (없으면 '') */

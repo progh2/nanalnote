@@ -5,6 +5,7 @@ import { textEntries, TYPE_LABEL } from '../lib/tags.js';
 import { renderMd } from '../lib/notemd.js';
 import { mentionInline } from './mentions.js';
 import { relationsBox } from './relations.js';
+import { projectsOf } from './projectparts.js';
 import { selvesOf } from '../lib/relations.js';
 import { resizeImage, readClipboardImage, PHOTO_SIZE, LOGO_SIZE } from '../lib/photos.js';
 import { migrateRefs } from '../store.js';
@@ -173,6 +174,10 @@ function editor(app, p, onChange) {
     titles,
     isAlum && p.stuUid ? h('div.row', h('button.small', { onclick: () => showAlumniRecords(app, p) }, '📚 재학 때 기록 보기 (상담·출결)')) : null,
     isOrg ? null : h('div.rel-wrap', relationsBox(app, `p:${p.uid}`)),
+    (() => {
+      const pr = projectsOf(store, `p:${p.uid}`);
+      return pr.length ? h('div.rel-wrap', h('h3', '관련 사업 (#태그)'), h('div.chips', pr.map((x) => h('button.chip-btn', { onclick: () => { app.tagView = { ...(app.tagView || {}), tag: x.tag, type: '' }; app.tab = 'tags'; app.render(); } }, `#${x.tag}${x.role ? ` · ${x.role}` : ''}`)))) : null;
+    })(),
     h('div.row.contact-links',
       p.phone ? h('a.chip-btn', { href: `tel:${p.phone.replace(/[^\d+]/g, '')}` }, '📞 전화') : null,
       p.phone ? h('a.chip-btn', { href: `sms:${p.phone.replace(/[^\d+]/g, '')}` }, '✉ 문자') : null,

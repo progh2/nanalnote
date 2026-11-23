@@ -62,7 +62,10 @@ const sample = {
   ],
   // 태그 카드: 고정한 것 먼저, 그다음 태그 이름순
   tagcards: [
-    { id: 'tc2', tag: '진로캠프', status: 'active', start: '2026-05-01', pinned: true, memo: '1·2학년 대상\n예산 | 300만원' },
+    { id: 'tc2', tag: '진로캠프', status: 'active', start: '2026-05-01', pinned: true, memo: '## 목적\n1·2학년 대상\n예산 | 300만원',
+      links: [{ title: '안내 | 공문', url: 'https://example.com/x?a=1|2' }], files: [{ title: '계획서', file: '진로캠프_계획서.hwpx', uploaded: '2026-04-01' }],
+      stages: [{ id: 'st_1', name: '신청·공모', start: '2026-04-01', end: '2026-04-15' }, { id: 'st_2', name: '운영', start: '2026-05-01', memo: '강당' }],
+      members: [{ ref: 'p:p_kim', role: '담당', memo: '' }, { ref: 's:U1', role: '참여 학생', memo: '조장' }, { ref: '', text: '외부강사 한빛', role: '강사', memo: '연락 | 대기' }] },
     { id: 'tc1', tag: '방과후', status: 'done', end: '2026-12-20' },
   ],
 };
@@ -202,4 +205,12 @@ test('드롭박스: 학생 사진은 {학년도}/사진/학번_이름.jpg', asyn
   const name = await b.savePhoto(2026, { uid: 'U1', studentNo: '10201', name: '이몽룡', photo: '' }, new Blob(['jpg']));
   assert.equal(name, '10201_이몽룡.jpg');
   assert.ok(fs.has('/2026학년도/사진/10201_이몽룡.jpg'));
+});
+
+test('예전 태그.md (표 하나) 도 읽는다', async () => {
+  const { parse } = await import('../src/lib/mdformat.js');
+  const old = '# 태그 (2026학년도)\n\n| 태그 | 상태 | 시작 | 끝 | 고정 | 설명 |\n|---|---|---|---|---|---|\n| #방과후 | 진행 중 | 2026-03-02 |  | 📌 | 강사 채용 |\n';
+  let n = 0;
+  const d = parse(2026, new Map([['/2026학년도/태그.md', old]]), () => `x${n++}`);
+  assert.deepEqual(d.tagcards.map((c) => [c.tag, c.status, c.start, c.pinned, c.memo]), [['방과후', 'active', '2026-03-02', true, '강사 채용']]);
 });

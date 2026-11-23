@@ -1,6 +1,10 @@
 // 태그 탭: #태그 목록과 태그 카드(설명·기간·상태·고정), 태그가 붙은 기록을 날짜순으로 모아 보기
 // 사업·행사·프로젝트는 #태그로 쓰고, 카드에 설명과 기간을 적어 두면 한눈에 관리할 수 있다.
-import { h, koDate, today } from '../lib/util.js';
+import { h, koDate, today, newId } from '../lib/util.js';
+import { summaryBlock, stagesBlock, resourcesBlock, membersBlock } from './projectparts.js';
+
+export const TAG_FILES = '태그자료';
+const PROJECT_STAGES = ['계획', '신청·공모', '운영', '중간 점검', '결과 보고', '정산'];
 import { tagEntries, tagCounts, TYPE_LABEL } from '../lib/tags.js';
 import { renderMd } from '../lib/notemd.js';
 import { mentionedPids, personLabel } from '../lib/people.js';
@@ -22,8 +26,13 @@ const grow = (el) => {
 /** 태그 카드: 설명·기간·상태·고정 + 요약(기록 수, 남은 업무, 함께 나온 사람·기관) */
 function tagCardView(app, tag, all, plain) {
   const { store } = app;
-  const c = store.tagCard(tag) || {};
+  // 카드가 없으면 만들어 둔다 (빈 카드는 저장되지 않음 — 무언가 적으면 저장)
+  let c = store.tagCard(tag);
+  if (!c) { c = { id: newId(), tag }; store.work.tagcards.push(c); }
   const set = (patch, redraw = true) => { store.updateTagCard(tag, patch); if (redraw) app.render(); };
+  const v = app.tagView;
+  v.memoView ||= {};
+  v.memoView[tag] ||= {};
   const dates = all.map((e) => e.date).filter(Boolean).sort();
   const byType = new Map();
   for (const e of all) byType.set(e.type, (byType.get(e.type) || 0) + 1);
@@ -40,11 +49,7 @@ function tagCardView(app, tag, all, plain) {
         [['', '상태 없음'], ['active', STATUS.active], ['done', STATUS.done]].map(([k, l]) =>
           h(`button.chip-btn${(c.status || '') === k ? '.active' : ''}`, { onclick: () => set({ status: k }) }, l))),
       h(`button.chip-btn${c.pinned ? '.active' : ''}`, { title: '태그 목록 맨 앞에 고정', onclick: () => set({ pinned: !c.pinned }) }, c.pinned ? '📌 고정됨' : '📌 고정')),
-    h('label.tag-card-memo', h('span.small.muted', '설명'),
-      grow(h('textarea', {
-        rows: 2, value: c.memo || '', placeholder: `#${tag} 은(는) 어떤 일인가요? 목적, 대상, 예산, 담당 등을 적어 두세요.`,
-        oninput: (e) => set({ memo: e.target.value }, false),
-      }))),
+    summaryBlock(app, c, 'memo', { title: '설명', view: v.memoView[tag], placeholder: `#${tag} 은(는) 어떤 일인가요? 목적, 대상, 예산, 추진 방법 등을 적어 두세요. ## 제목, - 목록을 쓸 수 있어요.` }),
     h('div.row.tag-card-dates',
       h('label', h('span.small.muted', '시작 '), h('input', { type: 'date', value: c.start || '', onchange: (e) => set({ start: e.target.value }) })),
       h('span', '~'),
@@ -52,6 +57,9 @@ function tagCardView(app, tag, all, plain) {
       c.end && c.status !== 'done' ? (() => { const d = dday(c.end, t); return h(`span.due-btn${d.n < 0 ? '.over' : d.n <= 3 ? '.soon' : ''}`, d.label); })() : null,
       !c.start && !c.end && dates.length ? h('span.muted.small', `기록: ${koDate(dates[0])} ~ ${koDate(dates.at(-1))}`) : null),
     h('div.tag-card-sum.muted.small', [...byType].map(([k, n]) => `${TYPE_LABEL[k]} ${n}`).join(' · ') || '아직 기록이 없습니다'),
+    stagesBlock(app, c, { presets: PROJECT_STAGES, hint: '계획·신청·운영·결과 보고처럼 단계를 넣으면 날짜를 따라가고, 교사수첩 그날에도 보입니다.' }),
+    resourcesBlock(app, c, { folder: TAG_FILES, base: tag }),
+    membersBlock(app, c),
     openTasks.length ? h('div.tag-card-block',
       h('div.small', h('strong', `남은 업무 ${openTasks.length}`)),
       h('ul.tag-tasks', openTasks.map((e) => {
@@ -60,7 +68,12 @@ function tagCardView(app, tag, all, plain) {
       }))) : null,
     people.length ? h('div.tag-card-block',
       h('div.small', h('strong', '함께 나온 사람·기관')),
-      h('div.chips', people.map(([p, n]) => h('button.chip-btn', { onclick: () => openPerson(app, p.id) }, `${p.kind === 'org' ? '🏢' : '👤'} ${personLabel(p)} `, h('small', String(n)))))) : null);
+      h('div.chips', people.map(([p, n]) => {
+        const listed = (c.members || []).some((m) => m.ref === `p:${p.uid}`);
+        return h('span.suggest-chip',
+          h('button.chip-btn', { onclick: () => openPerson(app, p.id) }, `${p.kind === 'org' ? '🏢' : '👤'} ${personLabel(p)} `, h('small', String(n))),
+          listed ? null : h('button.icon-btn.chip-x', { title: '관련 인물 표에 넣기', 'aria-label': `${personLabel(p)} 관련 인물에 넣기`, onclick: () => { c.members ||= []; c.members.push({ ref: `p:${p.uid}`, role: '', memo: '' }); store.markDirty(); app.render(); } }, '+'));
+      }))) : null);
 }
 
 export function renderTags(app) {

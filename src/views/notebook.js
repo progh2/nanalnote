@@ -50,7 +50,12 @@ export function renderNotebook(app) {
     isHol ? h('div.specials', h('span.chip.holiday', '🏖 학교 휴업일')) : null,
     specialsEl,
     // 대회·활동 일정 (단계 시작·마감)
-    (() => { const ev = dayEvents(store.work.contests, date); return ev.length ? h('div.specials.contest-day', ev.map((x) => h('button.chip.contest-chip', { onclick: () => openContest(app, x.c.id), title: '대회·활동 열기' }, `🏆 ${x.c.name} · ${x.text}`))) : null; })());
+    (() => {
+      // 대회·활동, #태그(사업) 일정 (단계 시작·마감)
+      const ev = [...dayEvents(store.work.contests, date).map((x) => ({ ...x, open: () => openContest(app, x.c.id), label: `🏆 ${x.c.name} · ${x.text}` })),
+        ...dayEvents((store.work.tagcards || []).map((c) => ({ ...c, name: `#${c.tag}` })), date).map((x) => ({ ...x, open: () => openTag(app, x.c.tag), label: `#${x.c.tag} · ${x.text}` }))];
+      return ev.length ? h('div.specials.contest-day', ev.map((x) => h('button.chip.contest-chip', { onclick: x.open, title: '열기' }, x.label))) : null;
+    })());
 
   // ----- 수업일지 -----
   const sec = s.schoolLevel === 'secondary';

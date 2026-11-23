@@ -7,7 +7,7 @@
 //   {학년도}학년도/업무일지.md     - [x] 할 일 (작성 2026-03-02, 완료 2026-03-04)
 //   {학년도}학년도/학급요록.md     ## 제목 / - 등록: / - 완료: / | 학생 | 내용 |
 //   {학년도}학년도/사람·기관.md    | 구분 | 이름 | 호칭 | 교원 | 학교급 | 교과 | 소속 | 전화 | 이메일 | 다른 이름 | 메모 |
-//   {학년도}학년도/태그.md         | 태그 | 상태 | 시작 | 끝 | 고정 | 설명 |
+//   {학년도}학년도/태그.md         ## #태그 / - 상태·기간·고정·링크·파일 / ### 설명 / ### 일정 표 / ### 관련 인물 표
 //   {학년도}학년도/대회·활동.md    ## 대회 이름 / - 종류·주최·기간·링크·파일 / ### 개요 / ### 일정 표 / ### 참가 표
 //   {학년도}학년도/일지/YYYY-MM-DD.md   하루치 수업일지·학생출결·상담일지
 
@@ -249,12 +249,33 @@ export function serialize(year, input) {
     files.set(`${dir}/${FILES.contests}`, parts.join('\n'));
   }
 
-  // 태그 카드
+  // 태그 카드 (사업·행사·프로젝트): 태그마다 ## 구역 — 상태·기간·고정·링크·파일 / ### 설명 / ### 일정 / ### 관련 인물
   if (data.tagcards.length) {
+    const bar = (x) => String(x ?? '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
+    const sIdx = buildIndex(data.students);
+    const who = (m) => {
+      const [t, id] = String(m.ref || '').split(/:(.*)/);
+      if (t === 's') { const st = sIdx.byUid.get(id); return st ? labelOf(st.uid, sIdx) : id; }
+      if (t === 'p') { const x = data.people.find((y) => y.uid === id); return x ? x.name : id; }
+      return m.text || '';
+    };
     const tc = [...data.tagcards].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || a.tag.localeCompare(b.tag, 'ko'));
-    files.set(`${dir}/${FILES.tagcards}`, [header('태그'),
-      '> #태그(사업·행사·프로젝트)마다 설명·기간·상태를 적어 두는 카드입니다.', '',
-      table(['태그', '상태', '시작', '끝', '고정', '설명'], tc.map((c) => [`#${c.tag}`, c.status === 'done' ? '끝남' : c.status === 'active' ? '진행 중' : '', c.start || '', c.end || '', c.pinned ? '📌' : '', c.memo || ''])), ''].join('\n'));
+    const parts = [header('태그'), '> #태그(사업·행사·프로젝트)마다 설명·기간·상태·일정·자료·관련 인물을 적어 두는 카드입니다. 자료 파일은 "태그자료" 폴더에 있습니다.', ''];
+    for (const c of tc) {
+      const stages = c.stages || [];
+      const members = (c.members || []).filter((m) => m.ref || m.text);
+      parts.push(`## #${c.tag}`, '',
+        ...(c.status ? [`- 상태: ${c.status === 'done' ? '끝남' : '진행 중'}`] : []),
+        ...(c.start || c.end ? [`- 기간: ${c.start || ''} ~ ${c.end || ''}`] : []),
+        ...(c.pinned ? ['- 고정: 예'] : []),
+        ...(c.links || []).map((l) => `- 링크: ${bar(oneLine(l.title))} | ${bar(l.url)}`),
+        ...(c.files || []).map((f) => `- 파일: ${bar(oneLine(f.title))} | ${bar(f.file)}${f.uploaded ? ` | ${f.uploaded}` : ''}`),
+        '');
+      if ((c.memo || '').trim()) parts.push('### 설명', '', escBlock(c.memo), '');
+      if (stages.length) parts.push('### 일정', '', table(['단계', '시작', '끝', '메모'], stages.map((x) => [x.name, x.start || '', x.end || '', x.memo || ''])), '');
+      if (members.length) parts.push('### 관련 인물', '', table(['인물', '역할', '메모', 'ID'], members.map((m) => [who(m), m.role || '', m.memo || '', m.ref || ''])), '');
+    }
+    files.set(`${dir}/${FILES.tagcards}`, parts.join('\n'));
   }
 
   // 학사일정 자료 (연간·월중·주간 이미지/PDF 목록)
@@ -400,7 +421,41 @@ export function parse(year, files, makeId) {
 
   // 태그 카드
   const tgc = get(FILES.tagcards);
-  if (tgc != null) {
+  if (tgc != null && /^## /m.test(tgc)) {
+    // 구역 형식
+    for (const sec of sections(tgc).slice(1)) {
+      const tag = sec.title.trim().replace(/^#/, '');
+      if (!tag) continue;
+      const c = { id: makeId(), tag, links: [], files: [], stages: [], members: [] };
+      const subs = sections(sec.lines.join('\n'), 3);
+      for (const l of subs[0]?.lines || []) {
+        const m = l.match(/^-\s*([^:]+):\s*(.*)$/);
+        if (!m) continue;
+        const [k, v] = [m[1].trim(), m[2].trim()];
+        if (k === '상태') { if (v === '끝남') c.status = 'done'; else if (v === '진행 중') c.status = 'active'; }
+        else if (k === '기간') { const [a, b] = v.split('~').map((x) => x.trim()); if (a) c.start = a; if (b) c.end = b; }
+        else if (k === '고정') c.pinned = /^(예|o|y|yes|true|📌)$/i.test(v);
+        else if (k === '링크') { const [t, u] = splitBar(v); c.links.push({ title: fromOneLine(t || ''), url: (u || '').trim() }); }
+        else if (k === '파일') { const [t, f, up] = splitBar(v); c.files.push({ title: fromOneLine(t || ''), file: (f || '').trim(), ...(up ? { uploaded: up.trim() } : {}) }); }
+      }
+      for (const sub of subs.slice(1)) {
+        if (sub.title === '설명') c.memo = unescBlock(trimBlank(sub.lines).join('\n'));
+        else if (sub.title === '일정') {
+          for (const r of parseTableObjects(sub.lines)) if ((r['단계'] || '').trim()) c.stages.push({ id: `st_${c.stages.length + 1}`, name: r['단계'].trim(), ...(r['시작']?.trim() ? { start: r['시작'].trim() } : {}), ...(r['끝']?.trim() ? { end: r['끝'].trim() } : {}), ...(r['메모']?.trim() ? { memo: r['메모'] } : {}) });
+        } else if (sub.title === '관련 인물') {
+          for (const r of parseTableObjects(sub.lines)) {
+            const id = (r.ID || '').trim(), name = (r['인물'] || '').trim();
+            if (!id && !name) continue;
+            // ID 가 없으면 이름으로 (migrateRefs 가 학생·사람을 찾아 잇는다, 못 찾으면 글자로 남김)
+            c.members.push({ ref: id || `name:${name}`, role: (r['역할'] || '').trim(), memo: r['메모'] || '' });
+          }
+        }
+      }
+      for (const k of ['links', 'files', 'stages', 'members']) if (!c[k].length) delete c[k];
+      data.tagcards.push(c);
+    }
+  } else if (tgc != null) {
+    // 예전 형식: 표 하나
     for (const r of parseTableObjects(tgc.split('\n'))) {
       const tag = (r['태그'] || '').trim().replace(/^#/, '');
       if (!tag) continue;

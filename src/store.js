@@ -332,7 +332,7 @@ export class Store {
       case 'people': return !!(x.name || '').trim();
       case 'contests': return !!(x.name || '').trim();
       case 'relations': return !!(x.a && x.b && x.kind);
-      case 'tagcards': return !!x.tag && !!((x.memo || '').trim() || x.start || x.end || x.status || x.pinned);
+      case 'tagcards': return !!x.tag && !!((x.memo || '').trim() || x.start || x.end || x.status || x.pinned || x.stages?.length || x.links?.length || x.files?.length || x.members?.some((m) => m.ref || m.text));
       case 'attendance': return !!x.student;
       case 'records': return !!(x.title || '').trim();
       case 'schedule': return !!((x.text || '').trim() || x.holiday || x.csat);
@@ -427,6 +427,8 @@ export class Store {
  */
 export function migrateRefs(data) {
   data.students = data.students.map((s) => ({ ...normStudent(s), uid: s.uid || s.id }));
+  // 사람·기관: 예전 자료에도 고유 ID(사진·관계·사업 인물이 가리킴)가 있게
+  if (data.people) data.people = data.people.map((p) => ({ ...normPerson(p), id: p.id }));
   const idx = buildIndex(data.students);
   for (const a of data.attendance) a.student = toUid(a.student, idx);
   for (const c of data.counsel) c.students = [...new Set((c.students || []).map((r) => toUid(r, idx)))];
@@ -436,6 +438,14 @@ export function migrateRefs(data) {
     r.entries = e;
   }
   for (const c of data.contests || []) for (const e of c.entries || []) e.members = [...new Set((e.members || []).map((r) => toUid(r, idx)).filter(Boolean))];
+  // 태그 카드 관련 인물: 손으로 쓴 이름을 학생·사람 ID 로 (못 찾으면 글자로)
+  for (const c of data.tagcards || []) for (const m of c.members || []) {
+    if (!String(m.ref).startsWith('name:')) continue;
+    const label = m.ref.slice(5);
+    const st = resolveRef(label, idx);
+    const p = !st && (data.people || []).filter((x) => x.name === label);
+    if (st) m.ref = `s:${st.uid}`; else if (p?.length === 1) m.ref = `p:${p[0].uid}`; else { m.ref = ''; m.text = label; }
+  }
   // 관계: 손으로 쓴 이름("name:20101 김민준", "name:정다온")을 학생·사람 ID 로
   for (const r of data.relations || []) {
     for (const k of ['a', 'b']) {

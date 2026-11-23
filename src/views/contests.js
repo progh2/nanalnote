@@ -8,6 +8,7 @@ import { mentionInline } from './mentions.js';
 import { scrollToDetail } from './ui.js';
 import { attachStudentSuggest } from './suggest.js';
 import { createSheet } from './sheet.js';
+import { summaryBlock, stagesBlock, resourcesBlock, projectsOf } from './projectparts.js';
 
 const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '_').slice(0, 60) || '파일';
 const dd = (n) => (n === 0 ? 'D-day' : n > 0 ? `D-${n}` : `D+${-n}`);
@@ -101,95 +102,16 @@ function detail(app, c) {
       h('span', '~'),
       h('input', { type: 'date', value: c.end || '', 'aria-label': '끝', onchange: (e) => { c.end = e.target.value; dirty(); app.render(); } })));
 
-  // ----- 개요 (마크다운) -----
-  const v = app.contestView;
-  const plain = mentionInline(app, { update: (fn) => { c.summary = fn(c.summary || ''); } });
-  const summaryBox = h('div.contest-summary');
-  const drawSummary = () => {
-    if (v.editSummary || !(c.summary || '').trim()) {
-      const ta = grow(h('textarea', { rows: 3, value: c.summary || '', placeholder: '개요 — 목적, 대상, 주제, 참가 방법, 유의 사항 등. ## 제목, - 목록, #태그 를 쓸 수 있어요.', oninput: (e) => { c.summary = e.target.value; dirty(); } }));
-      attachStudentSuggest(ta, () => store.work.students, () => store.work.people, () => store.tagList());
-      fill(summaryBox, ta, (c.summary || '').trim() ? h('button.small', { onclick: () => { v.editSummary = false; drawSummary(); } }, '✓ 보기') : null);
-    } else {
-      fill(summaryBox, h('div.md.contest-md', renderMd(c.summary, { plain })), h('button.small', { onclick: () => { v.editSummary = true; drawSummary(); } }, '✎ 고치기'));
-    }
-  };
-  drawSummary();
-
-  // ----- 일정·단계 -----
-  const stageRows = c.stages.map((s, i) => {
-    const nx = (s.end || s.start) && (s.end || s.start) >= t ? Math.round((new Date((s.start && s.start >= t ? s.start : s.end || s.start) + 'T00:00') - new Date(t + 'T00:00')) / 86400000) : null;
-    return h('tr',
-      h('td', h('input', { value: s.name, 'aria-label': '단계 이름', oninput: (e) => { s.name = e.target.value; dirty(); }, onchange: () => app.render() })),
-      h('td', h('input', { type: 'date', value: s.start || '', 'aria-label': '시작', onchange: (e) => { s.start = e.target.value; dirty(); app.render(); } })),
-      h('td', h('input', { type: 'date', value: s.end || '', 'aria-label': '끝', onchange: (e) => { s.end = e.target.value; dirty(); app.render(); } })),
-      h('td', h('input', { value: s.memo || '', placeholder: '메모 (장소, 방식…)', 'aria-label': '메모', oninput: (e) => { s.memo = e.target.value; dirty(); } })),
-      h('td.nowrap', nx != null ? h(`span.due-btn${ddClass(nx)}`, dd(nx)) : (s.end || s.start) ? h('span.muted.small', '지남') : null),
-      h('td', h('button.icon-btn', { title: '단계 지우기', 'aria-label': '단계 지우기', onclick: async () => {
-        const used = c.entries.some((e) => e.results?.[s.id]);
-        if (used && !(await confirmDialog('단계 지우기', `"${s.name}" 단계와 이 단계의 참가 결과를 지울까요?`, '지우기'))) return;
-        c.stages.splice(i, 1); for (const e of c.entries) if (e.results) delete e.results[s.id];
-        dirty(); app.render();
-      } }, '✕')));
-  });
-  const addStage = (name) => { c.stages.push({ id: stageId(), name }); dirty(); app.render(); };
-  const stagesCard = h('div.contest-block',
-    h('h3', '일정·단계'),
-    c.stages.length ? h('div.records-wrap', h('table.grid.stage-table', h('thead', h('tr', h('th', '단계'), h('th', '시작'), h('th', '끝'), h('th', '메모'), h('th', ''), h('th', ''))), h('tbody', stageRows))) : h('p.muted.small', '접수·예선·본선처럼 단계를 넣으면 날짜를 따라가고, 참가 표에 단계별 결과 칸이 생깁니다.'),
-    h('div.chips', STAGE_PRESETS.filter((p) => !c.stages.some((s) => s.name === p)).map((p) => h('button.chip-btn', { onclick: () => addStage(p) }, `+ ${p}`)),
-      h('button.chip-btn', { onclick: () => addStage('새 단계') }, '+ 직접')));
-
-  // ----- 자료: 링크·파일 -----
-  c.links ||= []; c.files ||= [];
-  const filesBox = h('div.contest-files');
-  const drawFiles = () => fill(filesBox, ...c.files.map((f, i) => {
-    const thumb = h('div.file-thumb', /\.(png|jpe?g|gif|webp)$/i.test(f.file) ? '🖼' : /\.pdf$/i.test(f.file) ? '📄' : '📎');
-    if (/\.(png|jpe?g|gif|webp)$/i.test(f.file)) {
-      store.backend.fileUrl?.(store.year, FILES_FOLDER, f.file).then((url) => { if (url) fill(thumb, h('img', { src: url, alt: f.title || f.file, loading: 'lazy' })); }).catch(() => {});
-    }
-    return h('div.file-item',
-      thumb,
-      h('input', { value: f.title || '', placeholder: '이름 (예: 포스터)', 'aria-label': '파일 이름', oninput: (e) => { f.title = e.target.value; dirty(); } }),
-      h('div.row', { style: { margin: 0, gap: '4px' } },
-        h('button.small', { onclick: async () => {
-          try {
-            const url = await store.backend.fileUrl?.(store.year, FILES_FOLDER, f.file);
-            if (!url) throw new Error('파일을 찾지 못했습니다.');
-            const blob = await (await fetch(url)).blob();
-            downloadBlob(blob, f.file);
-          } catch (e) { toast(e.message, 'error'); }
-        } }, '받기'),
-        h('button.small', { title: '파일 지우기', onclick: async () => {
-          if (!(await confirmDialog('파일 지우기', `${f.title || f.file} 파일을 지울까요?`, '지우기'))) return;
-          try { await store.backend.deleteFile?.(store.year, FILES_FOLDER, f.file); } catch { /* 이미 없음 */ }
-          c.files.splice(i, 1); dirty(); drawFiles();
-        } }, '✕')));
-  }));
-  drawFiles();
-  const upload = async () => {
-    if (!store.backend.putFile) return toast('이 저장소는 파일을 지원하지 않습니다.', 'error');
-    const file = await pickFile('*/*');
-    if (!file) return;
-    const ext = (file.name.match(/\.[^.]+$/)?.[0] || '').toLowerCase();
-    const name = `${safe(c.name)}_${safe(file.name.replace(/\.[^.]+$/, ''))}_${Date.now().toString(36)}${ext}`;
-    toast('파일을 올리는 중…');
-    try {
-      await store.backend.putFile(store.year, FILES_FOLDER, name, file);
-      c.files.push({ title: file.name.replace(/\.[^.]+$/, ''), file: name, uploaded: today() });
-      dirty(); drawFiles(); toast('올렸습니다.', 'ok');
-    } catch (e) { toast(`올리지 못했습니다: ${e.message}`, 'error'); }
-  };
-  const linksBox = h('div.contest-links', c.links.map((l, i) => h('div.link-row',
-    h('input', { value: l.title || '', placeholder: '이름 (예: 공식 사이트)', 'aria-label': '링크 이름', oninput: (e) => { l.title = e.target.value; dirty(); } }),
-    h('input', { type: 'url', value: l.url || '', placeholder: 'https://', 'aria-label': '주소', oninput: (e) => { l.url = e.target.value.trim(); dirty(); } }),
-    /^https?:\/\//.test(l.url || '') ? h('a.chip-btn', { href: l.url, target: '_blank', rel: 'noopener' }, '열기') : h('span'),
-    h('button.icon-btn', { title: '링크 지우기', 'aria-label': '링크 지우기', onclick: () => { c.links.splice(i, 1); dirty(); app.render(); } }, '✕'))));
-  const resCard = h('div.contest-block',
-    h('h3', '자료'),
-    linksBox,
-    filesBox,
-    h('div.row', h('button.small', { onclick: () => { c.links.push({ title: '', url: '' }); dirty(); app.render(); } }, '+ 링크'),
-      h('button.small', { onclick: upload }, '+ 파일 올리기 (포스터·안내문·서식…)')));
+  // ----- 개요 · 일정 · 자료 (태그 카드와 함께 쓰는 칸) -----
+  const summaryCard = summaryBlock(app, c, 'summary', { view: (app.contestView.summaryView ||= {}), placeholder: '개요 — 목적, 대상, 주제, 참가 방법, 유의 사항 등. ## 제목, - 목록, #태그 를 쓸 수 있어요.' });
+  const stagesCard = stagesBlock(app, c, { presets: STAGE_PRESETS, hint: '접수·예선·본선처럼 단계를 넣으면 날짜를 따라가고, 참가 표에 단계별 결과 칸이 생깁니다.',
+    beforeRemove: async (s) => {
+      const used = c.entries.some((e) => e.results?.[s.id]);
+      if (used && !(await confirmDialog('단계 지우기', `"${s.name}" 단계와 이 단계의 참가 결과를 지울까요?`, '지우기'))) return false;
+      for (const e of c.entries) if (e.results) delete e.results[s.id];
+      return true;
+    } });
+  const resCard = resourcesBlock(app, c, { folder: FILES_FOLDER, base: c.name });
 
   // ----- 참가 (스프레드시트처럼: 바로 고치기, 엑셀·구글 시트에서 붙여넣기) -----
   const idx = store.studentIndex();
@@ -244,7 +166,7 @@ function detail(app, c) {
           store.work.contests = store.work.contests.filter((x) => x !== c); dirty(); app.contestView.sel = ''; app.render();
         } }, '지우기'))),
     head,
-    h('div.contest-block', h('h3', '개요'), summaryBox),
+    summaryCard,
     stagesCard,
     resCard,
     entriesCard);
@@ -271,14 +193,16 @@ export function studentActivitiesCard(app, uid) {
   const items = [];
   for (const c of store.work.contests || []) for (const e of c.entries || []) if ((e.members || []).includes(uid)) items.push({ c, e });
   items.sort((a, b) => (spanOf(b.c).start || '').localeCompare(spanOf(a.c).start || ''));
+  const projects = projectsOf(store, `s:${uid}`);
   return h('section.card',
-    h('div.card-head', h('h2', `대회·활동 (${items.length})`), h('button.small', { onclick: () => { app.contestView = { ...(app.contestView || {}), sel: '' }; app.tab = 'contests'; app.render(); } }, '대회·활동 메뉴')),
+    h('div.card-head', h('h2', `대회·활동${projects.length ? '·사업' : ''} (${items.length + projects.length})`), h('button.small', { onclick: () => { app.contestView = { ...(app.contestView || {}), sel: '' }; app.tab = 'contests'; app.render(); } }, '대회·활동 메뉴')),
     items.length ? h('ul.activity-list', items.map(({ c, e }) => {
       const sp = spanOf(c);
       return h('li',
         h('button.link', { onclick: () => openContest(app, c.id) }, c.name), ' ', h('span.muted.small', `${c.kind || ''} · ${[sp.start, sp.end].filter(Boolean).join(' ~ ')}`),
         h('div.small', [e.team ? `팀 ${e.team}` : '', resultText(c, e), c.completion ? (e.done ? '수료' : '미수료') : ''].filter(Boolean).join(' · '),
           e.award ? h('strong.award', ` 🏆 ${e.award}`) : null));
-    })) : h('p.muted', '참가한 대회·활동이 없습니다.'));
+    })) : projects.length ? null : h('p.muted', '참가한 대회·활동이 없습니다.'),
+    projects.length ? h('div.chips', { style: { marginTop: '6px' } }, projects.map((x) => h('button.chip-btn', { onclick: () => { app.tagView = { ...(app.tagView || {}), tag: x.tag, type: '' }; app.tab = 'tags'; app.render(); } }, `#${x.tag}${x.role ? ` · ${x.role}` : ''}`))) : null);
 }
 

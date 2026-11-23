@@ -120,7 +120,7 @@ function compiled(people, students) {
     }
     if (persons.length > 1) {
       for (const p of persons) {
-        // 겸임 호칭 가운데 같은 이름의 다른 사람과 겹치지 않는 호칭으로 구분 ("박지영 장학사", "박지영 부장")
+        // 겸임 호칭 가운데 같은 이름의 다른 사람과 겹치지 않는 호칭으로 구분 ("윤나래 장학사", "윤나래 부장")
         for (const t of titlesOf(p)) {
           const b = titleBase(t);
           if (b && persons.filter((o) => titlesOf(o).some((x) => titleBase(x) === b)).length === 1) add(`${N} ?(?:${escapeRe(b)}님|${escapeRe(b)})`, { pid: p.id }, 200 + n.length + b.length, n);

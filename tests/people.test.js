@@ -5,7 +5,7 @@ const { tokenizeMentions, mentionedPids, mentionedStudentUids, findUnregistered,
 const students = [{ uid: 'u1', studentNo: '2105', name: '고은별' }, { uid: 'u2', studentNo: '2106', name: '김민수' }];
 const people = [
   normPerson({ id: 'p1', kind: 'person', name: '김민수', title: '선생님' }),
-  normPerson({ id: 'p2', kind: 'person', name: '박지영', title: '장학사' }),
+  normPerson({ id: 'p2', kind: 'person', name: '윤나래', title: '장학사' }),
   normPerson({ id: 'o1', kind: 'org', name: '경기도교육청', aliases: '교육청, 도교육청' }),
 ];
 const pick = (text) => tokenizeMentions(text, students, people).filter((t) => t.uid || t.pid).map((t) => `${t.text}=${t.uid || t.pid}`);
@@ -13,7 +13,7 @@ const pick = (text) => tokenizeMentions(text, students, people).filter((t) => t.
 test('호칭이 붙으면 사람, 조사가 붙어도 된다', () => {
   assert.deepEqual(pick('김민수 선생님께 전화함'), ['김민수 선생님=p1']);
   assert.deepEqual(pick('김민수쌤이 말하길'), ['김민수쌤=p1']);
-  assert.deepEqual(pick('박지영 장학사님과 통화'), ['박지영 장학사님=p2']);
+  assert.deepEqual(pick('윤나래 장학사님과 통화'), ['윤나래 장학사님=p2']);
 });
 
 test('같은 이름 학생이 있으면 호칭 없는 이름은 학생', () => {
@@ -23,7 +23,7 @@ test('같은 이름 학생이 있으면 호칭 없는 이름은 학생', () => {
 });
 
 test('학생과 겹치지 않는 이름은 호칭 없이도, 기관은 다른 이름으로도', () => {
-  assert.deepEqual(pick('박지영에게 회신'), ['박지영=p2']);
+  assert.deepEqual(pick('윤나래에게 회신'), ['윤나래=p2']);
   assert.deepEqual(pick('교육청에 공문, 경기도교육청 회신, 도교육청으로'), ['교육청=o1', '경기도교육청=o1', '도교육청=o1']);
   assert.deepEqual(pick('교육청장 회의'), []); // 다른 단어의 일부는 아님
   assert.deepEqual(mentionedPids('교육청 #방과후 김민수쌤', students, people), ['o1', 'p1']);
@@ -46,8 +46,8 @@ const { qualifiedText, resolveAmbiguous, ambiguousPids, distinctQual, nameGroups
 const twins = [
   normPerson({ id: 'k1', name: '김민수', title: '선생님', org: '2학년부' }),
   normPerson({ id: 'k2', name: '김민수', title: '선생님', org: '○○중', aliases: '체육김민수' }),
-  normPerson({ id: 'k3', name: '박지영', title: '장학사' }),
-  normPerson({ id: 'k4', name: '박지영', title: '선생님', org: '3학년부' }),
+  normPerson({ id: 'k3', name: '윤나래', title: '장학사' }),
+  normPerson({ id: 'k4', name: '윤나래', title: '선생님', org: '3학년부' }),
   normPerson({ id: 'o1', kind: 'org', name: '경기도교육청', aliases: '교육청' }),
   normPerson({ id: 'o2', kind: 'org', name: '서울특별시교육청', aliases: '교육청' }),
 ];
@@ -58,7 +58,7 @@ test('동명이인: 괄호로 소속·다른 이름을 붙이면 그 사람', ()
 });
 
 test('동명이인: 호칭이 다르면 호칭으로, 같으면 누군지 모름', () => {
-  assert.deepEqual(pk('박지영 장학사님과 박지영 선생님'), ['박지영 장학사님=k3', '박지영 선생님=k4']);
+  assert.deepEqual(pk('윤나래 장학사님과 윤나래 선생님'), ['윤나래 장학사님=k3', '윤나래 선생님=k4']);
   assert.deepEqual(pk('김민수 선생님께 김민수에게'), ['김민수 선생님=?k1,k2', '김민수=?k1,k2']);
   assert.deepEqual(pk('교육청에 공문'), ['교육청=?o1,o2']);
   assert.deepEqual(pk('경기도교육청에'), ['경기도교육청=o1']);
@@ -96,8 +96,8 @@ test('이름 뒤 T·샘·쌤도 선생님으로, 겸임 호칭으로 동명이�
   const pk2 = (text, list = ps) => tokenizeMentions(text, [], list).filter((t) => t.pid || t.amb).map((t) => `${t.text}=${t.pid || '?'}`);
   assert.deepEqual(pk2('정다온T가 말하길, 정다온샘이랑 정다온 쌤께'), ['정다온T=a', '정다온샘=a', '정다온 쌤=a']);
   assert.deepEqual(pk2('정다온TV'), []); // TV 는 호칭이 아님
-  const twins = [normPerson({ id: 'x', name: '박지영', title: '부장, 선생님' }), normPerson({ id: 'y', name: '박지영', title: '선생님' })];
-  assert.deepEqual(pk2('박지영 부장님과 박지영 선생님', twins), ['박지영 부장님=x', '박지영 선생님=?']);
+  const twins = [normPerson({ id: 'x', name: '윤나래', title: '부장, 선생님' }), normPerson({ id: 'y', name: '윤나래', title: '선생님' })];
+  assert.deepEqual(pk2('윤나래 부장님과 윤나래 선생님', twins), ['윤나래 부장님=x', '윤나래 선생님=?']);
 });
 
 test('기록에서 찾은 이름: 일상 표현은 거르고, 뺀 말은 다시 추천하지 않음', () => {

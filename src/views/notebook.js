@@ -1,5 +1,5 @@
 // 교사수첩 탭: 학사일정·특일, 수업일지, 업무일지, 학생출결, 학생 상담 일지, 학급요록
-import { h, newId, weekdayOf, fmtDateTime, downloadBlob, toast, confirmDialog, today, pad, fill } from '../lib/util.js';
+import { h, newId, weekdayOf, fmtDateTime, downloadBlob, toast, confirmDialog, modal, today, pad, fill } from '../lib/util.js';
 import { dayRows, fmtRange, currentRow, EVENING_BASE } from '../lib/bell.js';
 
 const nowHM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
@@ -94,9 +94,34 @@ export function renderNotebook(app) {
     show();
     return wrap;
   };
+  // ----- 시간대 앵커: 업무의 ⚓ 를 교시·시간 일정 줄에 끌어다 놓으면 "그 시간에 한 일"로 연결 -----
+  const anchored = (slot) => store.work.tasks.filter((t) => t.at?.date === date && t.at.slot === slot);
+  const anchorChips = (slot) => {
+    const list = anchored(slot);
+    return list.length ? h('div.anchor-chips', list.map((t) => h(`span.anchor-chip${t.doneDate ? '.done' : ''}`, { title: t.text },
+      '⚓ ', String(t.text || '').slice(0, 28),
+      h('button', { type: 'button', title: '시간 연결 풀기', 'aria-label': '시간 연결 풀기', onclick: () => { delete t.at; store.markDirty(); app.render(); } }, '×')))) : null;
+  };
+  const TASK_MIME = 'application/x-nanal-task';
+  const dropSlot = (tr, slot) => {
+    tr.dataset.slot = slot;
+    tr.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes(TASK_MIME)) { e.preventDefault(); e.dataTransfer.dropEffect = 'link'; tr.classList.add('drop-on'); } });
+    tr.addEventListener('dragleave', () => tr.classList.remove('drop-on'));
+    tr.addEventListener('drop', (e) => {
+      tr.classList.remove('drop-on');
+      const id = e.dataTransfer.getData(TASK_MIME);
+      const t = store.work.tasks.find((x) => x.id === id);
+      if (!t) return;
+      e.preventDefault();
+      t.at = { date, slot };
+      store.markDirty();
+      app.render();
+    });
+    return tr;
+  };
   const lessonTr = (l, r) => {
     const label = store.periodLabel(l.period);
-    return h(`tr${nowRow && r && nowRow === r ? '.now' : ''}${l.period > EVENING_BASE ? '.evening' : ''}`,
+    return dropSlot(h(`tr${nowRow && r && nowRow === r ? '.now' : ''}${l.period > EVENING_BASE ? '.evening' : ''}`,
       h('td.center.plabel', label, absentBadge(l.period)),
       hasTimes ? h('td.center.time', r ? fmtRange(r) : '') : null,
       h('td', subjectCell(l, label)),
@@ -105,13 +130,38 @@ export function renderNotebook(app) {
       h('td', (() => {
         const ta = autoGrow(h('textarea', { rows: 1, value: l.content, 'aria-label': `${label} 내용`, oninput: (e) => store.setLesson(date, l.period, { content: e.target.value }) }));
         attachStudentSuggest(ta, () => store.studentsOf(l.cls || '').length ? store.studentsOf(l.cls || '') : store.work.students, () => store.work.people, () => store.tagList());
-        return ta;
-      })()));
+        return [ta, anchorChips(`p${l.period}`)];
+      })())), `p${l.period}`);
+  };
+  // ----- 시간 일정: 회의·행사처럼 교시 밖의 일정을 시각 순서대로 끼워 넣는다 -----
+  const dayRec = () => { let d = store.day(date); if (!d) { d = { id: newId(), date }; store.work.days.push(d); } return d; };
+  const events = [...(store.day(date)?.events || [])].sort((a, b) => (a.start || '99').localeCompare(b.start || '99'));
+  const eventTr = (ev) => {
+    const times = h('div.ev-times',
+      h('input', { type: 'time', value: ev.start || '', 'aria-label': '시작 시각', onchange: (e) => { ev.start = e.target.value; store.markDirty(); app.render(); } }),
+      h('input', { type: 'time', value: ev.end || '', 'aria-label': '끝 시각', onchange: (e) => { ev.end = e.target.value; store.markDirty(); } }));
+    const title = h('input.ev-title', { value: ev.title || '', placeholder: '일정 (예: 교직원 회의 · 3층 회의실)', 'aria-label': '일정 제목', oninput: (e) => { ev.title = e.target.value; store.markDirty(); } });
+    attachStudentSuggest(title, () => store.work.students, () => store.work.people, () => store.tagList());
+    const del = h('button.icon-btn', { type: 'button', title: '일정 지우기', 'aria-label': '일정 지우기', onclick: () => {
+      const d = store.day(date);
+      d.events = (d.events || []).filter((x) => x !== ev);
+      if (!d.events.length) delete d.events;
+      for (const t of store.work.tasks) if (t.at?.date === date && t.at.slot === ev.start) delete t.at;
+      store.markDirty(); app.render();
+    } }, '✕');
+    const tr = h('tr.event-row',
+      h('td.center.plabel', '🗓', hasTimes ? null : times),
+      hasTimes ? h('td.center.time', times) : null,
+      h('td', { colspan: 2 + (sec ? 2 : 0) }, h('div.ev-line', title, del), ev.start ? anchorChips(ev.start) : null));
+    return ev.start ? dropSlot(tr, ev.start) : tr;
   };
   // 시정표 순서(등교 → 교시 → 점심 → … → 저녁 → 방과후)대로, 식사·등교는 안내 줄로 표시
   const used = new Set();
   const trs = [];
+  const pendingEv = [...events];
+  const flushEvents = (before) => { while (pendingEv.length && pendingEv[0].start && (!before || pendingEv[0].start < before)) trs.push(eventTr(pendingEv.shift())); };
   for (const r of rowsOfDay) {
+    if (hasTimes && r.start) flushEvents(r.start);
     if (r.p == null) {
       trs.push(h(`tr.bell-row.${r.kind}${nowRow === r ? '.now' : ''}`,
         h('td.center.plabel', { colspan: hasTimes ? 1 : 2 }, { arrival: '🏫 ', lunch: '🍚 ', dinner: '🍱 ' }[r.kind] + r.label),
@@ -124,17 +174,45 @@ export function renderNotebook(app) {
     if (l) trs.push(lessonTr(l, r));
   }
   for (const l of lessons) if (!used.has(l.period)) trs.push(lessonTr(l, null));
+  flushEvents(null);
+  for (const ev of pendingEv) trs.push(eventTr(ev)); // 시각을 안 정한 일정
   const lessonCard = card('수업일지',
     h('div.row', { style: { margin: 0 } },
       h('span.muted.small', isHol ? '휴업일' : nowRow ? `지금: ${nowRow.label} ${fmtRange(nowRow)}` : wd === 0 || wd === 6 ? '주말' : ''),
       h(`label.check.small${bopts.csat ? '.csat-on' : ''}`, { title: '이 날만 점심을 3교시 다음으로 (시각은 설정 > 일과 시간)' },
-        h('input', { type: 'checkbox', checked: bopts.csat, onchange: (e) => { store.setCsat(date, e.target.checked); app.render(); } }), ' 수능대비 시간표')),
+        h('input', { type: 'checkbox', checked: bopts.csat, onchange: (e) => { store.setCsat(date, e.target.checked); app.render(); } }), ' 수능대비 시간표'),
+      h('button.small', { title: '회의·행사처럼 교시 밖의 일정을 시각과 함께 넣기', onclick: () => {
+        const d = dayRec();
+        (d.events ||= []).push({ id: newId(), start: '', end: '', title: '' });
+        store.markDirty(); app.render();
+        requestAnimationFrame(() => { const r = [...document.querySelectorAll('.event-row')].find((x) => !x.querySelector('.ev-title').value); r?.querySelector('input[type=time]')?.focus(); });
+      } }, '+ 시간 일정')),
     dl,
     h('table.grid.lessons',
       h('thead', h('tr', h('th', { style: { width: '4.8em' } }, '교시'), hasTimes ? h('th', { style: { width: '7.5em' } }, '시간') : null, h('th', { style: { width: sec ? '10em' : '8em' } }, subjLabel),
         sec ? h('th', { style: { width: '6em' } }, '학반') : null, sec ? h('th', { style: { width: '9em' } }, '교실') : null, h('th', '내용'))),
       h('tbody', trs)),
     hasTimes ? null : h('p.muted.small', '설정 > 일과 시간에서 등교·교시별 시각, 점심·저녁 시간을 넣으면 여기에 함께 보입니다.'));
+
+  // 시간대 이름: 'p3' → "3교시", '15:30' → "15:30 교직원 회의"
+  const slotLabel = (slot, onDate = date) => {
+    if (!slot) return '';
+    if (/^p\d+$/.test(slot)) return store.periodLabel(+slot.slice(1));
+    const ev = (store.day(onDate)?.events || []).find((x) => x.start === slot);
+    return ev?.title ? `${slot} ${ev.title.slice(0, 10)}` : slot;
+  };
+  // ⚓ 를 눌렀을 때: 이 날의 교시·시간 일정 중에서 고르기 (손가락 화면용)
+  const pickSlot = async (t) => {
+    const opts = [
+      ...lessons.map((l) => ({ slot: `p${l.period}`, label: `${store.periodLabel(l.period)}${l.subject ? ` · ${courseShort(s, l.subject)}` : ''}${l.cls ? ` ${l.cls}` : ''}` })),
+      ...events.filter((ev) => ev.start).map((ev) => ({ slot: ev.start, label: `🗓 ${ev.start}${ev.end ? `~${ev.end}` : ''} ${ev.title || ''}` })),
+    ];
+    const v = await modal('어느 시간에 한 일인가요?', h('div', h('p.muted.small', `"${String(t.text).slice(0, 40)}" — ${date} 수업일지의 교시·시간 일정에 연결합니다. PC 에서는 ⚓ 를 그 줄로 끌어다 놓아도 됩니다.`)),
+      [...opts.map((o) => ({ label: o.label, value: o.slot })), ...(t.at ? [{ label: '연결 풀기', value: '-' }] : []), { label: '취소', value: null }]);
+    if (!v) return;
+    if (v === '-') delete t.at; else t.at = { date, slot: v };
+    store.markDirty(); app.render();
+  };
 
   // ----- 업무일지 -----
   const taskList = h('div.tasks');
@@ -159,6 +237,8 @@ export function renderNotebook(app) {
             input.placeholder = '';
             drawDue();
             drawNote();
+            drawAnchor();
+            delBtn.hidden = false;
             activate();
             taskList.append(row(null));
           } else t.text = e.target.value;
@@ -204,25 +284,52 @@ export function renderNotebook(app) {
         drawNote(true);
       } }, '💬');
       const noteBox = h('div.task-note');
+      // 메모는 열었을 때만 칸을 차지한다 (닫으면 💬 단추에 점과 미리보기 풍선만)
       const drawNote = (focus = false) => {
         if (!t) { noteBtn.hidden = true; fill(noteBox); return; }
         const has = !!(t.result || '').trim();
         const open = app.taskNoteOpen?.has(t.id);
         noteBtn.hidden = false;
         noteBtn.className = `icon-btn task-note-btn${has ? ' has' : ''}${t.doneDate ? ' done' : ''}${open ? ' open' : ''}`;
+        noteBtn.title = has ? `결과·진행 메모: ${t.result.trim().split('\n').slice(0, 3).join(' / ').slice(0, 120)}` : '결과·진행 메모 쓰기';
         if (open) {
-          const ta = autoGrow(h('textarea', { rows: 2, value: t.result || '', placeholder: '결과·진행 메모 — 어떻게 했는지, 결과, 다음에 할 일… (#태그·이름도 알아봐요)', 'aria-label': '결과·진행 메모',
-            oninput: (e) => { t.result = e.target.value; if (!t.result.trim()) delete t.result; store.markDirty(); } }));
+          const ta = autoGrow(h('textarea', { rows: 1, value: t.result || '', placeholder: '결과·진행 메모 (#태그·이름도 알아봐요)', 'aria-label': '결과·진행 메모',
+            oninput: (e) => { t.result = e.target.value; if (!t.result.trim()) delete t.result; store.markDirty(); drawBtn(); },
+            onkeydown: (e) => { if (e.key === 'Escape') { app.taskNoteOpen.delete(t.id); drawNote(); } } }));
           attachStudentSuggest(ta, () => store.work.students, () => store.work.people, () => store.tagList());
           fill(noteBox, ta);
           if (focus) requestAnimationFrame(() => ta.focus());
-        } else if (has) {
-          fill(noteBox, h('button.task-note-preview', { type: 'button', title: '메모 열기', onclick: () => { (app.taskNoteOpen ||= new Set()).add(t.id); drawNote(true); } },
-            '💬 ', t.result.trim().split('\n')[0].slice(0, 80)));
         } else fill(noteBox);
       };
+      const drawBtn = () => { const has = !!(t?.result || '').trim(); noteBtn.classList.toggle('has', has); };
+      // ⚓ 시간 연결: 끌어다 수업일지의 교시·시간 일정 줄에 놓거나, 눌러서 고르기
+      const anchorBtn = h('button.icon-btn.task-anchor', { type: 'button', draggable: 'true', 'aria-label': '시간대에 연결',
+        ondragstart: (e) => { if (!t) { e.preventDefault(); return; } e.dataTransfer.setData(TASK_MIME, t.id); e.dataTransfer.setData('text/plain', t.text); e.dataTransfer.effectAllowed = 'link'; document.body.classList.add('anchoring'); },
+        ondragend: () => document.body.classList.remove('anchoring'),
+        onclick: () => t && pickSlot(t) });
+      const drawAnchor = () => {
+        if (!t) { anchorBtn.hidden = true; return; }
+        anchorBtn.hidden = false;
+        // 줄에는 짧게(3교시, 15:30), 풍선 도움말에 자세히
+        const short = (sl) => (/^p\d+$/.test(sl) ? store.periodLabel(+sl.slice(1)) : sl);
+        const on = t.at?.date === date ? short(t.at.slot) : t.at ? `${t.at.date.slice(5).replace('-', '/')}` : '';
+        const full = t.at ? `${t.at.date} ${slotLabel(t.at.slot, t.at.date)}` : '';
+        anchorBtn.className = `icon-btn task-anchor${on ? ' on' : ''}`;
+        anchorBtn.title = on ? `연결된 시간: ${full} (끌어다 다른 줄에 놓거나 눌러서 바꾸기)` : '수업일지의 교시·시간 일정 줄로 끌어다 놓으면 그 시간에 한 일로 연결 (눌러서 고르기)';
+        fill(anchorBtn, '⚓', on ? h('small', on) : null);
+      };
+      const delBtn = h('button.icon-btn.task-del', { type: 'button', title: '업무 지우기', 'aria-label': '업무 지우기', onclick: async () => {
+        if (!t) return;
+        if (!(await confirmDialog('업무 지우기', `"${String(t.text || '').slice(0, 40)}"${t.result ? ' (결과 메모 포함)' : ''}을(를) 지울까요?`, '지우기'))) return;
+        store.work.tasks = store.work.tasks.filter((x) => x !== t);
+        app.taskNoteOpen?.delete(t.id);
+        store.markDirty(); app.render();
+      } }, '🗑');
+      const handle = h('span.task-handle', { title: '끌어서 순서 바꾸기 (같은 중요도 안에서)', 'aria-hidden': 'true' }, '⋮⋮');
       drawNote();
-      const rowEl = h(`div.task-row${t?.doneDate === date ? '.done' : ''}`, prio, check, input, dueWrap, noteBtn, noteBox);
+      const rowEl = h(`div.task-row${t?.doneDate === date ? '.done' : ''}`, handle, prio, check, input, dueWrap, anchorBtn, noteBtn, delBtn, noteBox);
+      drawAnchor();
+      if (!t) delBtn.hidden = true;
       // 업무가 생기면(처음부터 있거나, 빈 줄에 입력을 시작하면) 순서 바꾸기·중요도를 켠다
       function activate() {
         rowEl.dataset.id = t.id;
@@ -283,11 +390,21 @@ export function renderNotebook(app) {
     rowEl.addEventListener('contextmenu', (e) => { if (timer || dragging) e.preventDefault(); });
     rowEl.addEventListener('pointerdown', (e) => {
       if (!getTask() || e.button > 0 || e.target.closest('button, select, textarea, input[type=checkbox], input[type=date]')) return;
+      const onHandle = !!e.target.closest('.task-handle');
+      // 마우스는 손잡이(⋮⋮)를 잡으면 바로 끌기 — 글자칸을 길게 누르면 글자 선택과 부딪힌다. 손가락은 길게 누르기.
+      if (e.pointerType === 'mouse' && !onHandle) return;
       start = { x: e.clientX, y: e.clientY };
       cancel(); detach();
       document.addEventListener('pointermove', onMove, { passive: false });
       document.addEventListener('pointerup', onUp);
       document.addEventListener('pointercancel', onUp);
+      if (onHandle) {
+        e.preventDefault();
+        dragging = true;
+        input.blur();
+        rowEl.classList.add('lifted');
+        return;
+      }
       timer = setTimeout(() => {
         timer = null;
         dragging = true;

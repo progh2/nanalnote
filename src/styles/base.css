@@ -848,3 +848,34 @@ section.card:has(table.lessons) { container-type: inline-size; container-name: l
 /* 한 줄(중요도·체크·내용·마감·💬) + 메모는 아래 줄: 내용 칸은 남은 폭만 차지 */
 .task-row > input.task-text { flex: 1 1 6em; min-width: 0; width: auto; }
 .task-row > select.prio, .task-row > input[type=checkbox], .task-row > .due, .task-row > .task-note-btn { flex: none; }
+
+/* 업무 줄: 손잡이 · 중요도 · 체크 · 내용 · 마감 · ⚓ · 💬 · 🗑 */
+.task-handle { flex: none; width: 14px; cursor: grab; color: var(--muted); opacity: 0; user-select: none; font-size: 13px; letter-spacing: -3px; text-align: center; }
+.task-row:hover .task-handle { opacity: .7; }
+.task-handle:active { cursor: grabbing; }
+@media (pointer: coarse) { .task-handle { display: none; } }
+.task-row > .task-anchor, .task-row > .task-del { flex: none; }
+.task-anchor, .task-del { opacity: .2; padding: 2px 5px; }
+.task-row:hover .task-anchor, .task-row:hover .task-del, .task-anchor.on { opacity: 1; }
+.task-anchor.on { color: var(--accent); font-weight: 700; }
+.task-anchor small { margin-left: 2px; font-size: .78em; white-space: nowrap; }
+.task-anchor[draggable] { cursor: grab; }
+@media (pointer: coarse) { .task-anchor, .task-del { opacity: .55; } }
+/* 💬: 메모가 있으면 점, 열 때만 칸 */
+.task-note-btn { position: relative; }
+.task-note-btn.has::after { content: ''; position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.task-note textarea { min-height: 32px; padding: 4px 8px; }
+/* 시간 일정 줄과 앵커 */
+table.lessons tr.event-row td { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.ev-times { display: inline-flex; gap: 2px; flex-wrap: wrap; justify-content: center; }
+.ev-times input[type=time] { width: 6.2em; padding: 2px 4px; font-size: calc(12.5px * var(--fs, 1)); }
+.ev-line { display: flex; gap: 6px; align-items: center; }
+.ev-line .ev-title { flex: 1; min-width: 0; font-weight: 600; }
+.anchor-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.anchor-chip { display: inline-flex; align-items: center; gap: 2px; padding: 1px 4px 1px 8px; border-radius: 999px; background: #e0e7ff; color: #3730a3; font-size: calc(12.5px * var(--fs, 1)); }
+.anchor-chip.done { background: #dcfce7; color: #166534; }
+.anchor-chip button { border: 0; background: transparent; padding: 0 4px; min-height: 0 !important; cursor: pointer; color: inherit; }
+body.anchoring table.lessons tr[data-slot] td { outline: 1px dashed color-mix(in srgb, var(--primary) 40%, transparent); }
+table.lessons tr.drop-on td { background: var(--highlight) !important; }
+@container lessons (max-width: 700px) { table.lessons tr.event-row td:first-child { min-width: 0; } }
+.cohort { font-weight: 800; color: var(--accent); margin-left: 4px; }

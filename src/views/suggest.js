@@ -4,7 +4,7 @@
 // - 고르면 "학번 이름" 으로 바꿔 넣는다 (동명이인도 정확히 연결, 뒤에 조사를 바로 이어 써도 됨)
 import { h, fill } from '../lib/util.js';
 import { studentLabel, classKey, sortStudents } from '../lib/students.js';
-import { sortPeople, namesOf, personLabel, KINDS, nameGroups, distinctQual } from '../lib/people.js';
+import { sortPeople, namesOf, personLabel, KINDS, nameGroups, distinctQual, cohortOf, alumniEntry } from '../lib/people.js';
 
 /** 추천 후보: { key, names, find(검색용), insert(넣을 글), main, sub } */
 function candidates(students, people) {
@@ -21,7 +21,7 @@ function candidates(students, people) {
         key: `p:${p.id}`, group: alum ? 'alumni' : 'people', names: namesOf(p),
         find: [...namesOf(p), p.org || '', alum ? `${p.gradYear || ''} ${p.studentNo || ''} ${p.dept || ''}` : ''].join(' '),
         // 같은 이름 학생이 있으면 호칭(졸업생은 졸업 학년도)까지 넣어야 알아본다
-        insert: q ? `${p.name}(${q})` : alum && (studentNames.has(p.name) || group.length > 1) && p.gradYear ? `${p.name}(${p.gradYear}졸업)`
+        insert: q ? `${p.name}(${q})` : alum && (studentNames.has(p.name) || group.length > 1) && (cohortOf(alumniEntry(p)) || p.gradYear) ? `${p.name}(${cohortOf(alumniEntry(p)) ? `${cohortOf(alumniEntry(p))}기` : `${p.gradYear}졸업`})`
           : p.kind === 'person' && studentNames.has(p.name) ? personLabel(p) || `${p.name} 선생님` : p.name,
         main: personLabel(p), sub: [KINDS[p.kind], alum ? p.studentNo : '', p.org, group.length > 1 ? '동명이인' : ''].filter(Boolean).join(' · '),
       };

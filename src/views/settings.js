@@ -277,6 +277,7 @@ function listsCard(app) {
     fill(deptPreview, rules.length ? h('ul', rules.map((x) => h('li', `${x.from}${x.to === x.from ? '' : x.to === 9999 ? '학년도 이후' : `~${x.to}`} 입학 · ${x.c1 === x.c2 ? x.c1 : `${x.c1}~${x.c2}`}반 → `, h('strong', x.name)))) : null,
       bad.length ? h('p.error-text', `알아듣지 못한 줄: ${bad.join(' / ')}`) : null);
   };
+  const cohortIn = h('input', { type: 'number', min: 1950, max: 2100, value: s.cohortBase || '', placeholder: '예: 2010', 'aria-label': '1기 입학 학년도', style: { width: '7em' } });
   const deptTa = h('textarea', { rows: 4, value: s.deptRules || '', placeholder: DEPT_EXAMPLE, 'aria-label': '학과 규칙', oninput: () => drawDept() });
   drawDept();
   return card('내 수업 · 교실 · 학반',
@@ -286,11 +287,12 @@ function listsCard(app) {
     store.classList().length ? hrTable : h('p.muted.small', '담당 학반을 넣거나 학생 명단을 등록하면 학반별로 담임·부담임을 적을 수 있습니다.'),
     h('h3', '학과 (입학 학년도 · 반별)'),
     h('p.muted.small', '한 줄에 하나씩 "입학 학년도 반 학과"로 적으면 학생의 학과를 자동으로 채웁니다. 학생마다 직접 적은 학과가 있으면 그것을 씁니다. 입학 학년도를 적지 않은 학생은 지금 학년으로 어림합니다(2학년 → 작년 입학).'),
+    h('label.row', { style: { gap: '8px', alignItems: 'center' } }, h('span.small', '기수: 1기 입학 학년도'), cohortIn, h('span.muted.small', '— 예: 2010 이면 2010 입학이 1기, 2027 입학이 18기. 졸업생·학생에 "○기"로 보입니다.')),
     deptTa, h('div.row', { style: { margin: '4px 0' } }, h('button.small', { onclick: () => { deptTa.value = DEPT_EXAMPLE; drawDept(); } }, '예시대로 채우기'), h('span.muted.small', '— 채운 뒤 [목록 저장]')), deptPreview,
     h('div.row', h('button.primary', { onclick: async () => {
       const courses = lines(c).map((x) => { const [name, short] = x.split(/\s*\|\s*/); return short ? { name, short } : name; });
       const hrs = Object.fromEntries(Object.entries(homerooms).filter(([, x]) => x.main.trim() || x.sub.trim()).map(([kk, x]) => [kk, { main: x.main.trim(), sub: x.sub.trim() }]));
-      store.updateSettings({ courses, rooms: lines(r), classes: lines(k), homerooms: hrs, deptRules: deptTa.value.trim() });
+      store.updateSettings({ courses, rooms: lines(r), classes: lines(k), homerooms: hrs, deptRules: deptTa.value.trim(), cohortBase: +cohortIn.value || '' });
       await app.save(); app.render();
     } }, '목록 저장')));
 }

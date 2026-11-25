@@ -10,7 +10,7 @@ import { studentActivitiesCard } from './contests.js';
 import { createSheet } from './sheet.js';
 import { openPastImport } from './pastimport.js';
 import { relationsBox } from './relations.js';
-import { normPerson } from '../lib/people.js';
+import { normPerson, cohortOf } from '../lib/people.js';
 import { xlsxBlob } from '../lib/xlsx.js';
 
 function counselList(items, onGo) {
@@ -106,7 +106,7 @@ export function renderStudents(app) {
     const dept = store.dept(g.items[0]);
     const x = hr(g.cls);
     return h('div.stu-group-head',
-      h('strong', `${g.pre ? `${g.items[0].entryYear}학년도 입학 예정 · ` : ''}${g.cls ? `${g.cls}반` : '반 미정'}`),
+      h('strong', `${g.pre ? `${g.items[0].entryYear}학년도 입학 예정${cohortOf(g.items[0].entryYear) ? `(${cohortOf(g.items[0].entryYear)}기)` : ''} · ` : ''}${g.cls ? `${g.cls}반` : '반 미정'}`),
       h('span.muted.small', [dept, `${g.items.length}명`, !g.pre && (x.main || x.sub) ? `담임 ${x.main || '-'}${x.sub ? ` · 부담임 ${x.sub}` : ''}` : ''].filter(Boolean).join(' · ')));
   };
   // 검색칸에 글자를 칠 때는 이 목록만 다시 그린다 (화면 전체를 다시 그리면 검색칸이 새로 만들어져 포커스·한글 조합이 끊김)
@@ -213,7 +213,8 @@ export function renderStudents(app) {
             h('div.inline-form', field('학번', 'studentNo', 'text', '7em'), field('학년', 'grade', 'number'), field('반', 'cls', 'number'), field('번호', 'no', 'number')),
             h('div.inline-form',
               h('label', '입학 학년도', h('input', { type: 'number', min: 2000, max: 2100, value: st.entryYear ?? '', placeholder: String(entryYearOf(st, store.year) || ''), 'aria-label': '입학 학년도', style: { width: '7.5em' },
-                onchange: (e) => { if (e.target.value) st.entryYear = +e.target.value; else delete st.entryYear; store.markDirty(); app.render(); } })),
+                onchange: (e) => { if (e.target.value) st.entryYear = +e.target.value; else delete st.entryYear; store.markDirty(); app.render(); } }),
+                cohortOf(entryYearOf(st, store.year)) ? h('span.cohort', ` ${cohortOf(entryYearOf(st, store.year))}기`) : null),
               h('label', '학과', h('input', { list: 'dept-list', value: st.dept || '', placeholder: store.dept({ ...st, dept: '' }) || '학과', 'aria-label': '학과', style: { width: '11em' },
                 oninput: (e) => { st.dept = e.target.value.trim(); if (!st.dept) delete st.dept; store.markDirty(); } })),
               h('datalist#dept-list', [...new Set(store.deptRules().map((r) => r.name))].map((n) => h('option', { value: n })))),
@@ -409,7 +410,7 @@ async function carryOver(app) {
     const rules = store.deptRules();
     for (const r of grads.filter((x) => !x.on && !already.has(x.s.uid))) {
       const s = r.s;
-      store.work.people.push(normPerson({ id: newId(), kind: 'alumni', name: s.name, gradYear: store.year - 1, studentNo: s.studentNo, dept: deptOf(s, rules, store.year - 1),
+      store.work.people.push(normPerson({ id: newId(), kind: 'alumni', name: s.name, gradYear: store.year - 1, entryYear: s.entryYear, studentNo: s.studentNo, dept: deptOf(s, rules, store.year - 1),
         gender: s.gender, phone: s.phone, email: s.email, stuUid: s.uid }));
       alumni++;
     }

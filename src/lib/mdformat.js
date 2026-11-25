@@ -176,7 +176,7 @@ export function serialize(year, input) {
     const pl = { A: '(A) ', B: '(B) ', C: '(C) ', Z: '(언젠가) ' };
     files.set(`${dir}/${FILES.tasks}`, [header('업무일지'),
       '> 앞의 (A)(B)(C)(언젠가)는 중요도입니다.', '',
-      ...tk.flatMap((t) => [`- [${t.doneDate ? 'x' : ' '}] ${t.priority ? pl[t.priority] || '' : ''}${oneLine(t.text)} (작성 ${t.created}${t.due ? `, 마감 ${t.due}` : ''}${t.doneDate ? `, 완료 ${t.doneDate}` : ''}${t.order != null ? `, 순서 ${t.order}` : ''})`,
+      ...tk.flatMap((t) => [`- [${t.doneDate ? 'x' : ' '}] ${t.priority ? pl[t.priority] || '' : ''}${oneLine(t.text)} (작성 ${t.created}${t.due ? `, 마감 ${t.due}` : ''}${t.doneDate ? `, 완료 ${t.doneDate}` : ''}${t.order != null ? `, 순서 ${t.order}` : ''}${t.at?.date && t.at?.slot ? `, 시각 ${t.at.date} ${t.at.slot}` : ''})`,
         // 결과·진행 메모: 업무 아래 들여쓴 인용으로
         ...((t.result || '').trim() ? t.result.replace(/\s+$/, '').split('\n').map((l) => `    > ${l}`) : [])]), ''].join('\n'));
   }
@@ -208,9 +208,9 @@ export function serialize(year, input) {
   if (data.people.length) {
     files.set(`${dir}/${FILES.people}`, [header('사람·기관'),
       '> 글 속의 "김민수 선생님", "교육청에" 같은 이름을 알아보는 명부입니다. 다른 이름은 쉼표로 나눕니다.', '',
-      table(['구분', '이름', '호칭', '교원', '학교급', '교과', '성별', '소속', '전화', '이메일', '다른 이름', '메모', '졸업학년도', '학번', '학과', '사진', 'ID', '학생ID'],
+      table(['구분', '이름', '호칭', '교원', '학교급', '교과', '성별', '소속', '전화', '이메일', '다른 이름', '메모', '입학학년도', '졸업학년도', '학번', '학과', '사진', 'ID', '학생ID'],
         sortPeople(data.people).map((x) => [KINDS[x.kind] || '사람', x.name, x.title || '', x.teacher ? 'O' : '', x.level || '', x.subject || '', x.gender || '', x.org || '', x.phone || '', x.email || '', (x.aliases || []).join(', '), x.memo || '',
-          x.gradYear ?? '', x.studentNo || '', x.dept || '', x.photo || '', x.uid || '', x.stuUid || ''])), ''].join('\n'));
+          x.entryYear ?? '', x.gradYear ?? '', x.studentNo || '', x.dept || '', x.photo || '', x.uid || '', x.stuUid || ''])), ''].join('\n'));
   }
 
   // 관계 (가족·담임 등): "사람 은 상대 의 관계"
@@ -323,6 +323,12 @@ export function serialize(year, input) {
       for (const t of trips) out.push(`- ${[t.time, t.place, t.purpose].map(dash).join(' · ')}`);
       out.push('');
     }
+    // 시간 일정 (회의·행사 등 교시 밖 일정): "- 15:30~16:30 교직원 회의"
+    if (day?.events?.length) {
+      out.push('## 시간 일정', '');
+      for (const ev of [...day.events].sort((a, b) => (a.start || '99').localeCompare(b.start || '99'))) out.push(`- ${ev.start || ''}${ev.end ? `~${ev.end}` : ''} ${oneLine(ev.title || '')}`.replace(/^- \s+/, '- '));
+      out.push('');
+    }
     if (day?.note) out.push('## 노트', '', escBlock(day.note), '');
     out.push('## 상담일지', '');
     if (counsel.length) out.push(counsel.map((c) => escBlock(c.text)).join('\n\n'), '');
@@ -369,7 +375,7 @@ export function parse(year, files, makeId) {
       const kind = r['구분'] === '기관' ? 'org' : r['구분'] === '졸업생' ? 'alumni' : 'person';
       data.people.push(normPerson({ id: makeId(), kind, name: r['이름'], title: r['호칭'], org: r['소속'], phone: r['전화'], email: r['이메일'], aliases: r['다른 이름'], memo: r['메모'],
         teacher: /^(o|예|y|yes|true|✓)$/i.test((r['교원'] || '').trim()), level: (r['학교급'] || '').trim(), subject: r['교과'], gender: (r['성별'] || '').trim(),
-        gradYear: r['졸업학년도'], studentNo: r['학번'], dept: r['학과'], photo: r['사진'], uid: r['ID'], stuUid: r['학생ID'] }));
+        gradYear: r['졸업학년도'], entryYear: r['입학학년도'], studentNo: r['학번'], dept: r['학과'], photo: r['사진'], uid: r['ID'], stuUid: r['학생ID'] }));
     }
   }
 
@@ -604,8 +610,9 @@ export function parse(year, files, makeId) {
       let text = m[2], created = null, done = null;
       let due = null;
       let order = null, priority = null;
-      const meta = text.match(/\s*\(작성\s*(\d{4}-\d{2}-\d{2})(?:\s*,\s*마감\s*(\d{4}-\d{2}-\d{2}))?(?:\s*,\s*완료\s*(\d{4}-\d{2}-\d{2}))?(?:\s*,\s*순서\s*(\d+))?\)\s*$/);
-      if (meta) { text = text.slice(0, meta.index); created = meta[1]; due = meta[2] || null; done = meta[3] || null; order = meta[4] ? +meta[4] : null; }
+      const meta = text.match(/\s*\(작성\s*(\d{4}-\d{2}-\d{2})(?:\s*,\s*마감\s*(\d{4}-\d{2}-\d{2}))?(?:\s*,\s*완료\s*(\d{4}-\d{2}-\d{2}))?(?:\s*,\s*순서\s*(\d+))?(?:\s*,\s*시각\s*(\d{4}-\d{2}-\d{2})\s+(p\d+|\d{2}:\d{2}))?\)\s*$/);
+      let at = null;
+      if (meta) { text = text.slice(0, meta.index); created = meta[1]; due = meta[2] || null; done = meta[3] || null; order = meta[4] ? +meta[4] : null; if (meta[5]) at = { date: meta[5], slot: meta[6] }; }
       const pm = text.match(/^\((A|B|C|언젠가)\)\s*/i);
       if (pm) { priority = { a: 'A', b: 'B', c: 'C' }[pm[1].toLowerCase()] || 'Z'; text = text.slice(pm[0].length); }
       created ||= `${year}-03-01`;
@@ -616,6 +623,7 @@ export function parse(year, files, makeId) {
       if (due) t.due = due;
       if (priority) t.priority = priority;
       if (order != null) t.order = order;
+      if (at) t.at = at;
       data.tasks.push(t);
       last = t;
     }
@@ -652,6 +660,7 @@ export function parse(year, files, makeId) {
     }
     const extra = [];
     let note = '';
+    const events = [];
     for (const sec of sections(body)) {
       if (sec.title == null) continue;
       if (sec.title === '수업일지') {
@@ -685,6 +694,12 @@ export function parse(year, files, makeId) {
         });
       } else if (sec.title === '노트') {
         note = unescBlock(trimBlank(sec.lines).join('\n'));
+      } else if (sec.title === '시간 일정') {
+        for (const line of sec.lines) {
+          const m = line.match(/^\s*[-*]\s+(?:(\d{1,2}:\d{2})(?:\s*~\s*(\d{1,2}:\d{2}))?\s*)?(.*)$/);
+          if (!m || (!m[1] && !m[3].trim())) continue;
+          events.push({ id: makeId(), start: m[1] ? m[1].padStart(5, '0') : '', end: m[2] ? m[2].padStart(5, '0') : '', title: fromOneLine(m[3].trim()) });
+        }
       } else if (sec.title === '출장') {
         for (const line of sec.lines) {
           const m = line.match(/^\s*[-*]\s+(.+)$/);
@@ -699,6 +714,7 @@ export function parse(year, files, makeId) {
     const day = { id: makeId(), date, updatedAt };
     if (extra.length) day.extra = extra.join('\n\n');
     if (note) day.note = note;
+    if (events.length) day.events = events;
     data.days.push(day);
   }
   return data;

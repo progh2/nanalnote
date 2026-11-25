@@ -1,6 +1,6 @@
 // 사람·기관 탭: 명부(선생님·장학사·외부 강사·교육청·대학·업체…)와, 그 이름이 나온 기록 모아 보기
 import { h, koDate, newId, modal, toast, confirmDialog, fill, pickFile } from '../lib/util.js';
-import { PHOTO_FOLDER, KINDS, TITLES, LEVELS, normPerson, personLabel, sortPeople, mentionedPids, ambiguousPids, findUnregistered, parsePeopleLines, nameGroups, namesOf, distinctQual, teacherInfo } from '../lib/people.js';
+import { alumniYears, PHOTO_FOLDER, KINDS, TITLES, LEVELS, normPerson, personLabel, sortPeople, mentionedPids, ambiguousPids, findUnregistered, parsePeopleLines, nameGroups, namesOf, distinctQual, teacherInfo } from '../lib/people.js';
 import { textEntries, TYPE_LABEL } from '../lib/tags.js';
 import { renderMd } from '../lib/notemd.js';
 import { mentionInline } from './mentions.js';
@@ -124,7 +124,7 @@ function editor(app, p, onChange) {
   // 이름·호칭을 고치면 기록 모아보기·명부 목록에 반영해야 하는데, 바로 다시 그리면 옮겨 간 칸의 포커스가 날아간다
   // → 고치기 칸 밖으로 나갈 때 한 번만 다시 그린다
   let pending = false;
-  const field = (label, k, attrs = {}) => h('label', label, h('input', { value: p[k] ?? '', oninput: set(k), onchange: k === 'name' || k === 'title' || k === 'gradYear' ? () => { pending = true; } : null, ...attrs }));
+  const field = (label, k, attrs = {}) => h('label', label, h('input', { value: p[k] ?? '', oninput: set(k), onchange: k === 'name' || k === 'title' || k === 'gradYear' || k === 'entryYear' ? () => { pending = true; } : null, ...attrs }));
   const isOrg = p.kind === 'org';
   const isAlum = p.kind === 'alumni';
   const titles = h('datalist#title-list', TITLES.filter((t) => t.length > 1).map((t) => h('option', { value: t })));
@@ -152,6 +152,7 @@ function editor(app, p, onChange) {
           p.teacher ? h('div.chips', { style: { margin: 0 } }, LEVELS.map((l) => h(`button.chip-btn${p.level === l ? '.active' : ''}`, { onclick: () => { if (p.level === l) delete p.level; else p.level = l; store.markDirty(); app.render(); } }, l))) : null,
           p.teacher ? h('input', { value: p.subject || '', placeholder: '교과 (예: 정보, 국어)', 'aria-label': '교과', style: { width: '10em' }, oninput: (e) => { p.subject = e.target.value; store.markDirty(); } }) : null),
         isAlum ? h('div.grid2',
+          field('입학 학년도', 'entryYear', { type: 'number', min: 1990, max: 2100, placeholder: p.gradYear ? `${p.gradYear - 2} (어림)` : '예: 2014' }),
           field('졸업 학년도', 'gradYear', { type: 'number', min: 1990, max: 2100, placeholder: `예: ${store.year - 1}` }),
           field('졸업 당시 학번', 'studentNo', { placeholder: '예: 30105' }),
           field('학과', 'dept', { placeholder: '예: 뉴미디어소프트웨어과' })) : null,
@@ -240,7 +241,7 @@ export function renderPeople(app) {
         h('span.people-kind', personAvatar(app, p, 28)),
         h('span.people-name', h('strong', p.name || '(이름 없음)'),
           // 같은 사람의 졸업생 기록이 이어져 있으면 🎓 (졸업생이 지금 선생님인 경우 등)
-          p.kind === 'person' && selvesOf(store.work.relations, `p:${p.uid}`).some((r) => store.work.people.some((x) => x.kind === 'alumni' && `p:${x.uid}` === r)) ? h('span.self-alum', { title: '이 학교 졸업생' }, ' 🎓') : null, p.kind === 'person' && p.title ? ` ${p.title}` : p.kind === 'alumni' ? ` ${p.gradYear ? `${p.gradYear} 졸업` : '졸업생'}` : ''),
+          p.kind === 'person' && selvesOf(store.work.relations, `p:${p.uid}`).some((r) => store.work.people.some((x) => x.kind === 'alumni' && `p:${x.uid}` === r)) ? h('span.self-alum', { title: '이 학교 졸업생' }, ' 🎓') : null, p.kind === 'person' && p.title ? ` ${p.title}` : p.kind === 'alumni' ? ` ${alumniYears(p) || '졸업생'}` : ''),
         h('span.muted.small.people-org', homonymIds.has(p.id) ? h('span.homonym-badge', '동명이인') : null, [teacherInfo(p), p.org].filter(Boolean).join(' · ')),
         mentions.get(p.id)?.length ? h('span.badge', { title: '나온 기록 수' }, String(mentions.get(p.id).length)) : null)))
       : h('p.muted', people.length ? '찾는 이름이 없습니다.' : '아직 명부가 비어 있습니다. "+ 사람", "여러 명 붙여넣기"로 넣거나, 아래 "기록에서 찾은 이름"을 눌러 보세요.'));

@@ -5,7 +5,7 @@ import { clone, newId, isTempId } from './lib/util.js';
 import { splitParagraphs } from './lib/counsel.js';
 import { normStudent, sortStudents, buildIndex, toUid, labelOf, mentionedUids, classKeys, newUid, parseDeptRules, deptOf, resolveRef } from './lib/students.js';
 import { bellOf, periodList, periodLabel } from './lib/bell.js';
-import { normPerson, sortPeople, mentionedStudentUids } from './lib/people.js';
+import { normPerson, sortPeople, mentionedStudentUids, setCohortBase } from './lib/people.js';
 import { tagEntries, tagCounts } from './lib/tags.js';
 
 export const COLLECTIONS = ['settings', 'students', 'schedule', 'days', 'lessons', 'tasks', 'attendance', 'counsel', 'records', 'trips', 'notes', 'docs', 'people', 'tagcards', 'contests', 'relations'];
@@ -100,6 +100,7 @@ export class Store {
     migrateRefs(full);
     this.year = year;
     this.base = full;
+    setCohortBase(full.settings.find((x) => x.key === 'main')?.value?.cohortBase);
     this.work = clone(full);
     this.counselDraft = {};
     this.dirty = false;
@@ -122,7 +123,9 @@ export class Store {
   // ---------- 조회 도우미 ----------
   get settings() {
     const s = this.work.settings.find((x) => x.key === 'main');
-    return { ...DEFAULT_SETTINGS, ...(s?.value || {}), timetable: { ...DEFAULT_SETTINGS.timetable, ...(s?.value?.timetable || {}) } };
+    const v = { ...DEFAULT_SETTINGS, ...(s?.value || {}), timetable: { ...DEFAULT_SETTINGS.timetable, ...(s?.value?.timetable || {}) } };
+    setCohortBase(v.cohortBase); // 기수 기준 (1기 입학 학년도)
+    return v;
   }
 
   updateSettings(patch) {

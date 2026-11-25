@@ -111,3 +111,18 @@ test('졸업생이 지금 선생님: "○○ 선생님"은 선생님 기록, "�
   const pk3 = (text) => tokenizeMentions(text, [], ps).filter((x) => x.pid || x.amb).map((x) => `${x.text}=${x.pid || `?${x.amb.join(',')}`}`);
   assert.deepEqual(pk3('정다온 선생님께, 정다온(2015졸업) 시절 사진, 정다온이'), ['정다온 선생님=t', '정다온(2015졸업)=a', '정다온=?t,a']);
 });
+
+test('졸업생 기수: "5기 · 2014 입학 / 2017 졸업", 입학 학년도가 없으면 졸업 학년도 - 2, 기수·입학으로 구분', async () => {
+  const { setCohortBase, alumniYears, cohortOf, personLabel } = await import('../src/lib/people.js');
+  setCohortBase(2010);
+  assert.equal(cohortOf(2027), 18);
+  const late = normPerson({ id: 'a1', kind: 'alumni', name: '나다라', entryYear: 2014, gradYear: 2018 }); // 휴학으로 늦게 졸업
+  const usual = normPerson({ id: 'a2', kind: 'alumni', name: '나다라', gradYear: 2020 });
+  assert.equal(alumniYears(late), '5기 · 2014 입학 / 2018 졸업');
+  assert.equal(alumniYears(usual), '9기 · 2018 입학 / 2020 졸업');
+  assert.equal(personLabel(late), '나다라 (5기 · 2014 입학 / 2018 졸업)');
+  const pk4 = (text) => tokenizeMentions(text, [], [late, usual]).filter((x) => x.pid || x.amb).map((x) => `${x.text}=${x.pid || '?'}`);
+  assert.deepEqual(pk4('나다라(5기) 방문, 나다라(9기)도, 나다라(2014입학)'), ['나다라(5기)=a1', '나다라(9기)=a2', '나다라(2014입학)=a1']);
+  setCohortBase(0);
+  assert.equal(alumniYears(late), '2014 입학 / 2018 졸업');
+});

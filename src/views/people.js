@@ -237,7 +237,7 @@ export function renderPeople(app) {
     const shown = people.filter((p) => (!v.kind || p.kind === v.kind)
       && (!q || [p.name, p.title, p.org, p.phone, p.email, p.memo, ...(p.aliases || [])].some((x) => (x || '').includes(q))));
     fill(listBox, shown.length
-      ? h('ul.people-list', shown.map((p) => h(`li${p.id === v.sel ? '.active' : ''}`, { onclick: () => { v.sel = p.id; app.render(); scrollToDetail('.people-page > section.card:last-child'); } },
+      ? h('ul.people-list', { 'data-scroll-key': 'people-list' }, shown.map((p) => h(`li${p.id === v.sel ? '.active' : ''}`, { onclick: () => { v.sel = p.id; app.render(); scrollToDetail('.people-page > section.card:last-child'); } },
         h('span.people-kind', personAvatar(app, p, 28)),
         h('span.people-name', h('strong', p.name || '(이름 없음)'),
           // 같은 사람의 졸업생 기록이 이어져 있으면 🎓 (졸업생이 지금 선생님인 경우 등)
@@ -250,7 +250,7 @@ export function renderPeople(app) {
   const search = h('input', { type: 'search', placeholder: '이름·소속·전화로 찾기', 'data-keep': 'people-search', value: v.q, oninput: (e) => { v.q = e.target.value; drawList(); } });
   const ignore = store.settings.peopleIgnore || [];
   const missing = findUnregistered(textEntries(store).map((e) => e.text), people, ignore).slice(0, 12);
-  const left = h('section.card.people-list-card',
+  const left = h('section.card.people-list-card', { 'data-scroll-key': 'people-card' },
     h('div.card-head', h('h2', `사람·기관 (${people.length})`),
       h('div.row', { style: { margin: 0, gap: '6px' } },
         h('button.small.primary', { onclick: () => { addPerson(app, { kind: 'person' }); app.render(); } }, '+ 사람'),

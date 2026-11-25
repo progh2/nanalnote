@@ -52,7 +52,7 @@ export function renderContests(app) {
   // 검색칸에 칠 때는 목록만 다시 그린다 (포커스·한글 조합 유지)
   const listBox = h('div.contest-list-box');
   const search = h('input', { type: 'search', placeholder: '이름·주최로 찾기', 'data-keep': 'contest-search', value: v.q, oninput: (e) => { v.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => drawList(filterList(v.q)), 150); } });
-  const left = h('section.card.contest-list-card',
+  const left = h('section.card.contest-list-card', { 'data-scroll-key': 'contest-card' },
     h('div.card-head', h('h2', `대회·활동 (${list.length})`),
       h('div.row', { style: { margin: 0, gap: '6px' } },
         h('button.small.primary', { onclick: add }, '+ 새로 만들기'),

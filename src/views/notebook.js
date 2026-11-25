@@ -216,6 +216,7 @@ export function renderNotebook(app) {
 
   // ----- 업무일지 -----
   const taskList = h('div.tasks');
+  const taskInline = noteInline(app); // 업무 글·메모 속 #태그·이름 연결
   const drawTasks = () => {
     const tasks = store.visibleTasks(date);
     const allDone = tasks.length > 0 && tasks.every((t) => t.doneDate === date);
@@ -239,6 +240,7 @@ export function renderNotebook(app) {
             drawNote();
             drawAnchor();
             delBtn.hidden = false;
+            rowEl.classList.add('editing'); // 새로 쓰는 중에는 입력칸 그대로
             activate();
             taskList.append(row(null));
           } else t.text = e.target.value;
@@ -246,8 +248,18 @@ export function renderNotebook(app) {
         },
         onkeydown: (e) => {
           if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); taskList.querySelector('.task-row:last-child input.task-text')?.focus(); }
+          if (e.key === 'Escape' && t) { e.preventDefault(); input.blur(); }
         },
+        onblur: () => { if (t) { rowEl.classList.remove('editing'); drawLabel(); } },
       });
+      // 보통 때는 글자로(줄바꿈해서 다 보이게, #태그·이름 연결), 누르면 입력칸
+      const label = h('span.task-label', { onclick: (e) => {
+        if (!t || e.target.closest('button') || rowEl.dataset.dragged) { delete rowEl.dataset.dragged; return; }
+        rowEl.classList.add('editing');
+        input.focus();
+        const n = input.value.length; input.setSelectionRange(n, n);
+      } });
+      const drawLabel = () => { if (t) fill(label, ...(t.text ? taskInline(t.text) : [h('span.muted', '(빈 업무)')])); };
       // #태그·이름 추천 (업무에 #사업명 을 붙여 두면 태그 카드의 "남은 업무"로 모인다)
       attachStudentSuggest(input, () => store.work.students, () => store.work.people, () => store.tagList());
       // 마감일 아이콘: 누르면 날짜 고르기, 정해 두면 D-day 표시 (달력에도 보임)
@@ -293,12 +305,18 @@ export function renderNotebook(app) {
         noteBtn.className = `icon-btn task-note-btn${has ? ' has' : ''}${t.doneDate ? ' done' : ''}${open ? ' open' : ''}`;
         noteBtn.title = has ? `결과·진행 메모: ${t.result.trim().split('\n').slice(0, 3).join(' / ').slice(0, 120)}` : '결과·진행 메모 쓰기';
         if (open) {
+          const close = () => { app.taskNoteOpen?.delete(t.id); drawNote(); };
           const ta = autoGrow(h('textarea', { rows: 1, value: t.result || '', placeholder: '결과·진행 메모 (#태그·이름도 알아봐요)', 'aria-label': '결과·진행 메모',
             oninput: (e) => { t.result = e.target.value; if (!t.result.trim()) delete t.result; store.markDirty(); drawBtn(); },
-            onkeydown: (e) => { if (e.key === 'Escape') { app.taskNoteOpen.delete(t.id); drawNote(); } } }));
+            onkeydown: (e) => { if (e.key === 'Escape') close(); },
+            onblur: () => setTimeout(() => { if (document.activeElement !== ta && !document.querySelector('.suggest')) close(); }, 0) }));
           attachStudentSuggest(ta, () => store.work.students, () => store.work.people, () => store.tagList());
           fill(noteBox, ta);
           if (focus) requestAnimationFrame(() => ta.focus());
+        } else if (has) {
+          // 메모는 숨기지 않고 작은 글자로 늘 보인다 — 누르면 고치기
+          fill(noteBox, h('div.task-memo', { title: '눌러서 고치기', onclick: (e) => { if (e.target.closest('button')) return; (app.taskNoteOpen ||= new Set()).add(t.id); drawNote(true); } },
+            taskInline(t.result.trim())));
         } else fill(noteBox);
       };
       const drawBtn = () => { const has = !!(t?.result || '').trim(); noteBtn.classList.toggle('has', has); };
@@ -327,7 +345,8 @@ export function renderNotebook(app) {
       } }, '🗑');
       const handle = h('span.task-handle', { title: '끌어서 순서 바꾸기 (같은 중요도 안에서)', 'aria-hidden': 'true' }, '⋮⋮');
       drawNote();
-      const rowEl = h(`div.task-row${t?.doneDate === date ? '.done' : ''}`, handle, prio, check, input, dueWrap, anchorBtn, noteBtn, delBtn, noteBox);
+      const rowEl = h(`div.task-row${t?.doneDate === date ? '.done' : ''}${t ? '' : '.editing'}`, handle, prio, check, label, input, dueWrap, anchorBtn, noteBtn, delBtn, noteBox);
+      drawLabel();
       drawAnchor();
       if (!t) delBtn.hidden = true;
       // 업무가 생기면(처음부터 있거나, 빈 줄에 입력을 시작하면) 순서 바꾸기·중요도를 켠다
@@ -383,6 +402,7 @@ export function renderNotebook(app) {
       detach();
       if (!dragging) return;
       dragging = false;
+      rowEl.dataset.dragged = '1'; setTimeout(() => delete rowEl.dataset.dragged, 300);
       rowEl.classList.remove('lifted');
       store.reorderTasks([...taskList.querySelectorAll('.task-row[data-id]')].map((r) => r.dataset.id));
       drawTasks();
@@ -597,13 +617,15 @@ export function renderNotebook(app) {
       } }, '⬇ Word 다운로드'),
       h('button.primary', { onclick: () => app.save() }, '저 장')));
 
+  const ord = (el, n) => { el.style.setProperty('--ord', n); return el; };
   return h('div.notebook',
     h('div.print-only.print-title', `교사수첩 ${date}`),
     // 넓은 화면: 왼쪽 학사일정·수업일지·학생출결, 오른쪽 업무일지·출장 (좁은 화면은 이 순서로 한 줄)
-    h(`div.nb-grid.nb-main${sec ? '.sec' : ''}`, h('div.col', scheduleCard, lessonCard, attCard), h('div.col', taskCard, tripCard)),
-    noteCard,
-    privacy,
-    recCard,
+    // 넓은 화면: 왼쪽에 학사일정·수업일지·학생출결·노트·상담·요록이 이어서 흐르고(업무가 길어도 빈 공간이 생기지 않게),
+    // 오른쪽에 업무일지·출장. 좁은 화면은 order 로 학사일정 → 수업일지 → 출결 → 업무 → 출장 → 노트 → 상담 → 요록
+    h(`div.nb-grid.nb-main${sec ? '.sec' : ''}`,
+      h('div.col.nb-left', ord(scheduleCard, 1), ord(lessonCard, 2), ord(attCard, 3), ord(noteCard, 6), ord(privacy, 7), ord(recCard, 8)),
+      h('div.col.nb-right', ord(taskCard, 4), ord(tripCard, 5))),
     footer);
 }
 

@@ -205,7 +205,10 @@ const app = {
     // 다시 그려도 커서를 잃지 않게: data-keep 이 붙은 칸(검색칸 등)에 있던 포커스·커서 위치를 새 칸으로 옮긴다
     const act = document.activeElement;
     const keep = act?.dataset?.keep && main.contains(act) ? { key: act.dataset.keep, a: act.selectionStart, b: act.selectionEnd } : null;
+    // 목록 스크롤 위치도 지킨다 (사람·학생을 하나씩 눌러 볼 때 목록이 맨 위로 돌아가지 않게)
+    const scrolls = [...main.querySelectorAll('[data-scroll-key]')].map((el) => [el.dataset.scrollKey, el.scrollTop]).filter(([, y]) => y > 0);
     fill(main, view);
+    for (const [k, y] of scrolls) { const el = main.querySelector(`[data-scroll-key="${k}"]`); if (el) el.scrollTop = y; }
     if (keep) {
       const el = main.querySelector(`[data-keep="${keep.key}"]`);
       if (el) { el.focus({ preventScroll: true }); try { el.setSelectionRange(keep.a, keep.b); } catch { /* 커서를 둘 수 없는 칸 */ } }

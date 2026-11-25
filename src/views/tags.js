@@ -108,11 +108,11 @@ export function renderTags(app) {
   // 검색칸에 칠 때는 태그 목록만 다시 그린다 (포커스·한글 조합 유지)
   const cloud = h('div.tag-cloud-wrap');
   const drawCloud = (arr) => fill(cloud, arr.length
-    ? h('div.tag-cloud', arr.map(tagBtn))
+    ? h('div.tag-cloud', { 'data-scroll-key': 'tag-cloud' }, arr.map(tagBtn))
     : h('p.muted', allTags.length ? '맞는 태그가 없습니다.' : '아직 태그가 없습니다. 교사수첩의 노트·업무·수업일지 등에 #회의 #수행평가 처럼 적어 보세요. # 을 쓰면 쓰던 태그를 추천합니다.'));
   drawCloud(counts);
   const search = h('input', { type: 'search', placeholder: '태그 찾기', 'data-keep': 'tag-search', value: v.q, oninput: (e) => { v.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => drawCloud(filterTags(v.q)), 150); } });
-  const left = h('section.card.tag-list-card',
+  const left = h('section.card.tag-list-card', { 'data-scroll-key': 'tag-card' },
     h('div.card-head', h('h2', `태그 (${allTags.length})`)),
     search,
     h('div.chips', [['', '전체'], ['active', '진행 중·기타'], ['done', '끝남']].map(([k, l]) =>

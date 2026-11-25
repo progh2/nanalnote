@@ -110,7 +110,7 @@ export function renderStudents(app) {
       h('span.muted.small', [dept, `${g.items.length}명`, !g.pre && (x.main || x.sub) ? `담임 ${x.main || '-'}${x.sub ? ` · 부담임 ${x.sub}` : ''}` : ''].filter(Boolean).join(' · ')));
   };
   // 검색칸에 글자를 칠 때는 이 목록만 다시 그린다 (화면 전체를 다시 그리면 검색칸이 새로 만들어져 포커스·한글 조합이 끊김)
-  const listEl = h('div.stu-groups');
+  const listEl = h('div.stu-groups', { 'data-scroll-key': 'stu-list' });
   const countEl = h('h2');
   const drawList = (arr) => {
     const groups = groupsOf(arr);
@@ -133,7 +133,7 @@ export function renderStudents(app) {
   const stateChips = h('div.chips', [['', '재학·휴학'], ['active', '재학'], ['leave', '휴학'], ['gone', '떠난 학생'], ['all', '전체']].map(([k, l]) =>
     h(`button.chip-btn${(f.state || '') === k ? '.active' : ''}`, { onclick: () => { f.state = k; app.render(); } }, l)));
   const search = h('input', { type: 'search', placeholder: '학번·이름 검색', 'data-keep': 'stu-search', value: f.q, oninput: (e) => { f.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => drawList(searchStudents(f.q, base)), 150); } });
-  const left = h('section.card',
+  const left = h('section.card', { 'data-scroll-key': 'stu-card' },
     h('div.card-head', countEl,
       h('div.row', { style: { margin: 0 } },
         h('button.small', { onclick: () => {

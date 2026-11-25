@@ -879,3 +879,23 @@ body.anchoring table.lessons tr[data-slot] td { outline: 1px dashed color-mix(in
 table.lessons tr.drop-on td { background: var(--highlight) !important; }
 @container lessons (max-width: 700px) { table.lessons tr.event-row td:first-child { min-width: 0; } }
 .cohort { font-weight: 800; color: var(--accent); margin-left: 4px; }
+
+/* 교사수첩: 좁은 화면에서는 두 열을 풀어 order 로 섞는다 (업무일지를 수업·출결 다음에) */
+@media (max-width: 900px) {
+  .nb-grid.nb-main { display: flex; flex-direction: column; gap: 16px; }
+  .nb-grid.nb-main > .col { display: contents; }
+  .nb-grid.nb-main > .col > * { order: var(--ord, 9); }
+}
+@media (min-width: 901px) { .nb-grid.nb-main .col > section.card + section.card { margin-top: 0; } }
+
+/* 업무: 보통 때는 작은 글자(줄바꿈해서 다 보임), 누르면 입력칸 */
+.task-row > .task-label { flex: 1 1 6em; min-width: 0; font-size: calc(14px * var(--fs, 1)); line-height: 1.45; padding: 5px 4px; cursor: text; white-space: pre-wrap; overflow-wrap: anywhere; border-radius: 6px; }
+.task-row > .task-label:hover { background: var(--surface-2); }
+.task-row:not(.editing) > input.task-text { display: none; }
+.task-row.editing > .task-label { display: none; }
+.task-row.done > .task-label { text-decoration: line-through; color: var(--muted); }
+.task-row { padding-top: 0; padding-bottom: 0; align-items: flex-start; }
+.task-row > select.prio, .task-row > input[type=checkbox], .task-row > .due, .task-row > .icon-btn, .task-row > .task-handle { margin-top: 3px; }
+.task-memo { font-size: calc(12.5px * var(--fs, 1)); color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; padding: 0 4px 4px; cursor: text; border-left: 2px solid var(--border); margin-left: 2px; }
+.task-memo:hover { background: var(--surface-2); }
+.task-note { padding-left: 5.6em; }

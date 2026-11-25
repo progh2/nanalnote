@@ -1,6 +1,6 @@
 // 태그 탭: #태그 목록과 태그 카드(설명·기간·상태·고정), 태그가 붙은 기록을 날짜순으로 모아 보기
 // 사업·행사·프로젝트는 #태그로 쓰고, 카드에 설명과 기간을 적어 두면 한눈에 관리할 수 있다.
-import { h, koDate, today, newId, modal, toast } from '../lib/util.js';
+import { h, koDate, today, newId, modal, toast, fill } from '../lib/util.js';
 import { summaryBlock, stagesBlock, resourcesBlock, membersBlock } from './projectparts.js';
 
 export const TAG_FILES = '태그자료';
@@ -88,9 +88,9 @@ export function renderTags(app) {
   const allTags = [...countMap].sort((a, b) => (card(b[0]).pinned ? 1 : 0) - (card(a[0]).pinned ? 1 : 0)
     || (card(a[0]).status === 'done' ? 1 : 0) - (card(b[0]).status === 'done' ? 1 : 0)
     || b[1] - a[1] || a[0].localeCompare(b[0], 'ko'));
-  const q = v.q.replace(/^#/, '');
-  const counts = allTags.filter(([t]) => (!q || t.includes(q))
-    && (!v.status || (v.status === 'done' ? card(t).status === 'done' : card(t).status !== 'done')));
+  const statusOk = ([t]) => !v.status || (v.status === 'done' ? card(t).status === 'done' : card(t).status !== 'done');
+  const filterTags = (qq) => { const q = String(qq || '').replace(/^#/, ''); return allTags.filter(([t]) => (!q || t.includes(q)) && statusOk([t])); };
+  const counts = filterTags(v.q);
   if (!v.tag && counts.length) v.tag = counts[0][0];
   const mine = entries.filter((e) => e.tag === v.tag);
   const list = mine.filter((e) => !v.type || e.type === v.type).sort((a, b) => (b.date || '0').localeCompare(a.date || '0'));
@@ -105,15 +105,19 @@ export function renderTags(app) {
       { onclick: () => { pick(t); scrollToDetail('.tags-page > section.card:last-child'); }, title: [STATUS[c.status], c.memo].filter(Boolean).join(' — ') || `#${t}` },
       c.pinned ? '📌 ' : '', `#${t} `, h('small', String(n)));
   };
-  const search = h('input', { type: 'search', placeholder: '태그 찾기', value: v.q, oninput: (e) => { v.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => app.render(), 250); } });
+  // 검색칸에 칠 때는 태그 목록만 다시 그린다 (포커스·한글 조합 유지)
+  const cloud = h('div.tag-cloud-wrap');
+  const drawCloud = (arr) => fill(cloud, arr.length
+    ? h('div.tag-cloud', arr.map(tagBtn))
+    : h('p.muted', allTags.length ? '맞는 태그가 없습니다.' : '아직 태그가 없습니다. 교사수첩의 노트·업무·수업일지 등에 #회의 #수행평가 처럼 적어 보세요. # 을 쓰면 쓰던 태그를 추천합니다.'));
+  drawCloud(counts);
+  const search = h('input', { type: 'search', placeholder: '태그 찾기', 'data-keep': 'tag-search', value: v.q, oninput: (e) => { v.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => drawCloud(filterTags(v.q)), 150); } });
   const left = h('section.card.tag-list-card',
     h('div.card-head', h('h2', `태그 (${allTags.length})`)),
     search,
     h('div.chips', [['', '전체'], ['active', '진행 중·기타'], ['done', '끝남']].map(([k, l]) =>
       h(`button.chip-btn${(v.status || '') === k ? '.active' : ''}`, { onclick: () => { v.status = k; v.tag = ''; app.render(); } }, l))),
-    counts.length
-      ? h('div.tag-cloud', counts.map(tagBtn))
-      : h('p.muted', allTags.length ? '맞는 태그가 없습니다.' : '아직 태그가 없습니다. 교사수첩의 노트·업무·수업일지 등에 #회의 #수행평가 처럼 적어 보세요. # 을 쓰면 쓰던 태그를 추천합니다.'));
+    cloud);
 
   // 날짜별로 묶기
   const groups = [];

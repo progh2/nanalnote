@@ -77,7 +77,8 @@ export function renderStudents(app) {
   const gradeOk = (s) => (f.grade === 'pre' ? isPre(s) : !isPre(s) && (!f.grade || s.grade === +f.grade));
   // 상태 거르기: 기본은 재학·휴학 (떠난 학생은 "떠난 학생"/"전체"에서)
   const stateOk = (s) => f.grade === 'pre' || (f.state === 'all' ? true : f.state ? stOf(s) === f.state : stOf(s) !== 'gone');
-  const list = searchStudents(f.q, all.filter((s) => gradeOk(s) && (!f.cls || classKey(s) === f.cls) && stateOk(s)));
+  const base = all.filter((s) => gradeOk(s) && (!f.cls || classKey(s) === f.cls) && stateOk(s));
+  const list = searchStudents(f.q, base);
   const hr = (cls) => store.settings.homerooms?.[cls] || {};
   const hrLine = (cls) => { const x = hr(cls); return x.main || x.sub ? h('p.homeroom', `${cls}반 · 담임 ${x.main || '-'} · 부담임 ${x.sub || '-'}`) : null; };
   const sel = all.find((s) => s.uid === app.selectedStudent) || list[0];
@@ -92,12 +93,15 @@ export function renderStudents(app) {
       // 교사만 아는 작은 점 (글자 없음)
       s.flags?.length ? h('span.fdots', { 'aria-hidden': 'true' }, s.flags.map((k) => h(`i.fdot.f-${k}`))) : null);
   };
-  const groups = [];
-  for (const s of list) {
-    const k = `${isPre(s) ? 'pre:' : ''}${classKey(s) || '?'}`;
-    if (groups.at(-1)?.k !== k) groups.push({ k, pre: isPre(s), cls: classKey(s), items: [] });
-    groups.at(-1).items.push(s);
-  }
+  const groupsOf = (arr) => {
+    const groups = [];
+    for (const s of arr) {
+      const k = `${isPre(s) ? 'pre:' : ''}${classKey(s) || '?'}`;
+      if (groups.at(-1)?.k !== k) groups.push({ k, pre: isPre(s), cls: classKey(s), items: [] });
+      groups.at(-1).items.push(s);
+    }
+    return groups;
+  };
   const groupHead = (g) => {
     const dept = store.dept(g.items[0]);
     const x = hr(g.cls);
@@ -105,7 +109,16 @@ export function renderStudents(app) {
       h('strong', `${g.pre ? `${g.items[0].entryYear}학년도 입학 예정 · ` : ''}${g.cls ? `${g.cls}반` : '반 미정'}`),
       h('span.muted.small', [dept, `${g.items.length}명`, !g.pre && (x.main || x.sub) ? `담임 ${x.main || '-'}${x.sub ? ` · 부담임 ${x.sub}` : ''}` : ''].filter(Boolean).join(' · ')));
   };
-  const listEl = h('div.stu-groups', groups.map((g) => h('div.stu-group', groups.length > 1 || g.cls ? groupHead(g) : null, h('div.stu-list', g.items.map(card)))));
+  // 검색칸에 글자를 칠 때는 이 목록만 다시 그린다 (화면 전체를 다시 그리면 검색칸이 새로 만들어져 포커스·한글 조합이 끊김)
+  const listEl = h('div.stu-groups');
+  const countEl = h('h2');
+  const drawList = (arr) => {
+    const groups = groupsOf(arr);
+    fill(listEl, ...groups.map((g) => h('div.stu-group', groups.length > 1 || g.cls ? groupHead(g) : null, h('div.stu-list', g.items.map(card)))),
+      arr.length ? null : h('p.muted', all.length ? '찾는 학생이 없습니다.' : ''));
+    countEl.textContent = `학생 명단 (${arr.length}/${all.length}명)`;
+  };
+  drawList(list);
   // 학년·반 고르기
   const grades = [...new Set(all.filter((s) => !isPre(s) && s.grade).map((s) => s.grade))].sort((a, b) => a - b);
   const pres = all.filter(isPre);
@@ -119,9 +132,9 @@ export function renderStudents(app) {
     clsOf.map((k) => chip(f.cls === k, `${k.split('-')[1]}반`, () => { f.cls = k; app.render(); }))) : null;
   const stateChips = h('div.chips', [['', '재학·휴학'], ['active', '재학'], ['leave', '휴학'], ['gone', '떠난 학생'], ['all', '전체']].map(([k, l]) =>
     h(`button.chip-btn${(f.state || '') === k ? '.active' : ''}`, { onclick: () => { f.state = k; app.render(); } }, l)));
-  const search = h('input', { type: 'search', placeholder: '학번·이름 검색', value: f.q, oninput: (e) => { f.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => app.render(), 250); } });
+  const search = h('input', { type: 'search', placeholder: '학번·이름 검색', 'data-keep': 'stu-search', value: f.q, oninput: (e) => { f.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => drawList(searchStudents(f.q, base)), 150); } });
   const left = h('section.card',
-    h('div.card-head', h('h2', `학생 명단 (${list.length}/${all.length}명)`),
+    h('div.card-head', countEl,
       h('div.row', { style: { margin: 0 } },
         h('button.small', { onclick: () => {
           const [g, c] = (f.cls || '').split('-').map((x) => +x || null);

@@ -246,7 +246,7 @@ export function renderPeople(app) {
       : h('p.muted', people.length ? '찾는 이름이 없습니다.' : '아직 명부가 비어 있습니다. "+ 사람", "여러 명 붙여넣기"로 넣거나, 아래 "기록에서 찾은 이름"을 눌러 보세요.'));
   };
   drawList();
-  const search = h('input', { type: 'search', placeholder: '이름·소속·전화로 찾기', value: v.q, oninput: (e) => { v.q = e.target.value; drawList(); } });
+  const search = h('input', { type: 'search', placeholder: '이름·소속·전화로 찾기', 'data-keep': 'people-search', value: v.q, oninput: (e) => { v.q = e.target.value; drawList(); } });
   const ignore = store.settings.peopleIgnore || [];
   const missing = findUnregistered(textEntries(store).map((e) => e.text), people, ignore).slice(0, 12);
   const left = h('section.card.people-list-card',

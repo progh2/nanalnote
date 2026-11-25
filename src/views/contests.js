@@ -33,8 +33,8 @@ export function renderContests(app) {
   const t = today();
   const list = (store.work.contests || []);
   const order = { active: 0, soon: 1, done: 2 };
-  const shown = list
-    .filter((c) => (!v.status || contestStatus(c, t) === v.status) && (!v.q || [c.name, c.host, c.kind, c.summary].some((x) => (x || '').includes(v.q))))
+  const filterList = (q) => list
+    .filter((c) => (!v.status || contestStatus(c, t) === v.status) && (!q || [c.name, c.host, c.kind, c.summary].some((x) => (x || '').includes(q))))
     .sort((a, b) => order[contestStatus(a, t)] - order[contestStatus(b, t)]
       || (nextEvent(a, t)?.date || spanOf(a).end || '9999').localeCompare(nextEvent(b, t)?.date || spanOf(b).end || '9999')
       || a.name.localeCompare(b.name, 'ko'));
@@ -49,7 +49,9 @@ export function renderContests(app) {
     app.render();
     requestAnimationFrame(() => { const el = document.querySelector('.contest-name'); el?.focus(); el?.select(); });
   };
-  const search = h('input', { type: 'search', placeholder: '이름·주최로 찾기', value: v.q, oninput: (e) => { v.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => app.render(), 250); } });
+  // 검색칸에 칠 때는 목록만 다시 그린다 (포커스·한글 조합 유지)
+  const listBox = h('div.contest-list-box');
+  const search = h('input', { type: 'search', placeholder: '이름·주최로 찾기', 'data-keep': 'contest-search', value: v.q, oninput: (e) => { v.q = e.target.value; clearTimeout(search.t); search.t = setTimeout(() => drawList(filterList(v.q)), 150); } });
   const left = h('section.card.contest-list-card',
     h('div.card-head', h('h2', `대회·활동 (${list.length})`),
       h('div.row', { style: { margin: 0, gap: '6px' } },
@@ -58,7 +60,8 @@ export function renderContests(app) {
     search,
     h('div.chips', [['', '전체'], ['active', STATUS.active], ['soon', STATUS.soon], ['done', STATUS.done]].map(([k, l]) =>
       h(`button.chip-btn${(v.status || '') === k ? '.active' : ''}`, { onclick: () => { v.status = k; app.render(); } }, l))),
-    shown.length ? h('ul.contest-list', shown.map((c) => {
+    listBox);
+  const drawList = (shown) => fill(listBox, shown.length ? h('ul.contest-list', shown.map((c) => {
       const st = contestStatus(c, t);
       const nx = nextEvent(c, t);
       const sp = spanOf(c);
@@ -70,6 +73,7 @@ export function renderContests(app) {
         h('div.muted.small', [sp.start || sp.end ? `${sp.start ? koDate(sp.start).replace(/\s*\(.\)/, '') : ''} ~ ${sp.end ? koDate(sp.end).replace(/\s*\(.\)/, '') : ''}` : '기간 미정',
           nx && st !== 'done' ? `다음: ${nx.label}` : STATUS[st], people ? `${people}명` : '', aw ? `🏆 ${aw}` : ''].filter(Boolean).join(' · ')));
     })) : h('p.muted', list.length ? '맞는 항목이 없습니다.' : '대회·공모전·캠프 같은 활동을 만들어 개요·일정·자료와 참가 학생, 단계별 결과, 수상·수료를 관리하세요.'));
+  drawList(filterList(v.q));
 
   const right = sel ? detail(app, sel) : h('section.card', h('div.card-head', h('h2', '대회·활동')),
     h('div.help',

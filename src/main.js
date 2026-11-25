@@ -202,7 +202,14 @@ const app = {
       const views = { notebook: renderNotebook, schedule: renderSchedule, contacts: renderContacts, tags: renderTags, students: renderStudents, people: renderPeople, contests: renderContests, reports: renderReports, settings: renderSettings, about: renderAbout };
       view = views[this.tab](this);
     }
+    // 다시 그려도 커서를 잃지 않게: data-keep 이 붙은 칸(검색칸 등)에 있던 포커스·커서 위치를 새 칸으로 옮긴다
+    const act = document.activeElement;
+    const keep = act?.dataset?.keep && main.contains(act) ? { key: act.dataset.keep, a: act.selectionStart, b: act.selectionEnd } : null;
     fill(main, view);
+    if (keep) {
+      const el = main.querySelector(`[data-keep="${keep.key}"]`);
+      if (el) { el.focus({ preventScroll: true }); try { el.setSelectionRange(keep.a, keep.b); } catch { /* 커서를 둘 수 없는 칸 */ } }
+    }
     renderNotes(this);
     document.title = `${APP_NAME} · ${koDate(this.date)}`;
   },

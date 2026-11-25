@@ -7,7 +7,7 @@ import { splitParagraphs } from '../lib/counsel.js';
 import { tokenizeStudents, studentLabel } from '../lib/students.js';
 import { studentSelect, classSelect } from './ui.js';
 import { ATT_TYPES, ATT_REASONS, ttCell, courseShort, dday, PRIORITIES, priorityOf, priorityLabel } from '../store.js';
-import { exportDay } from '../lib/export.js';
+import { exportDay, fileExt, dlLabel } from '../lib/export.js';
 import { showStudentCounsel } from './students.js';
 import { extractTags, tagNodes } from '../lib/tags.js';
 import { splitSections, renderMd, toggleTodo } from '../lib/notemd.js';
@@ -615,8 +615,8 @@ export function renderNotebook(app) {
       h('button', { onclick: async () => {
         if (store.dirty) toast('저장하지 않은 내용도 포함해 내려받습니다.', 'info');
         const blob = await exportDay(store, date, await app.specials(date));
-        downloadBlob(blob, `교사수첩_${date}.docx`);
-      } }, '⬇ Word 다운로드'),
+        downloadBlob(blob, `교사수첩_${date}.${fileExt()}`);
+      } }, dlLabel() + ' 다운로드'),
       h('button.primary', { onclick: () => app.save() }, '저 장')));
 
   // ----- 그날 날씨 (서울) -----

@@ -5,6 +5,7 @@ import { DropboxBackend, startLogin, logout as dropboxLogout, isPublicMode } fro
 import { isDesktop, pickFolder, PORTABLE_FOLDER } from '../lib/desktop.js';
 import { COLLECTIONS } from '../store.js';
 import { THEMES } from '../themes.js';
+import { FORMATS, exportFormat, setExportFormat } from '../lib/export.js';
 import { ttCell, courseOf } from '../store.js';
 import { openStudentImport, readTable, TABLE_ACCEPT } from './import.js';
 import { xlsxBlob } from '../lib/xlsx.js';
@@ -133,6 +134,10 @@ function displayCard(app) {
       h('label', '교원정보 (상단 표시 문구)', info),
       h('label', '학교급', level),
       h('label.check', showMod, ' 최종수정일시를 교사수첩 하단과 인쇄물에 표시'),
+      h('label', '내려받기 형식 (이 기기)', h('div.row', { style: { margin: 0 } },
+        Object.entries(FORMATS).map(([v, l]) => h(`button.small${exportFormat() === v ? '.active-size' : ''}`, {
+          onclick: () => { setExportFormat(v); app.render(); },
+        }, `${l} (.${v})`)))),
       h('label', '글자 크기 (이 기기)', h('div.row', { style: { margin: 0 } },
         [[1, '보통'], [1.12, '크게'], [1.25, '아주 크게'], [1.4, '가장 크게']].map(([v, l]) => h(`button.small${app.prefs.fontScale === v ? '.active-size' : ''}`, {
           onclick: () => { app.prefs.fontScale = v; app.render(); },

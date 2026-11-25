@@ -916,3 +916,16 @@ table.lessons tr.drop-on td { background: var(--highlight) !important; }
 .stars .star { border: 0; background: none; padding: 0 2px; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; min-height: 0; box-shadow: none; }
 .stars .star.on { color: #f5a623; }
 @media print { .nb-quote { background: none; } }
+.trip-sum { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; }
+.reflect-chart { width: 100%; max-width: 900px; height: auto; display: block; margin: 4px 0 14px; }
+.reflect-chart .grid { stroke: var(--border); stroke-width: 1; }
+.reflect-chart .axis { fill: var(--muted); font-size: 11px; }
+.reflect-chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.reflect-chart .line.body, .reflect-chart .dot.body { stroke: var(--primary); }
+.reflect-chart .line.mind, .reflect-chart .dot.mind { stroke: #f5a623; }
+.reflect-chart .dot { fill: var(--surface, #fff); stroke-width: 2; }
+.reflect-legend { display: flex; gap: 14px; font-size: calc(12.5px * var(--fs, 1)); color: var(--muted); }
+.reflect-legend .lg::before { content: ''; display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+.reflect-legend .lg.body::before { background: var(--primary); }
+.reflect-legend .lg.mind::before { background: #f5a623; }
+.reflect-table .stars-cell { color: #f5a623; white-space: nowrap; letter-spacing: -1px; }

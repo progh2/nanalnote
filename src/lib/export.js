@@ -1,39 +1,27 @@
-// Word(docx) 내보내기 - 원본 쌔미노트(2024.12 이후)처럼 MS Word 파일로 생성 (한컴오피스에서도 열림)
-import {
-  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, HeadingLevel,
-  Footer, AlignmentType, PageBreak, ShadingType,
-} from 'docx';
+// 내려받기: 한글(.hwpx, 기본) 또는 Word(.docx)
+// 내용은 형식과 상관없는 블록 목록으로 만들고, 마지막에 고른 형식으로 바꾼다.
+//   {t:'title'|'h'|'p'|'ml'|'small', text, bold?, color?} · {t:'table', headers, rows, widths(%)} · {t:'break'}
 import { koDate, fmtDateTime, weekdayOf } from './util.js';
 import { dayRows, fmtRange } from './bell.js';
 
-const FONT = '맑은 고딕';
-
-const p = (text, opts = {}) => new Paragraph({ spacing: { after: 80 }, ...opts, children: [new TextRun({ text: String(text ?? ''), font: FONT, size: opts.size || 20, bold: opts.bold, color: opts.color })] });
-
-const multiline = (text, opts = {}) => {
-  const lines = String(text ?? '').split('\n');
-  return new Paragraph({
-    spacing: { after: 80 },
-    children: lines.flatMap((l, i) => [new TextRun({ text: l, font: FONT, size: 20, break: i ? 1 : 0, ...opts })]),
-  });
-};
-
-const heading = (text, level = HeadingLevel.HEADING_2) => new Paragraph({ heading: level, spacing: { before: 200, after: 100 }, children: [new TextRun({ text, font: FONT, bold: true })] });
-
-function table(headers, rows, widths) {
-  const cell = (text, head, w) => new TableCell({
-    width: w ? { size: w, type: WidthType.PERCENTAGE } : undefined,
-    shading: head ? { type: ShadingType.CLEAR, fill: 'E8E8E8', color: 'auto' } : undefined,
-    children: [multiline(text, head ? { bold: true } : {})],
-  });
-  return new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: [
-      new TableRow({ tableHeader: true, children: headers.map((hd, i) => cell(hd, true, widths?.[i])) }),
-      ...rows.map((r) => new TableRow({ children: r.map((c, i) => cell(c, false, widths?.[i])) })),
-    ],
-  });
+const FORMAT_KEY = 'sn:exportFormat';
+export const FORMATS = { hwpx: '한글', docx: 'Word' };
+/** 이 기기에서 고른 내려받기 형식 ('hwpx' 기본) */
+export function exportFormat() {
+  try { const f = localStorage.getItem(FORMAT_KEY); return FORMATS[f] ? f : 'hwpx'; } catch { return 'hwpx'; }
 }
+export function setExportFormat(f) { try { localStorage.setItem(FORMAT_KEY, f); } catch { /* 무시 */ } }
+/** 파일 확장자 */
+export const fileExt = () => exportFormat();
+/** 버튼 글자: "⬇ 한글" */
+export const dlLabel = (prefix = '⬇ ') => `${prefix}${FORMATS[exportFormat()]}`;
+
+const p = (text, opts = {}) => ({ t: 'p', text: String(text ?? ''), ...opts });
+const multiline = (text) => ({ t: 'ml', text: String(text ?? '') });
+const heading = (text, level = 2) => ({ t: level === 1 ? 'title' : 'h', text });
+const table = (headers, rows, widths) => ({ t: 'table', headers, rows: rows.map((r) => r.map((c) => String(c ?? ''))), widths });
+const PAGE_BREAK = { t: 'break' };
+const HeadingLevel = { HEADING_1: 1, HEADING_2: 2 };
 
 /**
  * 하루치 교사수첩 내용
@@ -42,8 +30,8 @@ function table(headers, rows, widths) {
 function dayBlocks(store, date, specials, { mode = 'single', includeIncomplete = false } = {}) {
   const s = store.settings;
   const out = [];
-  out.push(new Paragraph({ heading: HeadingLevel.HEADING_1, spacing: { after: 120 }, children: [new TextRun({ text: `교사수첩  ${koDate(date)}`, font: FONT, bold: true })] }));
-  if (s.teacherInfo) out.push(p(s.teacherInfo, { color: '555555' }));
+  out.push(heading(`교사수첩  ${koDate(date)}`, 1));
+  if (s.teacherInfo) out.push({ t: 'small', text: s.teacherInfo });
 
   const sched = store.scheduleText(date);
   const sp = specials.map((x) => x.name + (x.holiday ? '(휴일)' : '')).join(', ');
@@ -87,22 +75,27 @@ function dayBlocks(store, date, specials, { mode = 'single', includeIncomplete =
   const note = store.dayNote(date);
   if (note) { out.push(heading('노트')); out.push(multiline(note)); }
 
+  const day = store.day(date);
+  if (day && (day.body || day.mind || day.health || day.thanks || day.study)) {
+    const stars = (n) => (n ? `${'★'.repeat(n)}${'☆'.repeat(5 - n)}` : '-');
+    out.push(heading('하루 돌아보기'));
+    out.push(table(['몸', '마음', '건강', '감사한 일', '공부한 것'], [[stars(day.body), stars(day.mind), day.health || '', day.thanks || '', day.study || '']], [12, 12, 24, 26, 26]));
+  }
+
   const counsel = store.counselText(date);
   out.push(heading('학생 상담 일지 및 특이사항'));
   out.push(multiline(counsel || '-'));
   return out;
 }
 
-async function pack(children, footerText) {
-  const doc = new Document({
-    styles: { default: { document: { run: { font: FONT } } } },
-    sections: [{
-      properties: { page: { margin: { top: 1000, bottom: 1000, left: 1000, right: 1000 } } },
-      footers: footerText ? { default: new Footer({ children: [new Paragraph({ alignment: AlignmentType.RIGHT, children: [new TextRun({ text: footerText, font: FONT, size: 16, color: '777777' })] })] }) } : undefined,
-      children,
-    }],
-  });
-  return Packer.toBlob(doc);
+/** 블록 → 고른 형식의 Blob */
+async function pack(blocks, footerText) {
+  if (exportFormat() === 'docx') {
+    const { renderDocx } = await import('./export-docx.js');
+    return renderDocx(blocks, footerText);
+  }
+  const { buildHwpx } = await import('./hwpx.js');
+  return buildHwpx(blocks, { footer: footerText });
 }
 
 /** 오늘 일지 다운로드 (최종수정일시 꼬리말 포함) */
@@ -116,7 +109,7 @@ export async function exportDay(store, date, specials) {
 export async function exportRange(store, dates, specialsOf, { includeIncomplete }) {
   const children = [];
   for (const [i, d] of dates.entries()) {
-    if (i) children.push(new Paragraph({ children: [new PageBreak()] }));
+    if (i) children.push(PAGE_BREAK);
     children.push(...dayBlocks(store, d, await specialsOf(d), { mode: 'range', includeIncomplete }));
   }
   return pack(children);
@@ -166,5 +159,16 @@ export async function exportRecord(store, record) {
     heading(`학급요록 - ${record.title}${record.cls ? ` (${record.cls})` : ''}`, HeadingLevel.HEADING_1),
     p(`등록일 ${record.created}${record.doneDate ? ` · 완료 ${record.doneDate}` : ''}`),
     table(['학생', '내용'], studs.map((x) => [store.label(x.uid), record.entries?.[x.uid] || '']), [25, 75]),
+  ]);
+}
+
+/** 하루 돌아보기 모아보기 */
+export async function exportReflect(rows, range) {
+  const stars = (n) => (n ? '★'.repeat(n) + '☆'.repeat(5 - n) : '');
+  const avg = (k) => { const v = rows.map((r) => r[k]).filter(Boolean); return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) : '-'; };
+  return pack([
+    heading(`하루 돌아보기 (${range.start} ~ ${range.end})`, 1),
+    p(`기록 ${rows.length}일 · 평균 몸 ${avg('body')} · 마음 ${avg('mind')}`),
+    table(['날짜', '몸', '마음', '건강', '감사한 일', '공부한 것'], rows.map((r) => [koDate(r.date), stars(r.body), stars(r.mind), r.health, r.thanks, r.study]), [17, 10, 10, 21, 21, 21]),
   ]);
 }

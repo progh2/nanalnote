@@ -26,13 +26,12 @@ test('예보·과거 API 고르기, 먼 미래는 없음', async () => {
   assert.equal(urls.length, 2);
 });
 
-test('오늘의 문구: 같은 날 같은 문구, 연이은 날은 다름', async () => {
+test('오늘의 문구: 날짜(월·일)마다 하나, 1년에 한 번씩', async () => {
   const { quoteOf, QUOTES } = await import('../src/lib/quotes.js');
-  assert.deepEqual(quoteOf('2026-11-25'), quoteOf('2026-11-25'));
+  assert.equal(QUOTES.length, 366);
+  assert.deepEqual(quoteOf('2026-11-25'), quoteOf('2031-11-25'));
   const seen = new Set();
-  for (let i = 0; i < QUOTES.length; i++) {
-    const d = new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10);
-    seen.add(quoteOf(d)[0]);
-  }
-  assert.equal(seen.size, QUOTES.length);
+  for (let i = 0; i < 366; i++) seen.add(quoteOf(new Date(Date.UTC(2028, 0, 1 + i)).toISOString().slice(0, 10))[0]);
+  assert.equal(seen.size, 366);
+  assert.notEqual(quoteOf('2026-02-28')[1], quoteOf('2026-03-01')[1]);
 });

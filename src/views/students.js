@@ -1,6 +1,6 @@
 // 학생관리 탭: 학반별 명단(학번·사진) 편집 + 학생별 상담/출결/요록 + 지난 학년도 기록
 import { h, koDate, downloadBlob, confirmDialog, modal, toast, pickFile, newId, fill } from '../lib/util.js';
-import { exportCounsel } from '../lib/export.js';
+import { exportCounsel, fileExt, dlLabel } from '../lib/export.js';
 import { studentLabel, classKey, newUid, normStudent, matchPhotoFile, buildIndex, searchStudents, statusAt, STATE_LABEL, STATUS_EVENTS, EVENT_HAS_GRADE, LEAVING_TYPES, FLAGS, entryYearOf, cleanNo, partsOfNo, deptOf } from '../lib/students.js';
 import { resizeImage, readClipboardImage } from '../lib/photos.js';
 import { migrateRefs } from '../store.js';
@@ -25,7 +25,7 @@ export async function showStudentCounsel(app, uid) {
   const label = app.store.label(uid);
   let goDate = null;
   const body = h('div',
-    h('div.row', h('button.small', { onclick: async () => downloadBlob(await exportCounsel(label, app.store.counselFor(uid)), `상담일지_${label}.docx`) }, '⬇ Word 다운로드')),
+    h('div.row', h('button.small', { onclick: async () => downloadBlob(await exportCounsel(label, app.store.counselFor(uid)), `상담일지_${label}.${fileExt()}`) }, dlLabel() + ' 다운로드')),
     counselList(app.store.counselFor(uid), (d) => { goDate = d; document.querySelector('.modal-overlay')?.click(); }));
   await modal(`${label} 학생 상담 일지`, body);
   if (goDate) { app.tab = 'notebook'; await app.setDate(goDate); app.render(); }
@@ -248,7 +248,7 @@ export function renderStudents(app) {
       studentActivitiesCard(app, st.uid),
       h('section.card.private-report',
         h('div.card-head', h('h2', '상담 일지'),
-          h('button.small', { onclick: async () => downloadBlob(await exportCounsel(studentLabel(sel), store.counselFor(st.uid)), `상담일지_${studentLabel(sel)}.docx`) }, '⬇ Word')),
+          h('button.small', { onclick: async () => downloadBlob(await exportCounsel(studentLabel(sel), store.counselFor(st.uid)), `상담일지_${studentLabel(sel)}.${fileExt()}`) }, dlLabel())),
         counselList(store.counselFor(st.uid), go)),
       h('section.card', h('div.card-head', h('h2', '출결')),
         att.length ? h('table.grid', h('thead', h('tr', h('th', '날짜'), h('th', '구분'), h('th', '사유'), h('th', '비고'))),

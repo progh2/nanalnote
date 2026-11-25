@@ -16,6 +16,7 @@ import { attachStudentSuggest } from './suggest.js';
 import { mentionInline } from './mentions.js';
 import { dayEvents } from '../lib/contests.js';
 import { openContest } from './contests.js';
+import { seoulWeather, weatherText } from '../lib/weather.js';
 
 /** textarea 높이 자동 조절 */
 export function autoGrow(el) {
@@ -617,15 +618,21 @@ export function renderNotebook(app) {
       } }, '⬇ Word 다운로드'),
       h('button.primary', { onclick: () => app.save() }, '저 장')));
 
+  // ----- 그날 날씨 (서울) -----
+  const weatherEl = h('div.nb-weather.muted.small', { title: '서울 기준 날씨 (Open-Meteo)' });
+  seoulWeather(date, today()).then((w) => {
+    if (w) weatherEl.textContent = `서울 ${weatherText(w)}`;
+    else weatherEl.remove();
+  }).catch(() => weatherEl.remove());
+
   const ord = (el, n) => { el.style.setProperty('--ord', n); return el; };
   return h('div.notebook',
     h('div.print-only.print-title', `교사수첩 ${date}`),
-    // 넓은 화면: 왼쪽 학사일정·수업일지·학생출결, 오른쪽 업무일지·출장 (좁은 화면은 이 순서로 한 줄)
     // 넓은 화면: 왼쪽에 학사일정·수업일지·학생출결·노트·상담·요록이 이어서 흐르고(업무가 길어도 빈 공간이 생기지 않게),
-    // 오른쪽에 업무일지·출장. 좁은 화면은 order 로 학사일정 → 수업일지 → 출결 → 업무 → 출장 → 노트 → 상담 → 요록
+    // 오른쪽에 날씨·출장·업무일지. 좁은 화면은 order 로 날씨 → 학사일정 → 수업일지 → 출결 → 출장 → 업무 → 노트 → 상담 → 요록
     h(`div.nb-grid.nb-main${sec ? '.sec' : ''}`,
       h('div.col.nb-left', ord(scheduleCard, 1), ord(lessonCard, 2), ord(attCard, 3), ord(noteCard, 6), ord(privacy, 7), ord(recCard, 8)),
-      h('div.col.nb-right', ord(taskCard, 4), ord(tripCard, 5))),
+      h('div.col.nb-right', ord(weatherEl, 0), ord(tripCard, 4), ord(taskCard, 5))),
     footer);
 }
 

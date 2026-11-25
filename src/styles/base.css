@@ -899,3 +899,6 @@ table.lessons tr.drop-on td { background: var(--highlight) !important; }
 .task-memo { font-size: calc(12.5px * var(--fs, 1)); color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; padding: 0 4px 4px; cursor: text; border-left: 2px solid var(--border); margin-left: 2px; }
 .task-memo:hover { background: var(--surface-2); }
 .task-note { padding-left: 5.6em; }
+.nb-weather { text-align: right; padding: 0 4px; margin-bottom: -8px; font-size: calc(12.5px * var(--fs, 1)); }
+.nb-weather:empty { display: none; }
+@media print { .nb-weather { margin-bottom: 0; } }

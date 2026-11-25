@@ -35,7 +35,7 @@ export function tagNodes(text, onTag, active = null) {
     : p.text));
 }
 
-export const TYPE_LABEL = { note: '노트', task: '업무', lesson: '수업', counsel: '상담', schedule: '학사', trip: '출장', attendance: '출결', postit: '포스트잇', contest: '대회·활동' };
+export const TYPE_LABEL = { note: '노트', task: '업무', lesson: '수업', counsel: '상담', schedule: '학사', trip: '출장', attendance: '출결', postit: '포스트잇', contest: '대회·활동', daily: '하루' };
 
 /**
  * 학년도 자료 전체의 글 기록 → [{type, date, text, update?, ...}] (노트는 --- 로 나눈 주제마다 하나)
@@ -48,6 +48,9 @@ export function textEntries(store) {
   const field = (obj, k) => (fn) => { obj[k] = fn(obj[k] || ''); };
   for (const d of w.days) {
     for (const s of splitSections(d.note)) add('note', d.date, s.text, { md: true, update: (fn) => { d.note = d.note.replace(s.text, () => fn(s.text)); } });
+  }
+  for (const d of w.days) {
+    for (const [k, t] of [['health', '건강'], ['thanks', '감사'], ['study', '공부']]) add('daily', d.date, d[k], { label: t, update: field(d, k) });
   }
   for (const t of w.tasks) add('task', t.created, t.text, { done: !!t.doneDate, due: t.due || '', id: t.id, update: field(t, 'text') });
   // 업무 결과·진행 메모 (완료 날짜 기준)

@@ -17,6 +17,7 @@ import { mentionInline } from './mentions.js';
 import { dayEvents } from '../lib/contests.js';
 import { openContest } from './contests.js';
 import { seoulWeather, weatherText } from '../lib/weather.js';
+import { quoteOf } from '../lib/quotes.js';
 
 /** textarea 높이 자동 조절 */
 export function autoGrow(el) {
@@ -632,8 +633,46 @@ export function renderNotebook(app) {
     // 오른쪽에 날씨·출장·업무일지. 좁은 화면은 order 로 날씨 → 학사일정 → 수업일지 → 출결 → 출장 → 업무 → 노트 → 상담 → 요록
     h(`div.nb-grid.nb-main${sec ? '.sec' : ''}`,
       h('div.col.nb-left', ord(scheduleCard, 1), ord(lessonCard, 2), ord(attCard, 3), ord(noteCard, 6), ord(privacy, 7), ord(recCard, 8)),
-      h('div.col.nb-right', ord(weatherEl, 0), ord(tripCard, 4), ord(taskCard, 5))),
+      h('div.col.nb-right', ord(weatherEl, 0), ord(tripCard, 4), ord(taskCard, 5), ord(quoteBox(date), 5), ord(reflectCard(app, date), 5))),
     footer);
+}
+
+// ----- 오늘의 문구 (프랭클린 플래너처럼 하루 한 줄) -----
+function quoteBox(date) {
+  const q = quoteOf(date);
+  if (!q) return h('div');
+  return h('figure.nb-quote', h('blockquote', q[0]), h('figcaption', `— ${q[1]}`));
+}
+
+// ----- 하루 돌아보기: 건강(몸·마음 별점) · 감사 · 공부 -----
+function starPicker(app, date, key, label) {
+  const wrap = h('span.stars', { role: 'radiogroup', 'aria-label': `${label} 컨디션` });
+  const paint = () => {
+    const v = app.store.day(date)?.[key] || 0;
+    wrap.querySelectorAll('button').forEach((b, i) => { b.textContent = i < v ? '★' : '☆'; b.classList.toggle('on', i < v); b.setAttribute('aria-checked', String(i + 1 === v)); });
+  };
+  for (let i = 1; i <= 5; i++) {
+    wrap.append(h('button.star', { type: 'button', role: 'radio', title: `${label} ${i}점`, 'aria-label': `${label} ${i}점`,
+      onclick: () => { const cur = app.store.day(date)?.[key] || 0; app.store.setDayField(date, key, cur === i ? 0 : i); paint(); } }));
+  }
+  paint();
+  return h('span.star-row', h('span.star-label', label), wrap);
+}
+
+function reflectCard(app, date) {
+  const { store } = app;
+  const box = (key, title, ph) => h('div.reflect-item',
+    h('label.reflect-title', { for: `rf-${key}` }, title),
+    autoGrow(h('textarea.reflect-text', { id: `rf-${key}`, rows: 1, value: store.day(date)?.[key] || '', placeholder: ph, 'data-keep': `rf-${key}`,
+      oninput: (e) => store.setDayField(date, key, e.target.value.trim() ? e.target.value : '') })));
+  return card('하루 돌아보기', null,
+    h('div.reflect-item',
+      h('div.reflect-title', '건강'),
+      h('div.star-rows', starPicker(app, date, 'body', '몸'), starPicker(app, date, 'mind', '마음')),
+      autoGrow(h('textarea.reflect-text', { rows: 1, value: store.day(date)?.health || '', placeholder: '오늘 몸 상태, 운동, 잠, 먹은 것…', 'aria-label': '건강 메모', 'data-keep': 'rf-health',
+        oninput: (e) => store.setDayField(date, 'health', e.target.value.trim() ? e.target.value : '') }))),
+    box('thanks', '감사한 일', '오늘 고마웠던 일·사람'),
+    box('study', '공부한 것', '오늘 배우고 익힌 것 (예: 자격증 2장, 문제 30개)'));
 }
 
 // ----- 오늘의 노트: 쓰기 ↔ 보기, --- 로 주제 나누기, 간단한 마크다운 -----

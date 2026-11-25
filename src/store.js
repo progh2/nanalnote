@@ -222,6 +222,14 @@ export class Store {
     this.markDirty();
   }
 
+  /** 하루 돌아보기: health(건강 메모) · body/mind(1~5 별점) · thanks(감사) · study(공부) */
+  setDayField(date, key, value) {
+    let d = this.day(date);
+    if (!d) { d = { id: newId(), date }; this.work.days.push(d); }
+    if (value === '' || value == null || value === 0) delete d[key]; else d[key] = value;
+    this.markDirty();
+  }
+
   /** 해당 날짜에 보일 업무일지: 작성일 <= 날짜 && (미완료 || 완료일 >= 날짜) */
   visibleTasks(date) {
     const list = this.work.tasks.filter((t) => t.created <= date && (!t.doneDate || t.doneDate >= date));

@@ -20,6 +20,8 @@ import { bellOf, rawBell, periodLabel, parsePeriodLabel, fmtRange, EVENING_BASE 
 
 export const yearDir = (year) => `/${year}학년도`;
 export const FILES = { settings: '설정.md', students: '학생명단.md', schedule: '학사일정.md', tasks: '업무일지.md', records: '학급요록.md', notes: '포스트잇.md', docs: '학사일정자료.md', people: '사람·기관.md', tagcards: '태그.md', contests: '대회·활동.md', relations: '관계.md' };
+/** 하루 돌아보기 글 칸 [필드, 제목] */
+export const REFLECT = [['health', '건강'], ['thanks', '감사'], ['study', '공부']];
 const DAY_COLS = new Set(['days', 'lessons', 'attendance', 'counsel', 'trips']);
 
 /** 항목이 저장되는 파일 경로 */
@@ -330,6 +332,15 @@ export function serialize(year, input) {
       out.push('');
     }
     if (day?.note) out.push('## 노트', '', escBlock(day.note), '');
+    // 하루 돌아보기: "몸: ★★★★☆ (4/5)" · 건강·감사·공부는 ### 아래 글
+    if (day && (day.body || day.mind || day.health || day.thanks || day.study)) {
+      out.push('## 하루 돌아보기', '');
+      const stars = (n) => `${'★'.repeat(n)}${'☆'.repeat(5 - n)} (${n}/5)`;
+      if (day.body) out.push(`- 몸: ${stars(day.body)}`);
+      if (day.mind) out.push(`- 마음: ${stars(day.mind)}`);
+      if (day.body || day.mind) out.push('');
+      for (const [k, t] of REFLECT) if (day[k]) out.push(`### ${t}`, escBlock(day[k]), '');
+    }
     out.push('## 상담일지', '');
     if (counsel.length) out.push(counsel.map((c) => escBlock(c.text)).join('\n\n'), '');
     if (day?.extra) out.push(day.extra.trimEnd(), '');
@@ -661,6 +672,7 @@ export function parse(year, files, makeId) {
     const extra = [];
     let note = '';
     const events = [];
+    const reflect = {};
     for (const sec of sections(body)) {
       if (sec.title == null) continue;
       if (sec.title === '수업일지') {
@@ -692,6 +704,18 @@ export function parse(year, files, makeId) {
         splitParagraphs(unescBlock(trimBlank(sec.lines).join('\n'))).forEach((t, i) => {
           data.counsel.push({ id: makeId(), date, order: i, text: t, students: mentionedStudentUids(t, data.students, data.people) });
         });
+      } else if (sec.title === '하루 돌아보기') {
+        for (const line of sec.lines) {
+          const m = line.match(/^\s*[-*]\s*(몸|마음)\s*:\s*([★☆]*)\s*(?:\((\d)\s*\/\s*5\))?/);
+          if (!m) continue;
+          const n = Math.min(5, Number(m[3]) || (m[2].match(/★/g) || []).length);
+          if (n) reflect[m[1] === '몸' ? 'body' : 'mind'] = n;
+        }
+        for (const ss of sections(sec.lines.join('\n'), 3).slice(1)) {
+          const k = REFLECT.find(([, t]) => t === ss.title)?.[0];
+          const text = unescBlock(trimBlank(ss.lines).join('\n'));
+          if (k && text) reflect[k] = text;
+        }
       } else if (sec.title === '노트') {
         note = unescBlock(trimBlank(sec.lines).join('\n'));
       } else if (sec.title === '시간 일정') {
@@ -715,6 +739,7 @@ export function parse(year, files, makeId) {
     if (extra.length) day.extra = extra.join('\n\n');
     if (note) day.note = note;
     if (events.length) day.events = events;
+    Object.assign(day, reflect);
     data.days.push(day);
   }
   return data;
